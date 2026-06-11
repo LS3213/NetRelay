@@ -10,6 +10,76 @@
     <Window.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <converters:StatusToBrushConverter x:Key="StatusToBrushConverter"/>
+
+        <ContextMenu x:Key="TrayContextMenu" BorderThickness="1" BorderBrush="#CCFFFFFF" Padding="2">
+            <ContextMenu.Background>
+                <SolidColorBrush Color="#E8F4F8FD"/>
+            </ContextMenu.Background>
+            <ContextMenu.Template>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border BorderThickness="{TemplateBinding BorderThickness}" 
+                            BorderBrush="{TemplateBinding BorderBrush}" 
+                            Background="{TemplateBinding Background}" 
+                            CornerRadius="12" Padding="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.12" Color="#263753"/>
+                        </Border.Effect>
+                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </ControlTemplate>
+            </ContextMenu.Template>
+            <ContextMenu.Resources>
+                <Style TargetType="MenuItem">
+                    <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+                    <Setter Property="FontSize" Value="12"/>
+                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                    <Setter Property="Height" Value="36"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Border x:Name="Bg" CornerRadius="8" Margin="4,2" Padding="10,0" Background="Transparent">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <ContentPresenter x:Name="IconPresenter" Grid.Column="0" ContentSource="Icon" 
+                                                          HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                        <ContentPresenter Grid.Column="1" ContentSource="Header" 
+                                                          VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    </Grid>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="#20000000"/>
+                                    </Trigger>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="#20000000"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <Style TargetType="Separator">
+                    <Setter Property="Background" Value="#15000000"/>
+                    <Setter Property="Margin" Value="4,4,4,4"/>
+                    <Setter Property="Height" Value="1"/>
+                </Style>
+            </ContextMenu.Resources>
+
+            <MenuItem Header="打开主窗口" Click="TrayOpen_Click">
+                <MenuItem.Icon>
+                    <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#536EF2" VerticalAlignment="Center"/>
+                </MenuItem.Icon>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="退出程序" Click="TrayExit_Click">
+                <MenuItem.Icon>
+                    <TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#E85C63" VerticalAlignment="Center"/>
+                </MenuItem.Icon>
+            </MenuItem>
+        </ContextMenu>
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="58" CornerRadius="16" GlassFrameThickness="0" ResizeBorderThickness="7"/>

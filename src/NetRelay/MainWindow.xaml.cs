@@ -139,12 +139,36 @@ public partial class MainWindow : Window
         _notifyIcon.Visible = true;
 
         _notifyIcon.DoubleClick += (s, e) => RestoreWindow();
+        _notifyIcon.MouseClick += NotifyIcon_MouseClick;
+    }
 
-        var contextMenu = new System.Windows.Forms.ContextMenuStrip();
-        contextMenu.Items.Add("打开主窗口", null, (s, e) => RestoreWindow());
-        contextMenu.Items.Add("-");
-        contextMenu.Items.Add("退出程序", null, (s, e) => ExitApplication());
-        _notifyIcon.ContextMenuStrip = contextMenu;
+    private void NotifyIcon_MouseClick(object? sender, System.Windows.Forms.MouseEventArgs e)
+    {
+        if (e.Button == System.Windows.Forms.MouseButtons.Right)
+        {
+            var menu = (System.Windows.Controls.ContextMenu)FindResource("TrayContextMenu");
+            if (menu != null)
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    SetForegroundWindow(hwnd);
+                }
+
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+                menu.IsOpen = true;
+            }
+        }
+    }
+
+    private void TrayOpen_Click(object sender, RoutedEventArgs e)
+    {
+        RestoreWindow();
+    }
+
+    private void TrayExit_Click(object sender, RoutedEventArgs e)
+    {
+        ExitApplication();
     }
 
     private void RestoreWindow()
@@ -159,6 +183,7 @@ public partial class MainWindow : Window
 
     private void ExitApplication()
     {
+        Hide();
         _ruleScheduler?.Stop();
         _ruleScheduler?.Dispose();
         _notifyIcon?.Dispose();
@@ -186,6 +211,7 @@ public partial class MainWindow : Window
             }
             else // Exit
             {
+                Hide();
                 _ruleScheduler?.Stop();
                 _ruleScheduler?.Dispose();
                 _notifyIcon?.Dispose();
@@ -214,6 +240,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
+                    Hide();
                     _ruleScheduler?.Stop();
                     _ruleScheduler?.Dispose();
                     _notifyIcon?.Dispose();
@@ -223,4 +250,8 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 }
