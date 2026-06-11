@@ -43,6 +43,7 @@ public sealed class MainViewModel : ObservableObject
 
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
     public RelayCommand RefreshCommand { get; }
+    public ConfigurationService ConfigService => _configService;
 
     public NetworkAdapterInfo? SelectedAdapter
     {

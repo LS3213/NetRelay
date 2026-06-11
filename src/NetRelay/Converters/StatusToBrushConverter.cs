@@ -6,8 +6,8 @@ namespace NetRelay.Converters;
 
 public sealed class StatusToBrushConverter : IValueConverter
 {
-    private static readonly SolidColorBrush ConnectedBrush = new(Color.FromRgb(39, 181, 136));
-    private static readonly SolidColorBrush DisconnectedBrush = new(Color.FromRgb(133, 145, 163));
+    private static readonly SolidColorBrush ConnectedBrush = new(System.Windows.Media.Color.FromRgb(39, 181, 136));
+    private static readonly SolidColorBrush DisconnectedBrush = new(System.Windows.Media.Color.FromRgb(133, 145, 163));
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {

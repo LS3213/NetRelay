@@ -12,6 +12,12 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("rules")]
     public List<AutomationRule> Rules { get; set; } = [];
+
+    [JsonPropertyName("closeAction")]
+    public string CloseAction { get; set; } = "Ask"; // Ask, HideToTray, Exit
+
+    [JsonPropertyName("doNotRemindClose")]
+    public bool DoNotRemindClose { get; set; } = false;
 }
 
 public sealed class ConnectivityProbePolicy

@@ -23,8 +23,8 @@ public sealed class TrafficSparkline : FrameworkElement
     {
         base.OnRender(drawingContext);
 
-        var baselinePen = new Pen(new SolidColorBrush(Color.FromArgb(55, 91, 108, 134)), 1);
-        drawingContext.DrawLine(baselinePen, new Point(0, ActualHeight / 2), new Point(ActualWidth, ActualHeight / 2));
+        var baselinePen = new System.Windows.Media.Pen(new SolidColorBrush(System.Windows.Media.Color.FromArgb(55, 91, 108, 134)), 1);
+        drawingContext.DrawLine(baselinePen, new System.Windows.Point(0, ActualHeight / 2), new System.Windows.Point(ActualWidth, ActualHeight / 2));
 
         var adapter = Adapter;
         var samples = adapter?.TrafficHistory;
@@ -42,7 +42,7 @@ public sealed class TrafficSparkline : FrameworkElement
                 var x = index * ActualWidth / Math.Max(samples.Count - 1, 1);
                 var normalized = Math.Log10(samples[index] + 1) / Math.Log10(peak + 1);
                 var y = ActualHeight - 2 - normalized * (ActualHeight - 4);
-                var point = new Point(x, y);
+                var point = new System.Windows.Point(x, y);
 
                 if (index == 0)
                 {
@@ -57,9 +57,9 @@ public sealed class TrafficSparkline : FrameworkElement
         geometry.Freeze();
 
         var lineBrush = new SolidColorBrush(adapter.HasTraffic
-            ? Color.FromRgb(63, 111, 225)
-            : Color.FromRgb(126, 141, 163));
-        var linePen = new Pen(lineBrush, 1.35)
+            ? System.Windows.Media.Color.FromRgb(63, 111, 225)
+            : System.Windows.Media.Color.FromRgb(126, 141, 163));
+        var linePen = new System.Windows.Media.Pen(lineBrush, 1.35)
         {
             LineJoin = PenLineJoin.Round,
             StartLineCap = PenLineCap.Round,

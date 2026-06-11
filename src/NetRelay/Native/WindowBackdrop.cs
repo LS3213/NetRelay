@@ -29,7 +29,7 @@ internal static class WindowBackdrop
 
         if (result == 0)
         {
-            window.Background = Brushes.Transparent;
+            window.Background = System.Windows.Media.Brushes.Transparent;
         }
     }
 

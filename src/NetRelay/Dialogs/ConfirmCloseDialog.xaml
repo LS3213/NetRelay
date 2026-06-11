@@ -1,0 +1,52 @@
+<Window x:Class="NetRelay.Dialogs.ConfirmCloseDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="关闭 NetRelay" Width="430" Height="280"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False">
+    <Border Margin="20" Padding="25" CornerRadius="26" Background="#F4F8FD"
+            BorderBrush="#FFFFFFFF" BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="36" ShadowDepth="12" Opacity="0.25" Color="#263753"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal">
+                <Border Width="42" Height="42" CornerRadius="15" Background="#536EF2">
+                    <TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="关闭 NetRelay" FontWeight="Bold" FontSize="18"/>
+                    <TextBlock Text="请选择关闭窗口时的默认操作" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,4,0,0"/>
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Grid.Row="1" Margin="0,18,0,0" TextWrapping="Wrap" LineHeight="18"
+                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                       Text="为了保证您的自动化网络规则能继续监控并运行，程序可以隐藏到系统托盘常驻后台。您也可以选择直接退出。"/>
+
+            <CheckBox Grid.Row="2" x:Name="DoNotRemindCheckBox" Content="不再提醒我，以后按此选择执行" 
+                      Margin="0,0,0,16" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                      VerticalAlignment="Center"/>
+
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="1.2*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="1.2*"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}" Click="CancelButton_Click" Content="取消"/>
+                <Button Grid.Column="2" Style="{StaticResource SoftButtonStyle}" Click="HideToTrayButton_Click" Content="隐藏到托盘"/>
+                <Button Grid.Column="4" Style="{StaticResource DangerButtonStyle}" Click="ExitButton_Click" Content="退出主程序"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
