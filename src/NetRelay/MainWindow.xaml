@@ -66,10 +66,20 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Button Style="{StaticResource SoftButtonStyle}" Padding="12,7" Margin="0,0,7,0"
-                                Command="{Binding RefreshCommand}" Content="刷新网卡"/>
-                        <Button Style="{StaticResource SoftButtonStyle}" Width="36" Height="34" Padding="0"
-                                Click="CloseButton_Click" Content="&#xE8BB;" FontFamily="Segoe Fluent Icons"/>
+                        <Button Style="{StaticResource CaptionButtonStyle}" Click="MinimizeButton_Click" ToolTip="最小化">
+                            <Path Width="11" Height="1" Stretch="Fill" Stroke="#334158" StrokeThickness="1.2"
+                                  Data="M 0,0.5 L 11,0.5"/>
+                        </Button>
+                        <Button Style="{StaticResource CaptionButtonStyle}" Click="MaximizeButton_Click" ToolTip="最大化或还原">
+                            <Path x:Name="MaximizeIcon" Width="11" Height="11" Stretch="Uniform"
+                                  Stroke="#334158" StrokeThickness="1.1" StrokeLineJoin="Round"
+                                  Data="M 1,1 L 10,1 L 10,10 L 1,10 Z"/>
+                        </Button>
+                        <Button Style="{StaticResource CloseCaptionButtonStyle}" Click="CloseButton_Click" ToolTip="关闭">
+                            <Path Width="11" Height="11" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Data="M 1,1 L 10,10 M 10,1 L 1,10"/>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -123,9 +133,16 @@
                                 <TextBlock Text="目标网卡" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
                                 <TextBlock Text="选择要管理的接口" FontWeight="Bold" FontSize="21" Margin="0,6,0,0"/>
                             </StackPanel>
-                            <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"
-                                       Text="{Binding Adapters.Count, StringFormat={}{0} 个接口}"/>
+                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                <TextBlock VerticalAlignment="Center" Margin="0,0,10,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"
+                                           Text="{Binding Adapters.Count, StringFormat={}{0} 个接口}"/>
+                                <Button Style="{StaticResource RefreshIconButtonStyle}" Command="{Binding RefreshCommand}">
+                                    <Path Width="14" Height="14" Stretch="Uniform" Stroke="#53657D" StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M 11.5,4.2 A 5,5 0 1 0 12.2,9.7 M 11.5,1.8 L 11.5,4.2 L 9.1,4.2"/>
+                                </Button>
+                            </StackPanel>
                         </Grid>
                         <Border Grid.Row="1" Margin="0,15,0,0" Padding="11" CornerRadius="13" Background="#55FFD9E1"
                                 Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
