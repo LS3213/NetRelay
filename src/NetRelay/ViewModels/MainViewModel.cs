@@ -13,6 +13,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly NetworkAdapterService _adapterService;
     private readonly ConfigurationService _configService;
     private readonly ConnectivityService _connectivityService;
+    private readonly RuleSchedulerService? _ruleScheduler;
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
     private bool _isLoading;
@@ -26,11 +27,13 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel(
         NetworkAdapterService adapterService,
         ConfigurationService configService,
-        ConnectivityService connectivityService)
+        ConnectivityService connectivityService,
+        RuleSchedulerService? ruleScheduler = null)
     {
         _adapterService = adapterService;
         _configService = configService;
         _connectivityService = connectivityService;
+        _ruleScheduler = ruleScheduler;
         RefreshCommand = new RelayCommand(RefreshAdapters, () => !IsLoading);
         RefreshAdapters();
         _trafficTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -44,6 +47,11 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
     public RelayCommand RefreshCommand { get; }
     public ConfigurationService ConfigService => _configService;
+
+    public void ReloadRules()
+    {
+        _ruleScheduler?.Reload();
+    }
 
     public NetworkAdapterInfo? SelectedAdapter
     {

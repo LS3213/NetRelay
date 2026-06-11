@@ -11,6 +11,8 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private readonly NativeNetworkConnectionService _connectionService;
+    private readonly RuleEngine _ruleEngine;
+    private readonly RuleSchedulerService _ruleScheduler;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
 
@@ -20,10 +22,16 @@ public partial class MainWindow : Window
         var configService = new ConfigurationService();
         var connectivityService = new ConnectivityService();
         _connectionService = new NativeNetworkConnectionService();
+        
+        _ruleEngine = new RuleEngine(_connectionService, connectivityService, configService);
+        _ruleScheduler = new RuleSchedulerService(_ruleEngine, configService);
+        _ruleScheduler.Start();
+
         _viewModel = new MainViewModel(
             new NetworkAdapterService(_connectionService),
             configService,
-            connectivityService);
+            connectivityService,
+            _ruleScheduler);
         DataContext = _viewModel;
         SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
         StateChanged += (_, _) => UpdateMaximizeIcon();
@@ -151,6 +159,8 @@ public partial class MainWindow : Window
 
     private void ExitApplication()
     {
+        _ruleScheduler?.Stop();
+        _ruleScheduler?.Dispose();
         _notifyIcon?.Dispose();
         _notifyIcon = null;
         _isForceExiting = true;
@@ -176,6 +186,8 @@ public partial class MainWindow : Window
             }
             else // Exit
             {
+                _ruleScheduler?.Stop();
+                _ruleScheduler?.Dispose();
                 _notifyIcon?.Dispose();
                 base.OnClosing(e);
             }
@@ -202,6 +214,8 @@ public partial class MainWindow : Window
                 }
                 else
                 {
+                    _ruleScheduler?.Stop();
+                    _ruleScheduler?.Dispose();
                     _notifyIcon?.Dispose();
                     _isForceExiting = true;
                     Close();
