@@ -6,4 +6,4 @@ obj/
 *.suo
 *.log
 artifacts/
-
+*_wpftmp.csproj

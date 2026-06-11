@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using NetRelay.Infrastructure;
 using NetRelay.Models;
 using NetRelay.Services;
+using System.Windows.Threading;
 
 namespace NetRelay.ViewModels;
 
@@ -11,12 +12,19 @@ public sealed class MainViewModel : ObservableObject
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
     private bool _isLoading;
+    private readonly DispatcherTimer _trafficTimer;
 
     public MainViewModel(NetworkAdapterService adapterService)
     {
         _adapterService = adapterService;
         RefreshCommand = new RelayCommand(RefreshAdapters, () => !IsLoading);
         RefreshAdapters();
+        _trafficTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _trafficTimer.Tick += (_, _) => SampleTraffic();
+        _trafficTimer.Start();
     }
 
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
@@ -74,6 +82,7 @@ public sealed class MainViewModel : ObservableObject
             }
 
             SelectedAdapter = Adapters.FirstOrDefault(adapter => adapter.Id == selectedId) ?? Adapters.FirstOrDefault();
+            _adapterService.UpdateTraffic(Adapters);
             RaisePropertyChanged(nameof(ConnectedCount));
             RaisePropertyChanged(nameof(NetworkSummary));
             RaisePropertyChanged(nameof(ConnectedDescription));
@@ -87,5 +96,16 @@ public sealed class MainViewModel : ObservableObject
             IsLoading = false;
         }
     }
-}
 
+    private void SampleTraffic()
+    {
+        try
+        {
+            _adapterService.UpdateTraffic(Adapters);
+        }
+        catch
+        {
+            // Traffic visualization is diagnostic only and must not interrupt adapter management.
+        }
+    }
+}

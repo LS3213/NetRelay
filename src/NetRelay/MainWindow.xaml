@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:converters="clr-namespace:NetRelay.Converters"
+        xmlns:controls="clr-namespace:NetRelay.Controls"
         Title="NetRelay" Width="1260" Height="820" MinWidth="1020" MinHeight="700"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
         Background="#E8EEF7" Foreground="{StaticResource TextPrimaryBrush}">
@@ -158,6 +159,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="46"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="155"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <Border Width="42" Height="42" CornerRadius="15"
@@ -167,11 +169,21 @@
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="11,0,10,0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" TextTrimming="CharacterEllipsis">
-                                                <Run Text="{Binding TypeLabel, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Description, Mode=OneWay}"/>
-                                            </TextBlock>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <Border Padding="6,2" CornerRadius="7" Background="#72E6EBF4" Margin="0,0,6,0">
+                                                    <TextBlock Text="{Binding ClassificationLabel}" Foreground="#58677E" FontWeight="SemiBold" FontSize="8"/>
+                                                </Border>
+                                                <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding TypeLabel, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Description, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </StackPanel>
                                         </StackPanel>
-                                        <Border Grid.Column="2" VerticalAlignment="Center" Padding="9,5" CornerRadius="12" Background="#55FFFFFF">
+                                        <StackPanel Grid.Column="2" Margin="4,0,12,0" VerticalAlignment="Center">
+                                            <controls:TrafficSparkline Adapter="{Binding}" Height="24"/>
+                                            <TextBlock Text="{Binding TrafficRateLabel}" Margin="0,3,0,0" HorizontalAlignment="Right"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="8"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="3" VerticalAlignment="Center" Padding="9,5" CornerRadius="12" Background="#55FFFFFF">
                                             <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" FontSize="10"
                                                        Foreground="{Binding IsConnected, Converter={StaticResource StatusToBrushConverter}}"/>
                                         </Border>
@@ -206,6 +218,8 @@
                                 <Grid Margin="0,0,0,11"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
                                 <Grid Margin="0,0,0,11"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
                                 <Grid Margin="0,0,0,11"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                <Grid Margin="0,0,0,11"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                <Grid Margin="0,0,0,11"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
                                 <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
                             </StackPanel>
                             <Button Grid.Row="3" Style="{StaticResource SoftButtonStyle}" IsEnabled="False"
