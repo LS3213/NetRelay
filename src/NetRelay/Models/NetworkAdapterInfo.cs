@@ -16,18 +16,86 @@ public sealed class NetworkAdapterInfo : ObservableObject
     private DateTimeOffset? _lastProbeTime;
     private string _probeReasonCode = "PENDING";
 
+    private OperationalStatus _operationalStatus;
+    private bool _isEnabled;
+    private long _speed;
+    private string _macAddress = string.Empty;
+    private IReadOnlyList<string> _ipAddresses = Array.Empty<string>();
+    private string _classificationLabel = string.Empty;
+    private bool _canToggle;
+
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string Description { get; init; }
     public required NetworkInterfaceType InterfaceType { get; init; }
-    public required OperationalStatus OperationalStatus { get; init; }
-    public required bool IsEnabled { get; init; }
-    public required long Speed { get; init; }
-    public required string MacAddress { get; init; }
-    public required IReadOnlyList<string> IpAddresses { get; init; }
     public required bool IsLikelyVirtual { get; init; }
-    public required string ClassificationLabel { get; init; }
-    public required bool CanToggle { get; init; }
+
+    public required OperationalStatus OperationalStatus
+    {
+        get => _operationalStatus;
+        set
+        {
+            if (SetProperty(ref _operationalStatus, value))
+            {
+                RaisePropertyChanged(nameof(IsConnected));
+                RaisePropertyChanged(nameof(StatusLabel));
+            }
+        }
+    }
+
+    public required bool IsEnabled
+    {
+        get => _isEnabled;
+        set
+        {
+            if (SetProperty(ref _isEnabled, value))
+            {
+                RaisePropertyChanged(nameof(StatusLabel));
+            }
+        }
+    }
+
+    public required long Speed
+    {
+        get => _speed;
+        set
+        {
+            if (SetProperty(ref _speed, value))
+            {
+                RaisePropertyChanged(nameof(SpeedLabel));
+            }
+        }
+    }
+
+    public required string MacAddress
+    {
+        get => _macAddress;
+        set => SetProperty(ref _macAddress, value);
+    }
+
+    public required IReadOnlyList<string> IpAddresses
+    {
+        get => _ipAddresses;
+        set
+        {
+            if (SetProperty(ref _ipAddresses, value))
+            {
+                RaisePropertyChanged(nameof(PrimaryIpAddress));
+            }
+        }
+    }
+
+    public required string ClassificationLabel
+    {
+        get => _classificationLabel;
+        set => SetProperty(ref _classificationLabel, value);
+    }
+
+    public required bool CanToggle
+    {
+        get => _canToggle;
+        set => SetProperty(ref _canToggle, value);
+    }
 
     public bool IsConnected => OperationalStatus == OperationalStatus.Up;
     public string TypeLabel => InterfaceType switch

@@ -157,11 +157,36 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             var selectedId = SelectedAdapter?.Id;
-            var adapters = _adapterService.GetAdapters();
-            Adapters.Clear();
-            foreach (var adapter in adapters)
+            var newAdapters = _adapterService.GetAdapters();
+
+            // 1. 移除已不存在的网卡
+            var newIds = newAdapters.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            for (int i = Adapters.Count - 1; i >= 0; i--)
             {
-                Adapters.Add(adapter);
+                if (!newIds.Contains(Adapters[i].Id))
+                {
+                    Adapters.RemoveAt(i);
+                }
+            }
+
+            // 2. 新增或更新网卡状态（保留实例以维系历史流量数据）
+            foreach (var newAdapter in newAdapters)
+            {
+                var existing = Adapters.FirstOrDefault(a => string.Equals(a.Id, newAdapter.Id, StringComparison.OrdinalIgnoreCase));
+                if (existing is null)
+                {
+                    Adapters.Add(newAdapter);
+                }
+                else
+                {
+                    existing.IsEnabled = newAdapter.IsEnabled;
+                    existing.OperationalStatus = newAdapter.OperationalStatus;
+                    existing.Speed = newAdapter.Speed;
+                    existing.MacAddress = newAdapter.MacAddress;
+                    existing.IpAddresses = newAdapter.IpAddresses;
+                    existing.ClassificationLabel = newAdapter.ClassificationLabel;
+                    existing.CanToggle = newAdapter.CanToggle;
+                }
             }
 
             SelectedAdapter = Adapters.FirstOrDefault(adapter => AdapterIdsEqual(adapter.Id, selectedId))
@@ -171,6 +196,7 @@ public sealed class MainViewModel : ObservableObject
             RaisePropertyChanged(nameof(NetworkSummary));
             RaisePropertyChanged(nameof(ConnectedDescription));
 
+            SortAdapters();
             TriggerSelectedAdapterProbe(force: true);
         }
         catch (Exception exception)
@@ -188,6 +214,7 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _adapterService.UpdateTraffic(Adapters);
+            SortAdapters(); // 流量状态改变可能触发排序变化
 
             _probeTickCount++;
             if (_probeTickCount >= 5)
@@ -232,13 +259,15 @@ public sealed class MainViewModel : ObservableObject
                 adapter.IsInternetOnline = result.Online;
                 adapter.LastProbeTime = result.CheckedAt;
                 adapter.ProbeReasonCode = result.ReasonCode;
+                SortAdapters(); // 联网状态改变可能触发排序变化
             }
         }
         catch (OperationCanceledException)
         {
         }
-        catch
+        catch (Exception exception)
         {
+            ErrorMessage = $"探测发生异常：{exception.Message}\n{exception.StackTrace}";
         }
         finally
         {
@@ -247,6 +276,43 @@ public sealed class MainViewModel : ObservableObject
                 _isProbing = false;
             }
         }
+    }
+
+    private void SortAdapters()
+    {
+        var sorted = Adapters
+            .OrderBy(GetSortOrder)
+            .ThenBy(a => a.IsLikelyVirtual)
+            .ThenBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            var currentIndex = Adapters.IndexOf(sorted[i]);
+            if (currentIndex != i)
+            {
+                Adapters.Move(currentIndex, i);
+            }
+        }
+    }
+
+    private static int GetSortOrder(NetworkAdapterInfo adapter)
+    {
+        // 1. 联网在线 (IsInternetOnline == true) -> 优先度最高 (0)
+        if (adapter.IsInternetOnline) return 0;
+
+        // 2. 启用且有流量活动 (IsEnabled == true && HasTraffic == true) -> (1)
+        if (adapter.IsEnabled && adapter.HasTraffic) return 1;
+
+        // 3. 启用但无流量活动 (IsEnabled == true) -> (2)
+        if (adapter.IsEnabled) return 2;
+
+        // 4. 禁用但最近有流量活动 (IsEnabled == false && TrafficHistory 有非零记录) -> (3)
+        bool hasRecentTraffic = adapter.TrafficHistory.Any(t => t > 0);
+        if (!adapter.IsEnabled && hasRecentTraffic) return 3;
+
+        // 5. 禁用且无流量活动 -> 最底端 (4)
+        return 4;
     }
 
     private static bool AdapterIdsEqual(string adapterId, string? selectedId)
