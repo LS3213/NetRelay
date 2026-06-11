@@ -222,8 +222,26 @@
                                 <Grid Margin="0,0,0,11"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
                                 <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
                             </StackPanel>
-                            <Button Grid.Row="3" Style="{StaticResource SoftButtonStyle}" IsEnabled="False"
-                                    Content="网卡切换将在下一阶段启用" HorizontalAlignment="Stretch"/>
+                            <StackPanel Grid.Row="3">
+                                <Border Margin="0,0,0,10" Padding="10" CornerRadius="13" Background="#66FFFFFF"
+                                        Visibility="{Binding HasOperationMessage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="{Binding OperationMessage}" Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" FontSize="10"/>
+                                </Border>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="9"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}"
+                                            IsEnabled="{Binding CanOperateSelectedAdapter}"
+                                            Click="EnableAdapterButton_Click" Content="启用网卡"/>
+                                    <Button Grid.Column="2" Style="{StaticResource DangerButtonStyle}"
+                                            IsEnabled="{Binding CanOperateSelectedAdapter}"
+                                            Click="DisableAdapterButton_Click" Content="禁用网卡"/>
+                                </Grid>
+                            </StackPanel>
                         </Grid>
                     </Border>
                     <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" CornerRadius="20" Padding="15">

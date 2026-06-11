@@ -12,6 +12,8 @@ public sealed class MainViewModel : ObservableObject
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
     private bool _isLoading;
+    private bool _isOperating;
+    private string? _operationMessage;
     private readonly DispatcherTimer _trafficTimer;
 
     public MainViewModel(NetworkAdapterService adapterService)
@@ -33,7 +35,13 @@ public sealed class MainViewModel : ObservableObject
     public NetworkAdapterInfo? SelectedAdapter
     {
         get => _selectedAdapter;
-        set => SetProperty(ref _selectedAdapter, value);
+        set
+        {
+            if (SetProperty(ref _selectedAdapter, value))
+            {
+                RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
+            }
+        }
     }
 
     public string? ErrorMessage
@@ -49,6 +57,32 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+    public bool HasOperationMessage => !string.IsNullOrWhiteSpace(OperationMessage);
+    public bool CanOperateSelectedAdapter => SelectedAdapter?.CanToggle == true && !IsOperating;
+
+    public string? OperationMessage
+    {
+        get => _operationMessage;
+        private set
+        {
+            if (SetProperty(ref _operationMessage, value))
+            {
+                RaisePropertyChanged(nameof(HasOperationMessage));
+            }
+        }
+    }
+
+    public bool IsOperating
+    {
+        get => _isOperating;
+        private set
+        {
+            if (SetProperty(ref _isOperating, value))
+            {
+                RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
+            }
+        }
+    }
 
     public bool IsLoading
     {
@@ -66,6 +100,42 @@ public sealed class MainViewModel : ObservableObject
     public string NetworkSummary => ConnectedCount > 0 ? "网络已连接" : "当前无连接";
     public string ConnectedDescription => $"{ConnectedCount} 个接口处于连接状态";
 
+    public async Task<AdapterActionResult> SetSelectedAdapterEnabledAsync(
+        NativeNetworkConnectionService connectionService,
+        bool enabled)
+    {
+        if (IsOperating)
+        {
+            return new AdapterActionResult(false, "已有网卡操作正在执行，请稍候。");
+        }
+
+        var adapter = SelectedAdapter;
+        if (adapter is null)
+        {
+            return new AdapterActionResult(false, "请先选择目标网卡。");
+        }
+
+        if (!adapter.CanToggle)
+        {
+            return new AdapterActionResult(false, $"“{adapter.Name}”不是可控制的 Windows 网络连接。");
+        }
+
+        IsOperating = true;
+        OperationMessage = enabled ? $"正在启用“{adapter.Name}”…" : $"正在禁用“{adapter.Name}”…";
+        try
+        {
+            var result = await Task.Run(() => connectionService.SetEnabled(adapter.Id, adapter.Name, enabled));
+            OperationMessage = result.Message;
+            await Task.Delay(700);
+            RefreshAdapters();
+            return result;
+        }
+        finally
+        {
+            IsOperating = false;
+        }
+    }
+
     private void RefreshAdapters()
     {
         IsLoading = true;
@@ -81,7 +151,8 @@ public sealed class MainViewModel : ObservableObject
                 Adapters.Add(adapter);
             }
 
-            SelectedAdapter = Adapters.FirstOrDefault(adapter => adapter.Id == selectedId) ?? Adapters.FirstOrDefault();
+            SelectedAdapter = Adapters.FirstOrDefault(adapter => AdapterIdsEqual(adapter.Id, selectedId))
+                ?? Adapters.FirstOrDefault();
             _adapterService.UpdateTraffic(Adapters);
             RaisePropertyChanged(nameof(ConnectedCount));
             RaisePropertyChanged(nameof(NetworkSummary));
@@ -107,5 +178,17 @@ public sealed class MainViewModel : ObservableObject
         {
             // Traffic visualization is diagnostic only and must not interrupt adapter management.
         }
+    }
+
+    private static bool AdapterIdsEqual(string adapterId, string? selectedId)
+    {
+        if (selectedId is null)
+        {
+            return false;
+        }
+
+        return Guid.TryParse(adapterId, out var adapterGuid) && Guid.TryParse(selectedId, out var selectedGuid)
+            ? adapterGuid == selectedGuid
+            : string.Equals(adapterId, selectedId, StringComparison.OrdinalIgnoreCase);
     }
 }

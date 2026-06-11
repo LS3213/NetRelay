@@ -2,7 +2,7 @@
 
 [上一篇：当前状态与产品定义](01-current-state-and-product.md) | [返回索引](README.md) | [下一篇：功能与 UI 规格](03-functional-and-ui-spec.md)
 
-> 第一阶段已实现原生 WPF/MVVM 桌面骨架和 Windows 网卡扫描。规则、探测、调度、通知、配置与日志模块仍为计划实现。
+> 已实现原生 WPF/MVVM 桌面骨架、Windows 网卡扫描、实时流量波形以及通过 `INetConnection` 的手动启用/禁用。规则、探测、调度、通知、配置与日志模块仍为计划实现。
 
 ## 1. 技术栈
 
@@ -31,7 +31,7 @@ NetRelay.exe
 | 模块 | 主要职责 | 不应承担 |
 | --- | --- | --- |
 | UI / ViewModel | 展示状态、收集用户意图、调用应用服务 | 直接执行 PowerShell 或 Windows API |
-| Adapter Service | 枚举、识别、启用和禁用网卡 | 判断完整自动化规则 |
+| Adapter Service | **已实现**枚举、识别和通过 GUID 启用/禁用网卡 | 判断完整自动化规则 |
 | Connectivity Service | 汇总链路、路由、NLM/NCSI 和 HTTP 探测 | 直接切换网卡 |
 | Rule Engine | 评估触发、条件、保护和冷却策略 | 绕过安全校验 |
 | Scheduler Service | 将时间规则映射到任务计划程序 | 执行网络探测 |

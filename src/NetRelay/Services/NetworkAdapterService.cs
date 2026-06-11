@@ -6,6 +6,8 @@ namespace NetRelay.Services;
 
 public sealed class NetworkAdapterService
 {
+    private readonly NativeNetworkConnectionService _connectionService;
+
     private static readonly string[] VirtualAdapterKeywords =
     [
         "virtual", "vmware", "hyper-v", "vethernet", "virtualbox", "vpn", "tap-",
@@ -13,11 +15,29 @@ public sealed class NetworkAdapterService
         "docker", "mihomo", "clash", "zerotier", "tailscale"
     ];
 
+    public NetworkAdapterService(NativeNetworkConnectionService connectionService)
+    {
+        _connectionService = connectionService;
+    }
+
     public IReadOnlyList<NetworkAdapterInfo> GetAdapters()
     {
-        return NetworkInterface.GetAllNetworkInterfaces()
-            .Select(MapAdapter)
+        var nativeConnections = _connectionService.GetConnections();
+        var nativeById = nativeConnections.ToDictionary(connection => connection.Id);
+        var adapters = NetworkInterface.GetAllNetworkInterfaces()
+            .Select(adapter => MapAdapter(adapter, nativeById))
+            .ToList();
+        var discoveredIds = adapters
+            .Select(adapter => Guid.TryParse(adapter.Id, out var id) ? id : Guid.Empty)
+            .ToHashSet();
+
+        adapters.AddRange(nativeConnections
+            .Where(connection => !discoveredIds.Contains(connection.Id))
+            .Select(MapDisabledAdapter));
+
+        return adapters
             .OrderByDescending(adapter => adapter.IsConnected)
+            .ThenByDescending(adapter => adapter.IsEnabled)
             .ThenBy(adapter => adapter.IsLikelyVirtual)
             .ThenBy(adapter => adapter.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
@@ -47,7 +67,9 @@ public sealed class NetworkAdapterService
         }
     }
 
-    private static NetworkAdapterInfo MapAdapter(NetworkInterface adapter)
+    private static NetworkAdapterInfo MapAdapter(
+        NetworkInterface adapter,
+        IReadOnlyDictionary<Guid, NativeConnectionInfo> nativeConnections)
     {
         IReadOnlyList<string> addresses;
         try
@@ -69,25 +91,48 @@ public sealed class NetworkAdapterService
             Description = adapter.Description,
             InterfaceType = adapter.NetworkInterfaceType,
             OperationalStatus = adapter.OperationalStatus,
+            IsEnabled = adapter.OperationalStatus is not OperationalStatus.NotPresent,
             Speed = adapter.Speed,
             MacAddress = FormatMacAddress(adapter.GetPhysicalAddress()),
             IpAddresses = addresses,
             IsLikelyVirtual = IsLikelyVirtual(adapter),
-            ClassificationLabel = GetClassificationLabel(adapter)
+            ClassificationLabel = GetClassificationLabel(adapter),
+            CanToggle = Guid.TryParse(adapter.Id, out var adapterGuid) && nativeConnections.ContainsKey(adapterGuid)
+        };
+    }
+
+    private static NetworkAdapterInfo MapDisabledAdapter(NativeConnectionInfo connection)
+    {
+        var identity = $"{connection.Name} {connection.DeviceName}";
+        var likelyVirtual = IsLikelyVirtual(identity, NetworkInterfaceType.Unknown);
+        return new NetworkAdapterInfo
+        {
+            Id = connection.Id.ToString("B"),
+            Name = string.IsNullOrWhiteSpace(connection.Name) ? connection.DeviceName : connection.Name,
+            Description = connection.DeviceName,
+            InterfaceType = NetworkInterfaceType.Unknown,
+            OperationalStatus = OperationalStatus.Down,
+            IsEnabled = false,
+            Speed = 0,
+            MacAddress = "网卡已禁用",
+            IpAddresses = Array.Empty<string>(),
+            IsLikelyVirtual = likelyVirtual,
+            ClassificationLabel = likelyVirtual ? "疑似虚拟" : "物理候选",
+            CanToggle = true
         };
     }
 
     private static bool IsLikelyVirtual(NetworkInterface adapter)
     {
-        if (adapter.NetworkInterfaceType is NetworkInterfaceType.Loopback
-            or NetworkInterfaceType.Tunnel
-            or NetworkInterfaceType.Ppp)
-        {
-            return true;
-        }
+        return IsLikelyVirtual($"{adapter.Name} {adapter.Description}", adapter.NetworkInterfaceType);
+    }
 
-        var identity = $"{adapter.Name} {adapter.Description}";
-        return VirtualAdapterKeywords.Any(keyword => identity.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    private static bool IsLikelyVirtual(string identity, NetworkInterfaceType interfaceType)
+    {
+        return interfaceType is NetworkInterfaceType.Loopback
+            or NetworkInterfaceType.Tunnel
+            or NetworkInterfaceType.Ppp
+            || VirtualAdapterKeywords.Any(keyword => identity.Contains(keyword, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string GetClassificationLabel(NetworkInterface adapter)

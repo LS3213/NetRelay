@@ -9,7 +9,7 @@
 | 方法 | 输入 | 输出 | 状态 |
 | --- | --- | --- | --- |
 | `NetworkAdapterService.GetAdapters` | 无 | `IReadOnlyList<NetworkAdapterInfo>` | **已实现**：枚举基础网卡状态 |
-| `SetAdapterEnabledAsync` | GUID、启用状态、来源 | `ActionResult` | 计划实现 |
+| `NativeNetworkConnectionService.SetEnabled` | GUID、名称、启用状态 | `AdapterActionResult` | **已实现**：使用 `INetConnection.Connect/Disconnect` |
 | `ProbeAdapterAsync` | GUID、探测策略 | `ConnectivityResult` | 计划实现 |
 | `ListRules` | 无 | `AutomationRule[]` | 计划实现 |
 | `SaveRuleAsync` | 规则 | `AutomationRule` | 计划实现 |
@@ -157,4 +157,3 @@ public sealed record ExecutionRecord(
 - `TASK_SCHEDULER_SYNC_FAILED`
 - `CONFIG_INVALID`
 - `NOTIFICATION_FAILED`
-

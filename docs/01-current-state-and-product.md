@@ -15,6 +15,9 @@
 - WPF 液态玻璃概览页面支持扫描、刷新、选择网卡和查看基础详情。
 - 网卡列表每秒采样系统累计收发字节，显示实时收发速率和最近约 30 秒流量波形，帮助区分真正承载流量的接口。
 - 根据接口类型和名称/描述关键词显示“物理候选”“疑似虚拟”“系统环回”或“隧道 / VPN”启发式标签。
+- 通过 Windows Network Connections COM 接口按 GUID 启用或禁用网卡，不调用 PowerShell 或 `netsh`。
+- 禁用前显示原生确认对话框，操作期间防止重复点击，完成后刷新状态并展示结果或 Windows HRESULT。
+- 禁用后即使 `.NET NetworkInterface` 不再返回该接口，也会从 Windows Network Connections 原生枚举补回列表，保持当前选择并允许重新启用。
 - 应用清单声明 `requireAdministrator`。
 - Windows 11 使用 DWM Mica 和原生圆角；Windows 10 使用 WPF 半透明降级。
 - 已验证生成原生 `NetRelay.exe`，且启动期间不会创建 WebView2 进程。

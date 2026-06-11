@@ -18,14 +18,15 @@ public sealed class NetworkAdapterInfo : ObservableObject
     public required string Description { get; init; }
     public required NetworkInterfaceType InterfaceType { get; init; }
     public required OperationalStatus OperationalStatus { get; init; }
+    public required bool IsEnabled { get; init; }
     public required long Speed { get; init; }
     public required string MacAddress { get; init; }
     public required IReadOnlyList<string> IpAddresses { get; init; }
     public required bool IsLikelyVirtual { get; init; }
     public required string ClassificationLabel { get; init; }
+    public required bool CanToggle { get; init; }
 
     public bool IsConnected => OperationalStatus == OperationalStatus.Up;
-    public bool IsEnabled => OperationalStatus is not OperationalStatus.NotPresent;
     public string TypeLabel => InterfaceType switch
     {
         NetworkInterfaceType.Ethernet or NetworkInterfaceType.GigabitEthernet => "有线网络",

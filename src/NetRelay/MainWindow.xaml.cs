@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using NetRelay.Dialogs;
 using NetRelay.Native;
 using NetRelay.Services;
 using NetRelay.ViewModels;
@@ -8,10 +9,15 @@ namespace NetRelay;
 
 public partial class MainWindow : Window
 {
+    private readonly MainViewModel _viewModel;
+    private readonly NativeNetworkConnectionService _connectionService;
+
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = new MainViewModel(new NetworkAdapterService());
+        _connectionService = new NativeNetworkConnectionService();
+        _viewModel = new MainViewModel(new NetworkAdapterService(_connectionService));
+        DataContext = _viewModel;
         SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
         StateChanged += (_, _) => UpdateMaximizeIcon();
         UpdateMaximizeIcon();
@@ -30,6 +36,29 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private async void EnableAdapterButton_Click(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.SetSelectedAdapterEnabledAsync(_connectionService, true);
+    }
+
+    private async void DisableAdapterButton_Click(object sender, RoutedEventArgs e)
+    {
+        var adapter = _viewModel.SelectedAdapter;
+        if (adapter is null)
+        {
+            return;
+        }
+
+        var dialog = new ConfirmDisableDialog(adapter)
+        {
+            Owner = this
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            await _viewModel.SetSelectedAdapterEnabledAsync(_connectionService, false);
+        }
     }
 
     private void UpdateMaximizeIcon()
