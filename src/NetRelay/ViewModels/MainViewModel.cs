@@ -298,21 +298,32 @@ public sealed class MainViewModel : ObservableObject
 
     private static int GetSortOrder(NetworkAdapterInfo adapter)
     {
-        // 1. 联网在线 (IsInternetOnline == true) -> 优先度最高 (0)
-        if (adapter.IsInternetOnline) return 0;
+        // 1. 已连接 (IsConnected == true) 状态组
+        if (adapter.IsConnected)
+        {
+            // 1.1 联网在线 -> 优先级最顶层 (0)
+            if (adapter.IsInternetOnline) return 0;
 
-        // 2. 启用且有流量活动 (IsEnabled == true && HasTraffic == true) -> (1)
-        if (adapter.IsEnabled && adapter.HasTraffic) return 1;
+            // 1.2 有流量活动 -> (1)
+            if (adapter.HasTraffic) return 1;
 
-        // 3. 启用但无流量活动 (IsEnabled == true) -> (2)
-        if (adapter.IsEnabled) return 2;
+            // 1.3 无流量活动 -> (2)
+            return 2;
+        }
 
-        // 4. 禁用但最近有流量活动 (IsEnabled == false && TrafficHistory 有非零记录) -> (3)
+        // 2. 未连接 (IsEnabled == true && IsConnected == false) 状态组
+        if (adapter.IsEnabled)
+        {
+            return 3;
+        }
+
+        // 3. 已禁用 (IsEnabled == false) 状态组
+        // 3.1 禁用但最近有流量活动 -> (4)
         bool hasRecentTraffic = adapter.TrafficHistory.Any(t => t > 0);
-        if (!adapter.IsEnabled && hasRecentTraffic) return 3;
+        if (hasRecentTraffic) return 4;
 
-        // 5. 禁用且无流量活动 -> 最底端 (4)
-        return 4;
+        // 3.2 禁用且无流量活动 -> 最底端 (5)
+        return 5;
     }
 
     private static bool AdapterIdsEqual(string adapterId, string? selectedId)
