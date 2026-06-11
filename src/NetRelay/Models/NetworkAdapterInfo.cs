@@ -12,6 +12,9 @@ public sealed class NetworkAdapterInfo : ObservableObject
     private DateTimeOffset? _lastSampledAt;
     private double _receiveBytesPerSecond;
     private double _sendBytesPerSecond;
+    private bool _isInternetOnline;
+    private DateTimeOffset? _lastProbeTime;
+    private string _probeReasonCode = "PENDING";
 
     public required string Id { get; init; }
     public required string Name { get; init; }
@@ -55,6 +58,42 @@ public sealed class NetworkAdapterInfo : ObservableObject
     public string TrafficRateLabel => TotalBytesPerSecond < 1
         ? "无活动"
         : $"↓ {FormatRate(ReceiveBytesPerSecond)}  ↑ {FormatRate(SendBytesPerSecond)}";
+
+    public bool IsInternetOnline
+    {
+        get => _isInternetOnline;
+        set
+        {
+            if (SetProperty(ref _isInternetOnline, value))
+            {
+                RaisePropertyChanged(nameof(InternetStatusLabel));
+            }
+        }
+    }
+
+    public DateTimeOffset? LastProbeTime
+    {
+        get => _lastProbeTime;
+        set
+        {
+            if (SetProperty(ref _lastProbeTime, value))
+            {
+                RaisePropertyChanged(nameof(LastProbeTimeLabel));
+            }
+        }
+    }
+
+    public string ProbeReasonCode
+    {
+        get => _probeReasonCode;
+        set => SetProperty(ref _probeReasonCode, value);
+    }
+
+    public string InternetStatusLabel => IsInternetOnline ? "已连接" : "未连接";
+
+    public string LastProbeTimeLabel => LastProbeTime.HasValue
+        ? LastProbeTime.Value.ToString("HH:mm:ss")
+        : "从未检测";
 
     public void UpdateTraffic(long bytesReceived, long bytesSent, DateTimeOffset sampledAt)
     {

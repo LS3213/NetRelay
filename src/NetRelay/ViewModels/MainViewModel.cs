@@ -3,22 +3,33 @@ using NetRelay.Infrastructure;
 using NetRelay.Models;
 using NetRelay.Services;
 using System.Windows.Threading;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace NetRelay.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
     private readonly NetworkAdapterService _adapterService;
+    private readonly ConfigurationService _configService;
+    private readonly ConnectivityService _connectivityService;
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
     private bool _isLoading;
     private bool _isOperating;
     private string? _operationMessage;
     private readonly DispatcherTimer _trafficTimer;
+    private CancellationTokenSource? _probeCts;
+    private int _probeTickCount = 0;
 
-    public MainViewModel(NetworkAdapterService adapterService)
+    public MainViewModel(
+        NetworkAdapterService adapterService,
+        ConfigurationService configService,
+        ConnectivityService connectivityService)
     {
         _adapterService = adapterService;
+        _configService = configService;
+        _connectivityService = connectivityService;
         RefreshCommand = new RelayCommand(RefreshAdapters, () => !IsLoading);
         RefreshAdapters();
         _trafficTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -40,6 +51,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _selectedAdapter, value))
             {
                 RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
+                TriggerSelectedAdapterProbe();
             }
         }
     }
@@ -157,6 +169,8 @@ public sealed class MainViewModel : ObservableObject
             RaisePropertyChanged(nameof(ConnectedCount));
             RaisePropertyChanged(nameof(NetworkSummary));
             RaisePropertyChanged(nameof(ConnectedDescription));
+
+            TriggerSelectedAdapterProbe();
         }
         catch (Exception exception)
         {
@@ -173,10 +187,50 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _adapterService.UpdateTraffic(Adapters);
+
+            _probeTickCount++;
+            if (_probeTickCount >= 5)
+            {
+                _probeTickCount = 0;
+                TriggerSelectedAdapterProbe();
+            }
         }
         catch
         {
             // Traffic visualization is diagnostic only and must not interrupt adapter management.
+        }
+    }
+
+    private async void TriggerSelectedAdapterProbe()
+    {
+        _probeCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _probeCts = cts;
+
+        var adapter = SelectedAdapter;
+        if (adapter is null || !adapter.IsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(250, cts.Token);
+
+            var result = await _connectivityService.ProbeAdapterAsync(adapter.Id, _configService.Current.ProbePolicy);
+
+            if (!cts.IsCancellationRequested && SelectedAdapter == adapter)
+            {
+                adapter.IsInternetOnline = result.Online;
+                adapter.LastProbeTime = result.CheckedAt;
+                adapter.ProbeReasonCode = result.ReasonCode;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
         }
     }
 

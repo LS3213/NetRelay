@@ -15,8 +15,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var configService = new ConfigurationService();
+        var connectivityService = new ConnectivityService();
         _connectionService = new NativeNetworkConnectionService();
-        _viewModel = new MainViewModel(new NetworkAdapterService(_connectionService));
+        _viewModel = new MainViewModel(
+            new NetworkAdapterService(_connectionService),
+            configService,
+            connectivityService);
         DataContext = _viewModel;
         SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
         StateChanged += (_, _) => UpdateMaximizeIcon();

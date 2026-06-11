@@ -1,0 +1,56 @@
+using System.Text.Json.Serialization;
+
+namespace NetRelay.Models;
+
+public sealed class AppConfiguration
+{
+    [JsonPropertyName("schemaVersion")]
+    public int SchemaVersion { get; set; } = 1;
+
+    [JsonPropertyName("probePolicy")]
+    public ConnectivityProbePolicy ProbePolicy { get; set; } = new();
+
+    [JsonPropertyName("rules")]
+    public List<AutomationRule> Rules { get; set; } = [];
+}
+
+public sealed class ConnectivityProbePolicy
+{
+    [JsonPropertyName("endpoints")]
+    public List<ProbeEndpoint> Endpoints { get; set; } =
+    [
+        new() { Url = "https://www.msftconnecttest.com/connecttest.txt", ExpectedContent = "Microsoft Connect Test" },
+        new() { Url = "https://www.cloudflare.com/cdn-cgi/trace", ExpectedContent = null }
+    ];
+
+    [JsonPropertyName("timeoutSeconds")]
+    public double TimeoutSeconds { get; set; } = 3.0;
+
+    [JsonIgnore]
+    public TimeSpan Timeout
+    {
+        get => TimeSpan.FromSeconds(TimeoutSeconds);
+        set => TimeoutSeconds = value.TotalSeconds;
+    }
+
+    [JsonPropertyName("attempts")]
+    public int Attempts { get; set; } = 3;
+
+    [JsonPropertyName("requiredFailedAttempts")]
+    public int RequiredFailedAttempts { get; set; } = 2;
+
+    [JsonPropertyName("requiredSuccessfulEndpoints")]
+    public int RequiredSuccessfulEndpoints { get; set; } = 1;
+
+    [JsonPropertyName("optionalPingDiagnostics")]
+    public bool OptionalPingDiagnostics { get; set; } = false;
+}
+
+public sealed class ProbeEndpoint
+{
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+
+    [JsonPropertyName("expectedContent")]
+    public string? ExpectedContent { get; set; }
+}
