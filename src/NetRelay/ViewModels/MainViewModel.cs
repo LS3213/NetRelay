@@ -21,6 +21,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly DispatcherTimer _trafficTimer;
     private CancellationTokenSource? _probeCts;
     private int _probeTickCount = 0;
+    private bool _isProbing;
 
     public MainViewModel(
         NetworkAdapterService adapterService,
@@ -51,7 +52,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _selectedAdapter, value))
             {
                 RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
-                TriggerSelectedAdapterProbe();
+                TriggerSelectedAdapterProbe(force: true);
             }
         }
     }
@@ -170,7 +171,7 @@ public sealed class MainViewModel : ObservableObject
             RaisePropertyChanged(nameof(NetworkSummary));
             RaisePropertyChanged(nameof(ConnectedDescription));
 
-            TriggerSelectedAdapterProbe();
+            TriggerSelectedAdapterProbe(force: true);
         }
         catch (Exception exception)
         {
@@ -192,7 +193,7 @@ public sealed class MainViewModel : ObservableObject
             if (_probeTickCount >= 5)
             {
                 _probeTickCount = 0;
-                TriggerSelectedAdapterProbe();
+                TriggerSelectedAdapterProbe(force: false);
             }
         }
         catch
@@ -201,15 +202,22 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private async void TriggerSelectedAdapterProbe()
+    private async void TriggerSelectedAdapterProbe(bool force = false)
     {
+        if (_isProbing && !force)
+        {
+            return;
+        }
+
         _probeCts?.Cancel();
         var cts = new CancellationTokenSource();
         _probeCts = cts;
+        _isProbing = true;
 
         var adapter = SelectedAdapter;
         if (adapter is null || !adapter.IsEnabled)
         {
+            _isProbing = false;
             return;
         }
 
@@ -231,6 +239,13 @@ public sealed class MainViewModel : ObservableObject
         }
         catch
         {
+        }
+        finally
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _isProbing = false;
+            }
         }
     }
 
