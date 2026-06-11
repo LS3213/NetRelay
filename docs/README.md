@@ -42,11 +42,11 @@ NetRelay/
 - 当前技术栈为 C#、.NET 8、WPF、XAML 和 Windows DWM API，无 WebView。
 - 目标平台为 Windows 10/11 x64。
 - 程序计划始终以管理员权限运行，不安装 Windows 服务。
-- 时间规则和提前通知由 Windows 任务计划程序保证；网络变化规则依赖托盘进程。
+- 时间规则、提前提醒与网络变化监听均由主程序内联的后台调度服务控制，仅在程序运行时执行。
 - 断网判定使用网卡状态、Windows NLM/NCSI 和双端点 HTTP/HTTPS 探测；`ping` 仅用于诊断。
 - 自动禁用故障网卡前，必须确认备用网卡已经连接并可访问互联网。
 - 首版使用 JSON 配置与滚动日志，不使用数据库。
 
 ## 源码引用说明
 
-第一阶段已实现代码位于 `src/NetRelay/MainWindow.xaml`、`ViewModels/MainViewModel.cs`、`Services/NetworkAdapterService.cs` 与 `Native/WindowBackdrop.cs`。其余自动化设计仍为计划实现，落地时需继续更新文档。
+已实现代码包含：原生界面网卡管理、系统托盘、关闭拦截对话框、程序设置页面、配置原子持久化、绑定源 IP 的 HTTP 探测服务，以及第三阶段实现的纯内联规则引擎 ([RuleEngine.cs](file:///d:/文档/项目源码/NetRelay/src/NetRelay/Services/RuleEngine.cs)) 与后台调度器 ([RuleSchedulerService.cs](file:///d:/文档/项目源码/NetRelay/src/NetRelay/Services/RuleSchedulerService.cs))。所有自动化规则及延迟恢复完全由程序内联常驻线程托管。

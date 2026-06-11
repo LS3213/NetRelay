@@ -10,20 +10,17 @@
 | --- | --- | --- |
 | UI | WPF + XAML | 原生窗口、页面、状态展示和液态玻璃 UI |
 | 应用层 | C# + MVVM | 用户意图、状态管理、规则执行和服务编排 |
-| Windows 集成 | .NET + P/Invoke/COM | 网卡、DWM、NLM/NCSI、任务计划与通知 |
+| Windows 集成 | .NET + P/Invoke/COM | 网卡、DWM、NLM/NCSI 与通知 |
 | 持久化 | JSON + JSONL 滚动日志 | 配置、规则和执行历史 |
-| 调度 | Windows Task Scheduler | 时间规则、提前通知、自动恢复 |
+| 调度 | 纯内联调度器 (System.Threading.Timer) | 定时规则与网络变化监听 |
 
 ## 2. 进程与模块边界
 
-计划由一个可执行程序提供多模式入口；当前只实现默认图形界面启动：
+计划由单一的主可执行程序提供图形界面与内联后台服务：
 
 ```text
 NetRelay.exe
-├── 默认启动：主窗口 + 托盘 + 网络变化监听
-├── --execute-rule <rule-id>：执行指定规则
-├── --notify-rule <rule-id> <notification-id>：发送提前通知
-└── --restore-adapter <adapter-guid>：执行自动恢复
+└── 默认启动：主窗口 + 托盘 + 内联调度服务 (时间规则、网络变化监听与内存延迟恢复)
 ```
 
 计划模块：
@@ -34,7 +31,7 @@ NetRelay.exe
 | Adapter Service | **已实现**枚举、识别和通过 GUID 启用/禁用网卡 | 判断完整自动化规则 |
 | Connectivity Service | 汇总链路、路由、NLM/NCSI 和 HTTP 探测 | 直接切换网卡 |
 | Rule Engine | 评估触发、条件、保护和冷却策略 | 绕过安全校验 |
-| Scheduler Service | 将时间规则映射到任务计划程序 | 执行网络探测 |
+| Scheduler Service | 运行 Timer 扫描时间规则并在网络变化时触发检测 | 执行网络探测 |
 | Notification Service | 发送提醒、结果和失败通知 | 在未验证参数时执行高权限操作 |
 | Config Repository | 原子读写配置、迁移版本 | 保存密钥或任意命令 |
 | Execution Logger | 记录结构化结果并滚动清理 | 存储敏感请求内容 |
@@ -52,8 +49,8 @@ flowchart LR
     RULES --> ADAPTER
     RULES --> PROBE
     RULES --> NOTIFY[Notification Service]
-    CORE --> SCHED[Task Scheduler Service]
-    SCHED --> WTS[Windows Task Scheduler]
+    CORE --> SCHED[Rule Scheduler Service]
+    SCHED --> RULES
     ADAPTER --> WINNET[Windows Networking APIs]
     PROBE --> WINNET
     PROBE --> HTTP[Configured probe endpoints]
@@ -62,10 +59,9 @@ flowchart LR
 ## 4. 权限模型
 
 - 应用清单声明 `requireAdministrator`，所有入口均以管理员权限运行。
-- 高权限用于启用/禁用网卡和注册任务计划。
-- UI 传入的网卡 GUID、规则 ID 和通知 ID必须在本地配置中重新查找和校验。
-- 不接受用户提供的可执行路径、Shell 命令或任意任务参数。
-- 任务计划项只能调用当前安装目录中的签名 NetRelay 可执行文件。
+- 高权限用于启用/禁用网卡。
+- UI 传入的网卡 GUID、规则 ID 必须在本地配置中重新查找和校验。
+- 不接受用户提供的可执行路径、Shell 命令或任意参数。
 
 该模型实现简单，但每次启动会触发 UAC，并使 UI 也处于高权限进程中。长期改进方向见[安全、测试与风险](07-security-testing-and-risks.md)。
 
