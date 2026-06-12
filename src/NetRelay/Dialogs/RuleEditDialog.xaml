@@ -1,0 +1,327 @@
+<Window x:Class="NetRelay.Dialogs.RuleEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="编辑自动化规则" Width="550" Height="680"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False">
+    <Window.Resources>
+        <!-- Reusable styles matching MainWindow/SettingsDialog -->
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#536EF2"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#80FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#657EF5"/>
+                                <Setter TargetName="Root" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="18" ShadowDepth="5" Opacity="0.22" Color="#4366B0"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#415CD1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="Label">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,3"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="#80FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#25000000"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Border" CornerRadius="10" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ScrollViewer x:Name="PART_ContentHost"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#536EF2"/>
+                            </Trigger>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#536EF2"/>
+                                <Setter TargetName="Border" Property="BorderThickness" Value="1.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="#80FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#25000000"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Margin" Value="0,0,15,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
+    <Border Margin="15" Padding="25" CornerRadius="24" Background="#F4F8FD"
+            BorderBrush="#FFFFFFFF" BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="30" ShadowDepth="8" Opacity="0.20" Color="#263753"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Grid Grid.Row="0" Margin="0,0,0,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="40" Height="40" CornerRadius="14" Background="#536EF2">
+                    <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="DialogTitleText" Text="添加自动化规则" FontWeight="Bold" FontSize="18" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="设置网卡自动启用或禁用的触发条件和恢复机制" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,3,0,0"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Form Content -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,15" Padding="0,0,8,0">
+                <StackPanel>
+                    <!-- Rule Name -->
+                    <Label Content="规则名称"/>
+                    <TextBox x:Name="RuleNameTextBox" Margin="0,0,0,15" MaxLength="32"/>
+
+                    <!-- Action and Target Adapter -->
+                    <Grid Margin="0,0,0,15">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="15"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <Label Content="执行动作"/>
+                            <ComboBox x:Name="ActionComboBox" SelectedIndex="0">
+                                <ComboBoxItem Content="禁用网卡"/>
+                                <ComboBoxItem Content="启用网卡"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <Label Content="目标网卡"/>
+                            <ComboBox x:Name="TargetAdapterComboBox" DisplayMemberPath="Name" SelectedValuePath="Id"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Trigger Type Selector -->
+                    <Label Content="触发方式"/>
+                    <ComboBox x:Name="TriggerTypeComboBox" Margin="0,0,0,15" SelectionChanged="TriggerTypeComboBox_SelectionChanged">
+                        <ComboBoxItem Content="一次性定时"/>
+                        <ComboBoxItem Content="每日定时"/>
+                        <ComboBoxItem Content="每周定时"/>
+                        <ComboBoxItem Content="网络条件变化 (适配器断开时)"/>
+                    </ComboBox>
+
+                    <!-- Dynamic Panels for Triggers -->
+                    <!-- 1. Once Panel -->
+                    <Border x:Name="OncePanel" CornerRadius="12" Background="#10000000" Padding="15" Margin="0,0,0,15" Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="15"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <Label Content="触发日期"/>
+                                <DatePicker x:Name="OnceDatePicker" Height="32"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Width="180">
+                                <Label Content="触发时间"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0" x:Name="OnceHourComboBox"/>
+                                    <ComboBox Grid.Column="2" x:Name="OnceMinuteComboBox"/>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 2. Daily Panel -->
+                    <Border x:Name="DailyPanel" CornerRadius="12" Background="#10000000" Padding="15" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel Width="200" HorizontalAlignment="Left">
+                            <Label Content="每日触发时间"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0" x:Name="DailyHourComboBox"/>
+                                <ComboBox Grid.Column="2" x:Name="DailyMinuteComboBox"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 3. Weekly Panel -->
+                    <Border x:Name="WeeklyPanel" CornerRadius="12" Background="#10000000" Padding="15" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel>
+                            <StackPanel Width="200" HorizontalAlignment="Left" Margin="0,0,0,12">
+                                <Label Content="每周触发时间"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0" x:Name="WeeklyHourComboBox"/>
+                                    <ComboBox Grid.Column="2" x:Name="WeeklyMinuteComboBox"/>
+                                </Grid>
+                            </StackPanel>
+                            <Label Content="选择星期数"/>
+                            <WrapPanel Orientation="Horizontal">
+                                <CheckBox x:Name="MonCheck" Content="周一"/>
+                                <CheckBox x:Name="TueCheck" Content="周二"/>
+                                <CheckBox x:Name="WedCheck" Content="周三"/>
+                                <CheckBox x:Name="ThuCheck" Content="周四"/>
+                                <CheckBox x:Name="FriCheck" Content="周五"/>
+                                <CheckBox x:Name="SatCheck" Content="周六"/>
+                                <CheckBox x:Name="SunCheck" Content="周日"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 4. Network Change Panel -->
+                    <Border x:Name="NetworkChangePanel" CornerRadius="12" Background="#10000000" Padding="15" Margin="0,0,0,15" Visibility="Collapsed">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="15"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <Label Content="监听断开的网卡"/>
+                                <ComboBox x:Name="ConditionAdapterComboBox" DisplayMemberPath="Name" SelectedValuePath="Id"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <Label Content="离线防抖判定时间 (秒)"/>
+                                <TextBox x:Name="DebounceTextBox" Text="10"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Advanced Strategy Section Title -->
+                    <Border BorderBrush="#15000000" BorderThickness="0,0,0,1" Margin="0,5,0,12" Padding="0,0,0,5">
+                        <TextBlock Text="高级安全与恢复策略" FontWeight="Bold" FontSize="12" Foreground="#536EF2"/>
+                    </Border>
+
+                    <!-- Cooldown and Backup Network Protection -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="15"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <Label Content="冷却保护时间 (秒)"/>
+                            <TextBox x:Name="CooldownTextBox" Text="300"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Bottom" Height="32">
+                            <CheckBox x:Name="RequireBackupCheck" Content="启用备用网络保护" IsChecked="True" 
+                                      ToolTip="禁用网卡前探测是否有其他网卡可访问互联网，防止整机彻底断网"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Auto Recovery -->
+                    <Border CornerRadius="12" BorderBrush="#15000000" BorderThickness="1" Padding="12" Margin="0,0,0,12" Background="#05FFFFFF">
+                        <StackPanel>
+                            <CheckBox x:Name="RecoveryEnabledCheck" Content="开启延迟自动恢复" IsChecked="False" Margin="0,0,0,10"
+                                      Checked="RecoveryCheckChanged" Unchecked="RecoveryCheckChanged"/>
+                            <StackPanel x:Name="RecoveryPanel" Orientation="Horizontal" IsEnabled="False">
+                                <Label Content="延迟恢复时间:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox x:Name="RecoveryDelayTextBox" Width="80" Text="10" VerticalAlignment="Center"/>
+                                <TextBlock Text="分钟后，重新将网卡自动启用" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Pre-Notifications Configuration -->
+                    <Border CornerRadius="12" BorderBrush="#15000000" BorderThickness="1" Padding="12" Margin="0,0,0,8" Background="#05FFFFFF">
+                        <StackPanel>
+                            <CheckBox x:Name="PreNotifyEnabledCheck" Content="启用提前通知预警" IsChecked="False" Margin="0,0,0,10"
+                                      Checked="PreNotifyCheckChanged" Unchecked="PreNotifyCheckChanged"/>
+                            <StackPanel x:Name="PreNotifyPanel" IsEnabled="False">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Label Content="在执行前" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBox x:Name="PreNotifyMinutesTextBox" Grid.Column="1" Text="5" Width="70" VerticalAlignment="Center"/>
+                                    <Label Content="分钟提醒，且允许延迟" Grid.Column="2" VerticalAlignment="Center" Margin="6,0,6,0"/>
+                                    <TextBox x:Name="PreNotifyDelayTextBox" Grid.Column="3" Text="10" Width="70" VerticalAlignment="Center"/>
+                                </Grid>
+                                <CheckBox x:Name="AllowCancelCheck" Content="允许用户临时取消本次执行" IsChecked="True"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    
+                    <TextBlock x:Name="ErrorMsgText" Text="" Foreground="#E85C63" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Buttons -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="15"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}" Click="CancelButton_Click" Content="取消"/>
+                <Button Grid.Column="2" Style="{StaticResource PrimaryButtonStyle}" Click="SaveButton_Click" Content="保存规则"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

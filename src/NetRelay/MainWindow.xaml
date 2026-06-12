@@ -80,6 +80,138 @@
                 </MenuItem.Icon>
             </MenuItem>
         </ContextMenu>
+
+        <Style x:Key="TabButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="12" Background="{TemplateBinding Background}" Padding="20,8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#10000000"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="IconOnlyButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="8" Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#15000000"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#25000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="RuleListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="#80FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#CCFFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Border" CornerRadius="16" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.04" Color="#263753"/>
+                            </Border.Effect>
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#B0FFFFFF"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#FFFFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LogListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="#45FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#15FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Border" CornerRadius="12" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#536EF2"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#80FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="15,9"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="13" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#657EF5"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#415CD1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="58" CornerRadius="16" GlassFrameThickness="0" ResizeBorderThickness="7"/>
@@ -95,7 +227,7 @@
         </Grid.Background>
 
         <Ellipse Width="440" Height="440" HorizontalAlignment="Right" VerticalAlignment="Top"
-                 Margin="0,-160,-100,0" IsHitTestVisible="False" Opacity="0.34">
+                  Margin="0,-160,-100,0" IsHitTestVisible="False" Opacity="0.34">
             <Ellipse.Fill>
                 <RadialGradientBrush>
                     <GradientStop Color="#7788C2FF" Offset="0"/>
@@ -104,7 +236,7 @@
             </Ellipse.Fill>
         </Ellipse>
         <Ellipse Width="380" Height="380" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                 Margin="210,0,0,-210" IsHitTestVisible="False" Opacity="0.30">
+                  Margin="210,0,0,-210" IsHitTestVisible="False" Opacity="0.30">
             <Ellipse.Fill>
                 <RadialGradientBrush>
                     <GradientStop Color="#6696E9D6" Offset="0"/>
@@ -120,6 +252,7 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
+            <!-- Title Bar Card -->
             <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" CornerRadius="20" Padding="16,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -159,185 +292,455 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="1" Margin="25,42,25,30">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="250"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="网络概览" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
-                    <TextBlock Margin="0,10,0,0" FontSize="48" FontWeight="Bold" LineHeight="51" TextWrapping="Wrap">
-                        <Run Text="让网络切换"/>
-                        <LineBreak/>
-                        <Run Text="保持清晰可控。"/>
-                    </TextBlock>
-                    <TextBlock Margin="0,13,0,0" MaxWidth="590" TextWrapping="Wrap" LineHeight="22"
-                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
-                               Text="选择需要管理的网卡。后续可为它设置断网检测、提前提醒与自动切换。"/>
-                </StackPanel>
-                <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}" Width="220" Height="145"
-                        HorizontalAlignment="Right" CornerRadius="70,55,68,48">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Ellipse Width="13" Height="13" Fill="{Binding ConnectedCount, Converter={StaticResource StatusToBrushConverter}}">
-                            <Ellipse.Effect>
-                                <DropShadowEffect BlurRadius="17" ShadowDepth="0" Opacity="0.58" Color="#27B588"/>
-                            </Ellipse.Effect>
-                        </Ellipse>
-                        <TextBlock Margin="0,12,0,0" Text="{Binding NetworkSummary}" FontWeight="Bold" FontSize="15"/>
-                        <TextBlock Margin="0,4,0,0" Text="{Binding ConnectedDescription}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
+            <!-- Horizontal Navigation Tab Selector -->
+            <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" CornerRadius="16" Height="48" Margin="0,15,0,15" Padding="4" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" x:Name="TabOverviewBtn" Style="{StaticResource TabButtonStyle}" Click="TabOverviewButton_Click" Content="网络概览"/>
+                    <Button Grid.Column="1" x:Name="TabRulesBtn" Style="{StaticResource TabButtonStyle}" Click="TabRulesButton_Click" Content="自动化规则"/>
+                    <Button Grid.Column="2" x:Name="TabLogsBtn" Style="{StaticResource TabButtonStyle}" Click="TabLogsButton_Click" Content="执行历史"/>
+                </Grid>
+            </Border>
 
-            <Grid Grid.Row="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.55*"/>
-                    <ColumnDefinition Width="18"/>
-                    <ColumnDefinition Width="0.72*"/>
-                </Grid.ColumnDefinitions>
+            <!-- Main Page View Content -->
+            <TabControl Grid.Row="2" SelectedIndex="{Binding CurrentTabIndex}" BorderThickness="0" Background="Transparent">
+                <TabControl.ItemContainerStyle>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                    </Style>
+                </TabControl.ItemContainerStyle>
 
-                <Border Grid.Column="0" Style="{StaticResource GlassCardStyle}" Padding="25">
+                <!-- TAB 1: Network Overview -->
+                <TabItem>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Overview Title Grid -->
+                        <Grid Grid.Row="0" Margin="25,10,25,30">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="250"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="当前网络摘要" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
+                                <TextBlock Margin="0,10,0,0" FontSize="48" FontWeight="Bold" LineHeight="51" TextWrapping="Wrap">
+                                    <Run Text="让网络切换"/>
+                                    <LineBreak/>
+                                    <Run Text="保持清晰可控。"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,13,0,0" MaxWidth="590" TextWrapping="Wrap" LineHeight="22"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
+                                           Text="选择需要管理的网卡。后续可为它设置断网检测、提前提醒与自动切换。"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}" Width="220" Height="145"
+                                    HorizontalAlignment="Right" CornerRadius="70,55,68,48">
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <Ellipse Width="13" Height="13" Fill="{Binding ConnectedCount, Converter={StaticResource StatusToBrushConverter}}">
+                                        <Ellipse.Effect>
+                                            <DropShadowEffect BlurRadius="17" ShadowDepth="0" Opacity="0.58" Color="#27B588"/>
+                                        </Ellipse.Effect>
+                                    </Ellipse>
+                                    <TextBlock Margin="0,12,0,0" Text="{Binding NetworkSummary}" FontWeight="Bold" FontSize="15"/>
+                                    <TextBlock Margin="0,4,0,0" Text="{Binding ConnectedDescription}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Overview Interface Detail Grid -->
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.55*"/>
+                                <ColumnDefinition Width="18"/>
+                                <ColumnDefinition Width="0.72*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Style="{StaticResource GlassCardStyle}" Padding="25">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="目标网卡" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
+                                            <TextBlock Text="选择要管理的接口" FontWeight="Bold" FontSize="21" Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                            <TextBlock VerticalAlignment="Center" Margin="0,0,10,0"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"
+                                                       Text="{Binding Adapters.Count, StringFormat={}{0} 个接口}"/>
+                                            <Button Style="{StaticResource RefreshIconButtonStyle}" Command="{Binding RefreshCommand}">
+                                                <Path Width="14" Height="14" Stretch="Uniform" Stroke="#53657D" StrokeThickness="1.5"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                      Data="M 11.5,4.2 A 5,5 0 1 0 12.2,9.7 M 11.5,1.8 L 11.5,4.2 L 9.1,4.2"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Border Grid.Row="1" Margin="0,15,0,0" Padding="11" CornerRadius="13" Background="#55FFD9E1"
+                                            Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock Text="{Binding ErrorMessage}" Foreground="#9D4154" TextWrapping="Wrap" FontSize="11"/>
+                                    </Border>
+                                    <ListBox Grid.Row="2" Margin="0,20,0,0" ItemsSource="{Binding Adapters}"
+                                             SelectedItem="{Binding SelectedAdapter}" BorderThickness="0" Background="Transparent"
+                                             ItemContainerStyle="{StaticResource AdapterListItemStyle}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="46"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Width="42" Height="42" CornerRadius="15"
+                                                            Background="{Binding IsConnected, Converter={StaticResource StatusToBrushConverter}}">
+                                                        <TextBlock Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Margin="11,0,10,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                            <Border Padding="6,2" CornerRadius="7" Background="#72E6EBF4" Margin="0,0,6,0">
+                                                                <TextBlock Text="{Binding ClassificationLabel}" Foreground="#58677E" FontWeight="SemiBold" FontSize="8"/>
+                                                            </Border>
+                                                            <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" TextTrimming="CharacterEllipsis">
+                                                                <Run Text="{Binding TypeLabel, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Description, Mode=OneWay}"/>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="2" Margin="4,0,12,0" VerticalAlignment="Center">
+                                                        <controls:TrafficSparkline Adapter="{Binding}" Height="24"/>
+                                                        <TextBlock Text="{Binding TrafficRateLabel}" Margin="0,3,0,0" HorizontalAlignment="Right"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="8"/>
+                                                    </StackPanel>
+                                                    <Border Grid.Column="3" VerticalAlignment="Center" Padding="9,5" CornerRadius="12" Background="#55FFFFFF">
+                                                        <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" FontSize="10"
+                                                                   Foreground="{Binding IsConnected, Converter={StaticResource StatusToBrushConverter}}"/>
+                                                    </Border>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Column="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="14"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="24">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="当前选择" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
+                                        <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                                            <TextBlock Text="{Binding SelectedAdapter.Name, TargetNullValue=请选择网卡}" FontWeight="Bold" FontSize="20" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding SelectedAdapter.Description}" Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" TextWrapping="Wrap" MaxHeight="34"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Margin="0,18,0,0">
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="联网状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.InternetStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid Margin="0,0,0,11"><TextBlock Text="检测时间" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LastProbeTimeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="3">
+                                            <Border Margin="0,0,0,10" Padding="10" CornerRadius="13" Background="#66FFFFFF"
+                                                    Visibility="{Binding HasOperationMessage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <TextBlock Text="{Binding OperationMessage}" Foreground="{StaticResource TextSecondaryBrush}"
+                                                           TextWrapping="Wrap" FontSize="10"/>
+                                            </Border>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="9"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}"
+                                                        IsEnabled="{Binding CanOperateSelectedAdapter}"
+                                                        Click="EnableAdapterButton_Click" Content="启用网卡"/>
+                                                <Button Grid.Column="2" Style="{StaticResource DangerButtonStyle}"
+                                                        IsEnabled="{Binding CanOperateSelectedAdapter}"
+                                                        Click="DisableAdapterButton_Click" Content="禁用网卡"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" CornerRadius="20" Padding="15">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="38"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="36" Height="36" CornerRadius="13" Background="#536EF2">
+                                            <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="16"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="安全保护" FontWeight="SemiBold" FontSize="11"/>
+                                            <TextBlock Text="自动切换前将验证备用网络" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
+                <!-- TAB 2: Automation Rules -->
+                <TabItem>
+                    <Grid>
+                        <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <Grid>
+
+                        <!-- Header Area -->
+                        <Grid Grid.Row="0" Margin="25,10,25,20">
                             <StackPanel>
-                                <TextBlock Text="目标网卡" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
-                                <TextBlock Text="选择要管理的接口" FontWeight="Bold" FontSize="21" Margin="0,6,0,0"/>
+                                <TextBlock Text="自动化控制" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
+                                <TextBlock Text="自动规则配置" FontWeight="Bold" FontSize="40" Margin="0,6,0,0"/>
                             </StackPanel>
-                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
-                                <TextBlock VerticalAlignment="Center" Margin="0,0,10,0"
-                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"
-                                           Text="{Binding Adapters.Count, StringFormat={}{0} 个接口}"/>
-                                <Button Style="{StaticResource RefreshIconButtonStyle}" Command="{Binding RefreshCommand}">
-                                    <Path Width="14" Height="14" Stretch="Uniform" Stroke="#53657D" StrokeThickness="1.5"
-                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                          Data="M 11.5,4.2 A 5,5 0 1 0 12.2,9.7 M 11.5,1.8 L 11.5,4.2 L 9.1,4.2"/>
-                                </Button>
+                            <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddRuleCommand}" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="18,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="新建规则" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- List Area -->
+                        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="20" Margin="0,0,0,10">
+                            <Grid>
+                                <TextBlock Text="当前没有任何自动化规则，点击右上方“新建规则”创建。" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
+                                           Visibility="{Binding Rules.Count, Converter={StaticResource StatusToBrushConverter}, ConverterParameter=EmptyToVisible}"/>
+                                
+                                <ListBox ItemsSource="{Binding Rules}" Background="Transparent" BorderThickness="0" 
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         ItemContainerStyle="{StaticResource RuleListItemStyle}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="12,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="42"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="200"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <!-- Action Indicator Icon -->
+                                                <Border Width="38" Height="38" CornerRadius="13" 
+                                                        Background="{Binding IsActionDisable, Converter={StaticResource StatusToBrushConverter}, ConverterParameter=ActionBrush}">
+                                                    <TextBlock Text="&#xE8B0;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="16"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+
+                                                <!-- Rule Basic Details -->
+                                                <StackPanel Grid.Column="1" Margin="15,0,15,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                                        <Border Padding="6,2" CornerRadius="6" Background="#20536EF2" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding ActionLabel}" Foreground="#536EF2" FontWeight="Bold" FontSize="8"/>
+                                                        </Border>
+                                                        <TextBlock Text="{Binding TargetAdapterName, StringFormat=网卡：{0}}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="280"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+
+                                                <!-- Trigger Details -->
+                                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="10,0,15,0">
+                                                    <TextBlock Text="{Binding TriggerLabel}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding RecoveryLabel}" Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9"/>
+                                                </StackPanel>
+
+                                                <!-- Operations Actions -->
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <!-- Switch Toggle -->
+                                                    <CheckBox IsChecked="{Binding Enabled}" Content="启用" VerticalAlignment="Center" Margin="0,0,20,0"/>
+
+                                                    <!-- Run Now -->
+                                                    <Button Style="{StaticResource IconOnlyButtonStyle}" 
+                                                            Command="{Binding DataContext.RunRuleNowCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="立即测试运行该规则">
+                                                        <TextBlock Text="&#xF5B0;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#27B588"/>
+                                                    </Button>
+
+                                                    <!-- Edit -->
+                                                    <Button Style="{StaticResource IconOnlyButtonStyle}" 
+                                                            Command="{Binding DataContext.EditRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="修改规则配置">
+                                                        <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#536EF2"/>
+                                                    </Button>
+
+                                                    <!-- Delete -->
+                                                    <Button Style="{StaticResource IconOnlyButtonStyle}" 
+                                                            Command="{Binding DataContext.DeleteRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" ToolTip="彻底删除规则">
+                                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#E85C63"/>
+                                                    </Button>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- TAB 3: Execution History -->
+                <TabItem>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header Area -->
+                        <Grid Grid.Row="0" Margin="25,10,25,20">
+                            <StackPanel>
+                                <TextBlock Text="审计与诊断" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
+                                <TextBlock Text="运行执行日志" FontWeight="Bold" FontSize="40" Margin="0,6,0,0"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding RefreshLogsCommand}" Margin="0,0,10,0" Padding="15,9" Content="刷新日志"/>
+                                <Button Style="{StaticResource DangerButtonStyle}" Command="{Binding ClearLogsCommand}" Padding="15,9" Content="清空历史"/>
                             </StackPanel>
                         </Grid>
-                        <Border Grid.Row="1" Margin="0,15,0,0" Padding="11" CornerRadius="13" Background="#55FFD9E1"
-                                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock Text="{Binding ErrorMessage}" Foreground="#9D4154" TextWrapping="Wrap" FontSize="11"/>
-                        </Border>
-                        <ListBox Grid.Row="2" Margin="0,20,0,0" ItemsSource="{Binding Adapters}"
-                                 SelectedItem="{Binding SelectedAdapter}" BorderThickness="0" Background="Transparent"
-                                 ItemContainerStyle="{StaticResource AdapterListItemStyle}"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="46"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="155"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border Width="42" Height="42" CornerRadius="15"
-                                                Background="{Binding IsConnected, Converter={StaticResource StatusToBrushConverter}}">
-                                            <TextBlock Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Grid.Column="1" Margin="11,0,10,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                                <Border Padding="6,2" CornerRadius="7" Background="#72E6EBF4" Margin="0,0,6,0">
-                                                    <TextBlock Text="{Binding ClassificationLabel}" Foreground="#58677E" FontWeight="SemiBold" FontSize="8"/>
-                                                </Border>
-                                                <TextBlock VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" TextTrimming="CharacterEllipsis">
-                                                    <Run Text="{Binding TypeLabel, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Description, Mode=OneWay}"/>
-                                                </TextBlock>
-                                            </StackPanel>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Margin="4,0,12,0" VerticalAlignment="Center">
-                                            <controls:TrafficSparkline Adapter="{Binding}" Height="24"/>
-                                            <TextBlock Text="{Binding TrafficRateLabel}" Margin="0,3,0,0" HorizontalAlignment="Right"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="8"/>
-                                        </StackPanel>
-                                        <Border Grid.Column="3" VerticalAlignment="Center" Padding="9,5" CornerRadius="12" Background="#55FFFFFF">
-                                            <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" FontSize="10"
-                                                       Foreground="{Binding IsConnected, Converter={StaticResource StatusToBrushConverter}}"/>
-                                        </Border>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
 
-                <Grid Grid.Column="2">
+                        <!-- Timeline Logs List -->
+                        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="20" Margin="0,0,0,10">
+                            <Grid>
+                                <TextBlock Text="最近 7 天内无任何规则执行记录。" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
+                                           Visibility="{Binding Logs.Count, Converter={StaticResource StatusToBrushConverter}, ConverterParameter=EmptyToVisible}"/>
+
+                                <ListBox ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         ItemContainerStyle="{StaticResource LogListItemStyle}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="5,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="6"/>
+                                                    <ColumnDefinition Width="150"/>
+                                                    <ColumnDefinition Width="110"/>
+                                                    <ColumnDefinition Width="220"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <!-- Outcome Colored Indicator Strip -->
+                                                <Border Grid.Column="0" Width="3" CornerRadius="1.5" Height="28" VerticalAlignment="Center">
+                                                    <Border.Background>
+                                                        <SolidColorBrush Color="{Binding OutcomeBrush}"/>
+                                                    </Border.Background>
+                                                </Border>
+
+                                                <!-- Timestamp -->
+                                                <StackPanel Grid.Column="1" Margin="15,0,10,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding TimeLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    <TextBlock Text="{Binding SourceLabel}" Margin="0,3,0,0" FontSize="9" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </StackPanel>
+
+                                                <!-- Action Badge -->
+                                                <Border Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Left" Padding="8,4" CornerRadius="8" Background="#12000000">
+                                                    <TextBlock Text="{Binding ActionLabel}" FontWeight="Bold" FontSize="10" Foreground="#334158"/>
+                                                </Border>
+
+                                                <!-- Target Adapter Name -->
+                                                <StackPanel Grid.Column="3" Margin="10,0,15,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="目标网卡" FontSize="8" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    <TextBlock Text="{Binding TargetAdapterName}" Margin="0,2,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+
+                                                <!-- Result Explanation -->
+                                                <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="5,0,0,0">
+                                                    <TextBlock Text="{Binding OutcomeLabel}" FontWeight="Bold" FontSize="12">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{Binding OutcomeBrush}"/>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding ReasonLabel}" Margin="0,3,0,0" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
+
+        <!-- Centered Pre-Notification Warning Countdown Overlay -->
+        <Grid Background="#58000000" Visibility="{Binding IsPendingOverlayVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Grid.RowSpan="3" Margin="-28,-18,-28,-30">
+            <Border Style="{StaticResource GlassCardStyle}" Width="410" Height="260" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="26" Padding="25">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="45" ShadowDepth="12" Opacity="0.3" Color="#15243D"/>
+                </Border.Effect>
+                <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
-                        <RowDefinition Height="14"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="24">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="当前选择" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
-                            <StackPanel Grid.Row="1" Margin="0,8,0,0">
-                                <TextBlock Text="{Binding SelectedAdapter.Name, TargetNullValue=请选择网卡}" FontWeight="Bold" FontSize="20" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding SelectedAdapter.Description}" Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="10" TextWrapping="Wrap" MaxHeight="34"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="2" Margin="0,18,0,0">
-                                <Grid Margin="0,0,0,11"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid Margin="0,0,0,11"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid Margin="0,0,0,11"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid Margin="0,0,0,11"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid Margin="0,0,0,11"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid Margin="0,0,0,11"><TextBlock Text="联网状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.InternetStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid Margin="0,0,0,11"><TextBlock Text="检测时间" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LastProbeTimeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                            </StackPanel>
-                            <StackPanel Grid.Row="3">
-                                <Border Margin="0,0,0,10" Padding="10" CornerRadius="13" Background="#66FFFFFF"
-                                        Visibility="{Binding HasOperationMessage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <TextBlock Text="{Binding OperationMessage}" Foreground="{StaticResource TextSecondaryBrush}"
-                                               TextWrapping="Wrap" FontSize="10"/>
-                                </Border>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="9"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}"
-                                            IsEnabled="{Binding CanOperateSelectedAdapter}"
-                                            Click="EnableAdapterButton_Click" Content="启用网卡"/>
-                                    <Button Grid.Column="2" Style="{StaticResource DangerButtonStyle}"
-                                            IsEnabled="{Binding CanOperateSelectedAdapter}"
-                                            Click="DisableAdapterButton_Click" Content="禁用网卡"/>
-                                </Grid>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                    <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" CornerRadius="20" Padding="15">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="38"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Border Width="36" Height="36" CornerRadius="13" Background="#536EF2">
-                                <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="16"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="安全保护" FontWeight="SemiBold" FontSize="11"/>
-                                <TextBlock Text="自动切换前将验证备用网络" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                    
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="40" Height="40" CornerRadius="14" Background="#E85C63">
+                            <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="自动化网络切换预警" FontWeight="Bold" FontSize="16"/>
+                            <TextBlock Text="NetRelay 计划时间已到达" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                    
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,5">
+                        <TextBlock Text="{Binding PendingRuleName, StringFormat=即将执行“{0}”}" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="340"/>
+                        <TextBlock Text="{Binding PendingCountdownLabel}" FontWeight="Bold" FontSize="26" Foreground="#E85C63" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                    </StackPanel>
+                    
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding ExecutePendingNowCommand}" Content="立即执行"/>
+                        <Button Grid.Column="2" Style="{StaticResource SoftButtonStyle}" Command="{Binding DelayPendingCommand}" 
+                                Visibility="{Binding AllowDelay, Converter={StaticResource BooleanToVisibilityConverter}}" 
+                                Content="{Binding PendingDelayMinutes, StringFormat=延迟 {0} 分钟}"/>
+                        <Button Grid.Column="4" Style="{StaticResource DangerButtonStyle}" Command="{Binding CancelPendingCommand}" 
+                                Visibility="{Binding AllowCancel, Converter={StaticResource BooleanToVisibilityConverter}}" 
+                                Content="取消本次"/>
+                    </Grid>
                 </Grid>
-            </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Window>

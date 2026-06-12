@@ -4,6 +4,22 @@ using NetRelay.Models;
 
 namespace NetRelay.Services;
 
+public sealed class PreNotificationEventArgs : EventArgs
+{
+    public AutomationRule Rule { get; }
+    public PreNotification Notification { get; }
+    public DateTimeOffset TargetTime { get; }
+    public int MinutesRemaining { get; }
+
+    public PreNotificationEventArgs(AutomationRule rule, PreNotification notification, DateTimeOffset targetTime, int minutesRemaining)
+    {
+        Rule = rule;
+        Notification = notification;
+        TargetTime = targetTime;
+        MinutesRemaining = minutesRemaining;
+    }
+}
+
 public sealed class RuleSchedulerService : IDisposable
 {
     private readonly RuleEngine _ruleEngine;
@@ -17,11 +33,24 @@ public sealed class RuleSchedulerService : IDisposable
     // Tracks once rule executed state in-memory.
     private readonly HashSet<Guid> _onceTriggerRan = new();
 
+    // Tracks when pre-notifications were last triggered today. Key: (RuleId, MinutesBefore).
+    private readonly Dictionary<(Guid RuleId, int MinutesBefore), DateTime> _preNotificationLastTriggeredDate = new();
+
+    // Tracks if a Once rule's pre-notification has been triggered. Key: (RuleId, MinutesBefore).
+    private readonly HashSet<(Guid RuleId, int MinutesBefore)> _oncePreNotificationsTriggered = new();
+
+    // In-memory temporary delays for rules today. Key: RuleId.
+    private readonly Dictionary<Guid, TimeSpan> _tempRuleDelays = new();
+
     // Debounce cancel tokens for network change rules. Key: Rule ID.
     private readonly Dictionary<Guid, CancellationTokenSource> _networkChangeDebouncers = new();
 
     // Last known operational status of adapters for edge trigger evaluation. Key: Adapter ID.
     private readonly Dictionary<string, OperationalStatus> _lastAdapterStatuses = new();
+
+    // Events
+    public event EventHandler<PreNotificationEventArgs>? PreNotificationTriggered;
+    public event EventHandler<ExecutionRecord>? RuleExecuted;
 
     public RuleSchedulerService(RuleEngine ruleEngine, ConfigurationService configService)
     {
@@ -74,6 +103,15 @@ public sealed class RuleSchedulerService : IDisposable
             var onceToRemove = _onceTriggerRan.Where(id => !ruleIds.Contains(id)).ToList();
             foreach (var key in onceToRemove) _onceTriggerRan.Remove(key);
 
+            var keysToRemovePre = _preNotificationLastTriggeredDate.Keys.Where(k => !ruleIds.Contains(k.RuleId)).ToList();
+            foreach (var key in keysToRemovePre) _preNotificationLastTriggeredDate.Remove(key);
+
+            var oncePreToRemove = _oncePreNotificationsTriggered.Where(k => !ruleIds.Contains(k.RuleId)).ToList();
+            foreach (var key in oncePreToRemove) _oncePreNotificationsTriggered.Remove(key);
+
+            var delaysToRemove = _tempRuleDelays.Keys.Where(id => !ruleIds.Contains(id)).ToList();
+            foreach (var id in delaysToRemove) _tempRuleDelays.Remove(id);
+
             var debouncersToRemove = _networkChangeDebouncers.Keys.Where(id => !ruleIds.Contains(id)).ToList();
             foreach (var key in debouncersToRemove)
             {
@@ -85,6 +123,71 @@ public sealed class RuleSchedulerService : IDisposable
             }
             
             UpdateAdapterStatuses();
+        }
+    }
+
+    public void DelayRule(Guid ruleId, TimeSpan delay)
+    {
+        lock (_lock)
+        {
+            _tempRuleDelays[ruleId] = delay;
+        }
+    }
+
+    public void SkipRuleOccurrence(Guid ruleId)
+    {
+        lock (_lock)
+        {
+            var now = DateTimeOffset.Now;
+            var rule = _configService.Current.Rules.FirstOrDefault(r => r.Id == ruleId);
+            if (rule != null)
+            {
+                if (rule.Trigger is RuleTrigger.Once)
+                {
+                    _onceTriggerRan.Add(ruleId);
+                    var index = _configService.Current.Rules.FindIndex(r => r.Id == ruleId);
+                    if (index >= 0)
+                    {
+                        _configService.Current.Rules[index] = _configService.Current.Rules[index] with { Enabled = false };
+                        _configService.Save();
+                    }
+
+                    var record = new ExecutionRecord(
+                        Guid.NewGuid(),
+                        ruleId,
+                        RuleSource.Schedule,
+                        rule.TargetAdapterId,
+                        rule.Action,
+                        now,
+                        now,
+                        Outcome: "SKIPPED",
+                        ReasonCode: "MANUAL_SKIP",
+                        WindowsErrorCode: null
+                    );
+                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                    RuleExecuted?.Invoke(this, record);
+                }
+                else
+                {
+                    _timeTriggerLastRan[ruleId] = now.Date;
+                    _tempRuleDelays.Remove(ruleId);
+
+                    var record = new ExecutionRecord(
+                        Guid.NewGuid(),
+                        ruleId,
+                        RuleSource.Schedule,
+                        rule.TargetAdapterId,
+                        rule.Action,
+                        now,
+                        now,
+                        Outcome: "SKIPPED",
+                        ReasonCode: "MANUAL_SKIP",
+                        WindowsErrorCode: null
+                    );
+                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                    RuleExecuted?.Invoke(this, record);
+                }
+            }
         }
     }
 
@@ -117,33 +220,141 @@ public sealed class RuleSchedulerService : IDisposable
 
                 if (rule.Trigger is RuleTrigger.Once once)
                 {
-                    if (now >= once.At && !_onceTriggerRan.Contains(rule.Id))
+                    var delayOffset = TimeSpan.Zero;
+                    lock (_lock)
+                    {
+                        if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
+                        {
+                            delayOffset = offset;
+                        }
+                    }
+                    var adjustedTarget = once.At + delayOffset;
+
+                    // 1. Evaluate Pre-Notifications
+                    if (!_onceTriggerRan.Contains(rule.Id))
+                    {
+                        foreach (var preNotify in rule.PreNotifications)
+                        {
+                            var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
+                            if (now >= preNotifyTime && now < adjustedTarget)
+                            {
+                                var key = (rule.Id, preNotify.MinutesBefore);
+                                lock (_lock)
+                                {
+                                    if (!_oncePreNotificationsTriggered.Contains(key))
+                                    {
+                                        _oncePreNotificationsTriggered.Add(key);
+                                        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Evaluate Rule Execution
+                    if (now >= adjustedTarget && !_onceTriggerRan.Contains(rule.Id))
                     {
                         _onceTriggerRan.Add(rule.Id);
-                        _ = ExecuteOnceRuleAsync(rule);
+                        lock (_lock)
+                        {
+                            _tempRuleDelays.Remove(rule.Id);
+                        }
+                        _ = ExecuteOnceRuleAndNotifyAsync(rule);
                     }
                 }
                 else if (rule.Trigger is RuleTrigger.Daily daily)
                 {
-                    var sched = daily.LocalTime;
-                    if (now.Hour == sched.Hour && now.Minute == sched.Minute)
+                    var targetToday = new DateTimeOffset(now.Year, now.Month, now.Day, daily.LocalTime.Hour, daily.LocalTime.Minute, 0, now.Offset);
+                    var delayOffset = TimeSpan.Zero;
+                    lock (_lock)
                     {
-                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date)
+                        if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
+                        {
+                            delayOffset = offset;
+                        }
+                    }
+                    var adjustedTarget = targetToday + delayOffset;
+
+                    // 1. Evaluate Pre-Notifications
+                    if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date)
+                    {
+                        foreach (var preNotify in rule.PreNotifications)
+                        {
+                            var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
+                            if (now >= preNotifyTime && now < adjustedTarget)
+                            {
+                                var key = (rule.Id, preNotify.MinutesBefore);
+                                lock (_lock)
+                                {
+                                    if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
+                                    {
+                                        _preNotificationLastTriggeredDate[key] = now.Date;
+                                        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Evaluate Rule Execution
+                    if (now >= adjustedTarget)
+                    {
+                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDateDailyExec) || lastRanDateDailyExec < now.Date)
                         {
                             _timeTriggerLastRan[rule.Id] = now.Date;
-                            _ = _ruleEngine.ExecuteRuleAsync(rule, RuleSource.Schedule);
+                            lock (_lock)
+                            {
+                                _tempRuleDelays.Remove(rule.Id);
+                            }
+                            _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
                         }
                     }
                 }
                 else if (rule.Trigger is RuleTrigger.Weekly weekly)
                 {
-                    var sched = weekly.LocalTime;
-                    if (weekly.Weekdays.Contains(now.DayOfWeek) && now.Hour == sched.Hour && now.Minute == sched.Minute)
+                    var targetToday = new DateTimeOffset(now.Year, now.Month, now.Day, weekly.LocalTime.Hour, weekly.LocalTime.Minute, 0, now.Offset);
+                    var delayOffset = TimeSpan.Zero;
+                    lock (_lock)
                     {
-                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date)
+                        if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
+                        {
+                            delayOffset = offset;
+                        }
+                    }
+                    var adjustedTarget = targetToday + delayOffset;
+
+                    // 1. Evaluate Pre-Notifications
+                    if (weekly.Weekdays.Contains(now.DayOfWeek) && (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date))
+                    {
+                        foreach (var preNotify in rule.PreNotifications)
+                        {
+                            var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
+                            if (now >= preNotifyTime && now < adjustedTarget)
+                            {
+                                var key = (rule.Id, preNotify.MinutesBefore);
+                                lock (_lock)
+                                {
+                                    if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
+                                    {
+                                        _preNotificationLastTriggeredDate[key] = now.Date;
+                                        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Evaluate Rule Execution
+                    if (weekly.Weekdays.Contains(now.DayOfWeek) && now >= adjustedTarget)
+                    {
+                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDateWeeklyExec) || lastRanDateWeeklyExec < now.Date)
                         {
                             _timeTriggerLastRan[rule.Id] = now.Date;
-                            _ = _ruleEngine.ExecuteRuleAsync(rule, RuleSource.Schedule);
+                            lock (_lock)
+                            {
+                                _tempRuleDelays.Remove(rule.Id);
+                            }
+                            _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
                         }
                     }
                 }
@@ -155,11 +366,25 @@ public sealed class RuleSchedulerService : IDisposable
         }
     }
 
-    private async Task ExecuteOnceRuleAsync(AutomationRule rule)
+    private async Task ExecuteRuleAndNotifyAsync(AutomationRule rule, RuleSource source)
     {
         try
         {
-            await _ruleEngine.ExecuteRuleAsync(rule, RuleSource.Schedule);
+            var record = await _ruleEngine.ExecuteRuleAsync(rule, source);
+            RuleExecuted?.Invoke(this, record);
+        }
+        catch
+        {
+            // Fail silently
+        }
+    }
+
+    private async Task ExecuteOnceRuleAndNotifyAsync(AutomationRule rule)
+    {
+        try
+        {
+            var record = await _ruleEngine.ExecuteRuleAsync(rule, RuleSource.Schedule);
+            RuleExecuted?.Invoke(this, record);
 
             lock (_lock)
             {
@@ -174,7 +399,7 @@ public sealed class RuleSchedulerService : IDisposable
         }
         catch
         {
-            // Ignore execution failure to not crash background thread
+            // Ignore execution failure
         }
     }
 
@@ -255,7 +480,7 @@ public sealed class RuleSchedulerService : IDisposable
 
                 if (isStillOffline)
                 {
-                    await _ruleEngine.ExecuteRuleAsync(rule, RuleSource.NetworkChange);
+                    await ExecuteRuleAndNotifyAsync(rule, RuleSource.NetworkChange);
                 }
             }
             catch (OperationCanceledException)

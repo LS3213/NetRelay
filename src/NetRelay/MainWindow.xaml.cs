@@ -4,6 +4,9 @@ using NetRelay.Dialogs;
 using NetRelay.Native;
 using NetRelay.Services;
 using NetRelay.ViewModels;
+using NetRelay.Models;
+using System.Linq;
+using System;
 
 namespace NetRelay;
 
@@ -33,11 +36,17 @@ public partial class MainWindow : Window
             connectivityService,
             _ruleScheduler);
         DataContext = _viewModel;
+
+        // Listen to events
+        _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
+        _viewModel.RequestEditRule += OnRequestEditRule;
+
         SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
         StateChanged += (_, _) => UpdateMaximizeIcon();
         UpdateMaximizeIcon();
 
         InitializeNotifyIcon();
+        UpdateTabSelection(0);
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
@@ -140,6 +149,7 @@ public partial class MainWindow : Window
 
         _notifyIcon.DoubleClick += (s, e) => RestoreWindow();
         _notifyIcon.MouseClick += NotifyIcon_MouseClick;
+        _notifyIcon.BalloonTipClicked += (s, e) => RestoreWindow();
     }
 
     private void NotifyIcon_MouseClick(object? sender, System.Windows.Forms.MouseEventArgs e)
@@ -190,6 +200,95 @@ public partial class MainWindow : Window
         _notifyIcon = null;
         _isForceExiting = true;
         Close();
+    }
+
+    private void OnSchedulerPreNotificationTriggered(object? sender, PreNotificationEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            // System-level notification bubble that auto-dismisses and is non-intrusive for gaming/fullscreen
+            _notifyIcon?.ShowBalloonTip(
+                5000,
+                "NetRelay 计划切换提醒",
+                $"规则“{e.Rule.Name}”将在 {e.MinutesRemaining} 分钟后执行，点击处理。",
+                System.Windows.Forms.ToolTipIcon.Info
+            );
+        });
+    }
+
+    private void OnRequestEditRule(AutomationRule? rule)
+    {
+        var dialog = new RuleEditDialog(rule, _viewModel.Adapters.ToList())
+        {
+            Owner = this
+        };
+        if (dialog.ShowDialog() == true && dialog.ResultRule != null)
+        {
+            var result = dialog.ResultRule;
+            var currentRules = _viewModel.ConfigService.Current.Rules;
+            
+            if (rule == null)
+            {
+                currentRules.Add(result);
+            }
+            else
+            {
+                var index = currentRules.FindIndex(r => r.Id == rule.Id);
+                if (index >= 0)
+                {
+                    currentRules[index] = result;
+                }
+            }
+
+            _viewModel.ConfigService.Save();
+            _viewModel.LoadRules();
+            _viewModel.ReloadRules();
+        }
+    }
+
+    private void TabOverviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CurrentTabIndex = 0;
+        UpdateTabSelection(0);
+    }
+
+    private void TabRulesButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CurrentTabIndex = 1;
+        UpdateTabSelection(1);
+    }
+
+    private void TabLogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CurrentTabIndex = 2;
+        UpdateTabSelection(2);
+        _ = _viewModel.LoadLogsAsync();
+    }
+
+    private void UpdateTabSelection(int tabIndex)
+    {
+        var activeBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x53, 0x6E, 0xF2));
+        var inactiveBrush = System.Windows.Media.Brushes.Transparent;
+        var activeText = System.Windows.Media.Brushes.White;
+        var inactiveText = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
+
+        if (TabOverviewBtn != null)
+        {
+            TabOverviewBtn.Background = tabIndex == 0 ? activeBrush : inactiveBrush;
+            TabOverviewBtn.Foreground = tabIndex == 0 ? activeText : inactiveText;
+        }
+
+        if (TabRulesBtn != null)
+        {
+            TabRulesBtn.Background = tabIndex == 1 ? activeBrush : inactiveBrush;
+            TabRulesBtn.Foreground = tabIndex == 1 ? activeText : inactiveText;
+        }
+
+        if (TabLogsBtn != null)
+        {
+            TabLogsBtn.Background = tabIndex == 2 ? activeBrush : inactiveBrush;
+            TabLogsBtn.Foreground = tabIndex == 2 ? activeText : inactiveText;
+        }
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

@@ -7,6 +7,7 @@ namespace NetRelay.Services;
 public sealed class NetworkAdapterService
 {
     private readonly NativeNetworkConnectionService _connectionService;
+    public NativeNetworkConnectionService ConnectionService => _connectionService;
 
     private static readonly string[] VirtualAdapterKeywords =
     [

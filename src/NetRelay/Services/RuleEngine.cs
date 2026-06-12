@@ -220,7 +220,7 @@ public sealed class RuleEngine
         return VirtualAdapterKeywords.Any(keyword => identity.Contains(keyword, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task WriteExecutionRecordAsync(ExecutionRecord record)
+    public static async Task WriteExecutionRecordAsync(ExecutionRecord record)
     {
         try
         {
