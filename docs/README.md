@@ -26,6 +26,8 @@
 7. [安全、测试与风险](07-security-testing-and-risks.md)
 8. [验收状态与实机测试清单](08-acceptance-status.md)
 9. [未来开发阶段与里程碑规划](09-future-stages-and-milestones.md)
+10. [后端平台总体实施规范](10-backend-platform-master-plan.md)
+11. [后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md)
 
 ## 目录结构
 
@@ -50,6 +52,8 @@ NetRelay/
 - 自动禁用故障网卡前，必须确认备用网卡已经连接并可访问互联网。
 - 首版使用 JSON 配置与按日 JSONL 执行日志，不使用数据库；日志按设置页的可配置保留天数自动清理。
 - 产品官网位于 `website/`，使用原生 HTML、CSS 和少量 JavaScript，可独立部署到任意静态文件服务器，不影响桌面程序的原生技术栈。
+- 后端、双源更新、设备激活、反馈、公告与封锁功能尚未实现；其后续开发必须遵循 [后端平台总体实施规范](10-backend-platform-master-plan.md)。
+- 后端平台 B0-B6 的开发任务、当前状态、验收证据和文档维护要求统一记录在 [后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md)；未在该文档记录并通过验收的阶段不得视为完成。
 
 ## 源码引用说明
 
