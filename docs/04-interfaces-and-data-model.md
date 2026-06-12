@@ -29,6 +29,7 @@ NetRelay.exe --diagnose-adapters [输出路径] [--quiet]
 ```
 
 - **`--startup`**：以开机自启模式运行应用。主窗口会直接隐藏到系统托盘，不显示任务栏图标，不发生任何窗口显示闪烁。
+- **`--protocol-launch <netrelay://...>`**：处理 Windows Toast 的后台快捷操作。参数必须包含有效通知动作 ID 和随机令牌；处理时不主动打开主窗口。
 - **`--diagnose-adapters`**：只读枚举网卡并写入 JSON 诊断报告，不启动主窗口、不执行任何网卡切换；省略输出路径时写入 `%LOCALAPPDATA%\NetRelay\diagnostics\`。
 - **`--quiet`**：诊断完成后不显示结果路径对话框，便于脚本化验收。
 - 诊断成功时进程退出码为 `0`，生成失败时为 `1`。
@@ -39,7 +40,7 @@ NetRelay.exe --diagnose-adapters [输出路径] [--quiet]
 
 | .NET 事件 | 载荷 | 用途 |
 | --- | --- | --- |
-| `RuleSchedulerService.PreNotificationTriggered` | `PreNotificationEventArgs` | 显示提前提醒与倒计时 |
+| `RuleSchedulerService.PreNotificationTriggered` | `PreNotificationEventArgs`，包含一次性动作 ID、随机令牌和目标执行时间 | 显示提前提醒、倒计时与安全快捷操作 |
 | `RuleSchedulerService.RuleExecuted` | `ExecutionRecord` | 刷新执行历史与规则状态 |
 | `RuleEngine.ExecutionRecorded` | `ExecutionRecord` | 发送自动执行结果气泡通知 |
 | `MainViewModel.RequestEditRule` | `AutomationRule?` | 打开新增或编辑规则对话框 |
@@ -68,7 +69,7 @@ public sealed class NetworkAdapterInfo
 
 ```csharp
 public enum RuleAction { Enable, Disable }
-public enum RuleSource { Manual, Schedule, NetworkChange, Recovery }
+public enum RuleSource { Manual, Schedule, NetworkChange, Recovery, Notification }
 
 public sealed record AutomationRule(
     Guid Id,

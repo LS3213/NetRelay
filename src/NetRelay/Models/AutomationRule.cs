@@ -13,7 +13,8 @@ public enum RuleSource
     Manual,
     Schedule,
     NetworkChange,
-    Recovery
+    Recovery,
+    Notification
 }
 
 public sealed record AutomationRule(

@@ -1,5 +1,7 @@
 using System.IO;
 using System.Net.NetworkInformation;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using NetRelay.Models;
@@ -8,13 +10,23 @@ namespace NetRelay.Services;
 
 public sealed class PreNotificationEventArgs : EventArgs
 {
+    public Guid NotificationActionId { get; }
+    public string NotificationActionToken { get; }
     public AutomationRule Rule { get; }
     public PreNotification Notification { get; }
     public DateTimeOffset TargetTime { get; }
     public int MinutesRemaining { get; }
 
-    public PreNotificationEventArgs(AutomationRule rule, PreNotification notification, DateTimeOffset targetTime, int minutesRemaining)
+    public PreNotificationEventArgs(
+        Guid notificationActionId,
+        string notificationActionToken,
+        AutomationRule rule,
+        PreNotification notification,
+        DateTimeOffset targetTime,
+        int minutesRemaining)
     {
+        NotificationActionId = notificationActionId;
+        NotificationActionToken = notificationActionToken;
         Rule = rule;
         Notification = notification;
         TargetTime = targetTime;
@@ -22,8 +34,18 @@ public sealed class PreNotificationEventArgs : EventArgs
     }
 }
 
+public sealed record PreNotificationActionResult(bool Applied, string ReasonCode, Guid? RuleId = null);
+
 public sealed class RuleSchedulerService : IDisposable
 {
+    private sealed record PendingPreNotificationAction(
+        Guid Id,
+        string Token,
+        Guid RuleId,
+        PreNotification Notification,
+        DateTimeOffset TargetTime,
+        DateTimeOffset ExpiresAt);
+
     private readonly RuleEngine _ruleEngine;
     private readonly ConfigurationService _configService;
     private readonly ConnectivityService _connectivityService;
@@ -50,6 +72,9 @@ public sealed class RuleSchedulerService : IDisposable
 
     // In-memory temporary delays for rules today. Key: RuleId.
     private readonly Dictionary<Guid, TimeSpan> _tempRuleDelays = new();
+
+    // One-shot action tickets for interactive notifications. Key: notification action ID.
+    private readonly Dictionary<Guid, PendingPreNotificationAction> _pendingPreNotificationActions = new();
 
     // Debounce cancel tokens for network change rules. Key: Rule ID.
     private readonly Dictionary<Guid, CancellationTokenSource> _networkChangeDebouncers = new();
@@ -168,6 +193,7 @@ public sealed class RuleSchedulerService : IDisposable
                 cts.Dispose();
             }
             _networkChangeDebouncers.Clear();
+            _pendingPreNotificationActions.Clear();
         }
     }
 
@@ -198,6 +224,14 @@ public sealed class RuleSchedulerService : IDisposable
                 RemoveDebouncer(key);
             }
 
+            foreach (var actionId in _pendingPreNotificationActions
+                         .Where(pair => !ruleIds.Contains(pair.Value.RuleId))
+                         .Select(pair => pair.Key)
+                         .ToArray())
+            {
+                _pendingPreNotificationActions.Remove(actionId);
+            }
+
             if (resetRuleId.HasValue && ruleIds.Contains(resetRuleId.Value))
             {
                 ResetRuntimeState(resetRuleId.Value);
@@ -224,6 +258,7 @@ public sealed class RuleSchedulerService : IDisposable
 
         _oncePreNotificationsTriggered.RemoveWhere(key => key.RuleId == ruleId);
         RemoveDebouncer(ruleId);
+        InvalidatePendingPreNotificationActions(ruleId);
     }
 
     private void RemoveDebouncer(Guid ruleId)
@@ -240,6 +275,7 @@ public sealed class RuleSchedulerService : IDisposable
         lock (_lock)
         {
             _tempRuleDelays[ruleId] = delay;
+            InvalidatePendingPreNotificationActions(ruleId);
         }
     }
 
@@ -247,57 +283,171 @@ public sealed class RuleSchedulerService : IDisposable
     {
         lock (_lock)
         {
-            var now = DateTimeOffset.Now;
-            var rule = _configService.Current.Rules.FirstOrDefault(r => r.Id == ruleId);
-            if (rule != null)
+            SkipRuleOccurrenceCore(ruleId, RuleSource.Schedule, "MANUAL_SKIP");
+        }
+    }
+
+    public PreNotificationActionResult TryApplyPreNotificationAction(
+        Guid notificationActionId,
+        string token,
+        PreNotificationAction action,
+        DateTimeOffset? evaluatedAt = null)
+    {
+        lock (_lock)
+        {
+            var now = evaluatedAt ?? DateTimeOffset.Now;
+            if (!_pendingPreNotificationActions.TryGetValue(notificationActionId, out var pending))
             {
-                if (rule.Trigger is RuleTrigger.Once)
-                {
-                    _onceTriggerRan.Add(ruleId);
-                    var index = _configService.Current.Rules.FindIndex(r => r.Id == ruleId);
-                    if (index >= 0)
-                    {
-                        _configService.Current.Rules[index] = _configService.Current.Rules[index] with { Enabled = false };
-                        _configService.Save();
-                    }
+                return new PreNotificationActionResult(false, "NOTIFICATION_NOT_FOUND");
+            }
 
-                    var record = new ExecutionRecord(
-                        Guid.NewGuid(),
-                        ruleId,
-                        RuleSource.Schedule,
-                        rule.TargetAdapterId,
-                        rule.Action,
-                        now,
-                        now,
-                        Outcome: "SKIPPED",
-                        ReasonCode: "MANUAL_SKIP",
-                        WindowsErrorCode: null
-                    );
-                    _ = _ruleEngine.WriteExecutionRecordAsync(record);
-                    RuleExecuted?.Invoke(this, record);
-                }
-                else
-                {
-                    _timeTriggerLastRan[ruleId] = now.Date;
-                    _tempRuleDelays.Remove(ruleId);
+            if (!TokensEqual(pending.Token, token))
+            {
+                return new PreNotificationActionResult(false, "NOTIFICATION_TOKEN_INVALID");
+            }
 
-                    var record = new ExecutionRecord(
-                        Guid.NewGuid(),
-                        ruleId,
-                        RuleSource.Schedule,
-                        rule.TargetAdapterId,
-                        rule.Action,
-                        now,
-                        now,
-                        Outcome: "SKIPPED",
-                        ReasonCode: "MANUAL_SKIP",
-                        WindowsErrorCode: null
-                    );
-                    _ = _ruleEngine.WriteExecutionRecordAsync(record);
-                    RuleExecuted?.Invoke(this, record);
+            var rule = _configService.Current.Rules.FirstOrDefault(candidate => candidate.Id == pending.RuleId);
+            if (rule is null || !rule.Enabled || !rule.PreNotifications.Contains(pending.Notification))
+            {
+                _pendingPreNotificationActions.Remove(notificationActionId);
+                return new PreNotificationActionResult(false, "NOTIFICATION_RULE_INVALID", pending.RuleId);
+            }
+
+            if (now >= pending.TargetTime || now > pending.ExpiresAt)
+            {
+                _pendingPreNotificationActions.Remove(notificationActionId);
+                return new PreNotificationActionResult(false, "NOTIFICATION_EXPIRED", pending.RuleId);
+            }
+
+            if (action == PreNotificationAction.Delay)
+            {
+                if (!pending.Notification.AllowDelay || pending.Notification.DelayMinutes <= 0)
+                {
+                    return new PreNotificationActionResult(false, "NOTIFICATION_ACTION_NOT_ALLOWED", pending.RuleId);
                 }
+
+                DelayRule(pending.RuleId, TimeSpan.FromMinutes(pending.Notification.DelayMinutes));
+                WriteNotificationActionRecord(rule, "NOTIFICATION_DELAYED");
+                return new PreNotificationActionResult(true, "NOTIFICATION_DELAYED", pending.RuleId);
+            }
+
+            if (!pending.Notification.AllowCancelOccurrence)
+            {
+                return new PreNotificationActionResult(false, "NOTIFICATION_ACTION_NOT_ALLOWED", pending.RuleId);
+            }
+
+            SkipRuleOccurrenceCore(pending.RuleId, RuleSource.Notification, "NOTIFICATION_CANCELLED");
+            return new PreNotificationActionResult(true, "NOTIFICATION_CANCELLED", pending.RuleId);
+        }
+    }
+
+    private void SkipRuleOccurrenceCore(Guid ruleId, RuleSource source, string reasonCode)
+    {
+        var now = DateTimeOffset.Now;
+        var rule = _configService.Current.Rules.FirstOrDefault(candidate => candidate.Id == ruleId);
+        if (rule is null)
+        {
+            return;
+        }
+
+        if (rule.Trigger is RuleTrigger.Once)
+        {
+            _onceTriggerRan.Add(ruleId);
+            var index = _configService.Current.Rules.FindIndex(candidate => candidate.Id == ruleId);
+            if (index >= 0)
+            {
+                _configService.Current.Rules[index] = _configService.Current.Rules[index] with { Enabled = false };
+                _configService.Save();
             }
         }
+        else
+        {
+            _timeTriggerLastRan[ruleId] = now.Date;
+            _tempRuleDelays.Remove(ruleId);
+        }
+
+        var record = new ExecutionRecord(
+            Guid.NewGuid(),
+            ruleId,
+            source,
+            rule.TargetAdapterId,
+            rule.Action,
+            now,
+            now,
+            Outcome: "SKIPPED",
+            ReasonCode: reasonCode,
+            WindowsErrorCode: null);
+        _ = _ruleEngine.WriteExecutionRecordAsync(record);
+        RuleExecuted?.Invoke(this, record);
+        InvalidatePendingPreNotificationActions(ruleId);
+    }
+
+    private void WriteNotificationActionRecord(AutomationRule rule, string reasonCode)
+    {
+        var now = DateTimeOffset.Now;
+        var record = new ExecutionRecord(
+            Guid.NewGuid(),
+            rule.Id,
+            RuleSource.Notification,
+            rule.TargetAdapterId,
+            rule.Action,
+            now,
+            now,
+            Outcome: "SKIPPED",
+            ReasonCode: reasonCode,
+            WindowsErrorCode: null);
+        _ = _ruleEngine.WriteExecutionRecordAsync(record);
+        RuleExecuted?.Invoke(this, record);
+    }
+
+    private void TriggerPreNotification(
+        AutomationRule rule,
+        PreNotification notification,
+        DateTimeOffset targetTime,
+        int minutesRemaining)
+    {
+        var actionId = Guid.NewGuid();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        _pendingPreNotificationActions[actionId] = new PendingPreNotificationAction(
+            actionId,
+            token,
+            rule.Id,
+            notification,
+            targetTime,
+            targetTime.AddMinutes(TriggerToleranceMinutes));
+
+        var args = new PreNotificationEventArgs(actionId, token, rule, notification, targetTime, minutesRemaining);
+        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, args));
+    }
+
+    private void InvalidatePendingPreNotificationActions(Guid ruleId)
+    {
+        foreach (var actionId in _pendingPreNotificationActions
+                     .Where(pair => pair.Value.RuleId == ruleId)
+                     .Select(pair => pair.Key)
+                     .ToArray())
+        {
+            _pendingPreNotificationActions.Remove(actionId);
+        }
+    }
+
+    private void RemoveExpiredPreNotificationActions(DateTimeOffset now)
+    {
+        foreach (var actionId in _pendingPreNotificationActions
+                     .Where(pair => now > pair.Value.ExpiresAt)
+                     .Select(pair => pair.Key)
+                     .ToArray())
+        {
+            _pendingPreNotificationActions.Remove(actionId);
+        }
+    }
+
+    private static bool TokensEqual(string expected, string supplied)
+    {
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        var suppliedBytes = Encoding.UTF8.GetBytes(supplied);
+        return expectedBytes.Length == suppliedBytes.Length
+            && CryptographicOperations.FixedTimeEquals(expectedBytes, suppliedBytes);
     }
 
     private void UpdateAdapterStatuses()
@@ -334,6 +484,7 @@ public sealed class RuleSchedulerService : IDisposable
             {
                 var rules = _configService.Current.Rules.ToList();
                 var now = DateTimeOffset.Now;
+                RemoveExpiredPreNotificationActions(now);
 
                 foreach (var rule in rules)
                 {
@@ -362,7 +513,7 @@ public sealed class RuleSchedulerService : IDisposable
                                         if (!_oncePreNotificationsTriggered.Contains(key))
                                         {
                                             _oncePreNotificationsTriggered.Add(key);
-                                            _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                            TriggerPreNotification(rule, preNotify, adjustedTarget, preNotify.MinutesBefore);
                                         }
                                     }
                                 }
@@ -438,7 +589,7 @@ public sealed class RuleSchedulerService : IDisposable
                                         if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
                                         {
                                             _preNotificationLastTriggeredDate[key] = now.Date;
-                                            _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                            TriggerPreNotification(rule, preNotify, adjustedTarget, preNotify.MinutesBefore);
                                         }
                                     }
                                 }
@@ -505,7 +656,7 @@ public sealed class RuleSchedulerService : IDisposable
                                         if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
                                         {
                                             _preNotificationLastTriggeredDate[key] = now.Date;
-                                            _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                            TriggerPreNotification(rule, preNotify, adjustedTarget, preNotify.MinutesBefore);
                                         }
                                     }
                                 }

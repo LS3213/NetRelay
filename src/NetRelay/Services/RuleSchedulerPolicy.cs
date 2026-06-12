@@ -8,11 +8,13 @@ public static class RuleSchedulerPolicy
         ExecutionRecord record,
         IReadOnlySet<Guid> scheduledTimeRuleIds)
     {
-        return record is
+        if (record.RuleId is not Guid ruleId || !scheduledTimeRuleIds.Contains(ruleId))
         {
-            Source: RuleSource.Schedule,
-            RuleId: Guid ruleId
+            return false;
         }
-        && scheduledTimeRuleIds.Contains(ruleId);
+
+        return record.Source == RuleSource.Schedule
+            || (record.Source == RuleSource.Notification
+                && record.ReasonCode == "NOTIFICATION_CANCELLED");
     }
 }

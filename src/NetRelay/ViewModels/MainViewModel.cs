@@ -38,6 +38,7 @@ public sealed class MainViewModel : ObservableObject
     // Pre-Notification Countdown Overlay
     private AutomationRule? _pendingRule;
     private PreNotification? _pendingNotification;
+    private PreNotificationEventArgs? _pendingNotificationEvent;
     private DateTimeOffset _pendingCountdownTime;
     private int _pendingCountdownSeconds;
     private string _pendingCountdownLabel = string.Empty;
@@ -271,6 +272,7 @@ public sealed class MainViewModel : ObservableObject
         {
             _pendingRule = null;
             _pendingNotification = null;
+            _pendingNotificationEvent = null;
             IsPendingOverlayVisible = false;
         }
     }
@@ -524,6 +526,7 @@ public sealed class MainViewModel : ObservableObject
     {
         _pendingRule = e.Rule;
         _pendingNotification = e.Notification;
+        _pendingNotificationEvent = e;
         _pendingCountdownTime = e.TargetTime;
         _pendingCountdownSeconds = (int)Math.Max(0, (e.TargetTime - DateTimeOffset.Now).TotalSeconds);
         PendingCountdownLabel = $"将在 {_pendingCountdownSeconds} 秒后执行";
@@ -550,6 +553,7 @@ public sealed class MainViewModel : ObservableObject
             IsPendingOverlayVisible = false;
             _pendingRule = null;
             _pendingNotification = null;
+            _pendingNotificationEvent = null;
         }
     }
 
@@ -563,6 +567,7 @@ public sealed class MainViewModel : ObservableObject
         var ruleToRun = _pendingRule;
         _pendingRule = null;
         _pendingNotification = null;
+        _pendingNotificationEvent = null;
 
         // Skip in scheduler so it doesn't double run when scheduled time arrives
         _ruleScheduler?.SkipRuleOccurrence(ruleToRun.Id);
@@ -573,38 +578,47 @@ public sealed class MainViewModel : ObservableObject
 
     private void DelayPending()
     {
-        if (_pendingRule == null || _pendingNotification == null) return;
+        if (_pendingRule == null || _pendingNotification == null || _pendingNotificationEvent == null) return;
 
         _countdownTimer.Stop();
         IsPendingOverlayVisible = false;
 
-        _ruleScheduler?.DelayRule(_pendingRule.Id, TimeSpan.FromMinutes(_pendingNotification.DelayMinutes));
+        _ruleScheduler?.TryApplyPreNotificationAction(
+            _pendingNotificationEvent.NotificationActionId,
+            _pendingNotificationEvent.NotificationActionToken,
+            PreNotificationAction.Delay);
 
         _pendingRule = null;
         _pendingNotification = null;
+        _pendingNotificationEvent = null;
     }
 
     private void CancelPending()
     {
-        if (_pendingRule == null) return;
+        if (_pendingRule == null || _pendingNotificationEvent == null) return;
 
         _countdownTimer.Stop();
         IsPendingOverlayVisible = false;
 
-        _ruleScheduler?.SkipRuleOccurrence(_pendingRule.Id);
+        _ruleScheduler?.TryApplyPreNotificationAction(
+            _pendingNotificationEvent.NotificationActionId,
+            _pendingNotificationEvent.NotificationActionToken,
+            PreNotificationAction.Cancel);
 
         _pendingRule = null;
         _pendingNotification = null;
+        _pendingNotificationEvent = null;
     }
 
-    public void ClearPendingNotificationIfMatches(Guid ruleId)
+    public void ClearPendingNotificationIfMatches(Guid notificationActionId)
     {
-        if (_pendingRule != null && _pendingRule.Id == ruleId)
+        if (_pendingNotificationEvent?.NotificationActionId == notificationActionId)
         {
             _countdownTimer.Stop();
             IsPendingOverlayVisible = false;
             _pendingRule = null;
             _pendingNotification = null;
+            _pendingNotificationEvent = null;
         }
     }
 

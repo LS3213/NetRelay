@@ -40,6 +40,8 @@ public sealed class ExecutionRecordViewModel
         "CONDITION_NOT_MET" => "规则附加条件不满足，已跳过执行",
         "TRIGGER_EXPIRED" => "触发已过期 (迟到太久被忽略)",
         "MANUAL_SKIP" => "用户手动取消了本次执行",
+        "NOTIFICATION_DELAYED" => "用户通过通知延迟了本次执行",
+        "NOTIFICATION_CANCELLED" => "用户通过通知取消了本次执行",
         _ => $"原因码: {Record.ReasonCode}"
     };
 
@@ -51,6 +53,7 @@ public sealed class ExecutionRecordViewModel
         RuleSource.Schedule => "定时计划触发",
         RuleSource.NetworkChange => "网络离线触发",
         RuleSource.Recovery => "延时自动恢复",
+        RuleSource.Notification => "通知快捷操作",
         _ => Record.Source.ToString()
     };
 

@@ -23,6 +23,7 @@ var tests = new (string Name, Action Test)[]
     ("Offline transition requires an online baseline", OfflineTransitionRequiresAnOnlineBaseline),
     ("Post-switch validation requires a verified backup", PostSwitchValidationRequiresAVerifiedBackup),
     ("Manual records do not suppress scheduled rules", ManualRecordsDoNotSuppressScheduledRules),
+    ("Notification cancellation suppresses only its scheduled occurrence", NotificationCancellationSuppressesOnlyItsScheduledOccurrence),
     ("Disabled native status is not reported as enabled", DisabledNativeStatusIsNotReportedAsEnabled),
     ("Native inventory retains transiently missing adapters", NativeInventoryRetainsTransientlyMissingAdapters),
     ("Native inventory remembers expected disabled state", NativeInventoryRemembersExpectedDisabledState),
@@ -36,6 +37,9 @@ var tests = new (string Name, Action Test)[]
     ("Rule engine writes test logs to isolated directory", RuleEngineWritesTestLogsToIsolatedDirectory),
     ("Adapter UI statuses distinguish link and internet", AdapterUiStatusesDistinguishLinkAndInternet),
     ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance),
+    ("Notification protocol activation is strict", NotificationProtocolActivationIsStrict),
+    ("Notification actions require a valid one-shot ticket", NotificationActionsRequireValidOneShotTicket),
+    ("Rich toast respects notification action permissions", RichToastRespectsNotificationActionPermissions),
     ("Scheduler triggers automatic recovery on time elapsed", SchedulerTriggersAutomaticRecoveryOnTimeElapsed),
     ("Scheduler skips expired automatic recovery", SchedulerSkipsExpiredAutomaticRecovery)
 };
@@ -276,6 +280,32 @@ static void ManualRecordsDoNotSuppressScheduledRules()
 
     record = CreateRecord(ruleId, RuleSource.Schedule);
     Assert(RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(record, new HashSet<Guid> { ruleId }));
+}
+
+static void NotificationCancellationSuppressesOnlyItsScheduledOccurrence()
+{
+    var ruleId = Guid.NewGuid();
+    var scheduledRuleIds = new HashSet<Guid> { ruleId };
+    var now = DateTimeOffset.Now;
+    var cancelled = new ExecutionRecord(
+        Guid.NewGuid(),
+        ruleId,
+        RuleSource.Notification,
+        Guid.NewGuid().ToString(),
+        RuleAction.Disable,
+        now,
+        now,
+        "SKIPPED",
+        "NOTIFICATION_CANCELLED",
+        null);
+    var delayed = cancelled with
+    {
+        Id = Guid.NewGuid(),
+        ReasonCode = "NOTIFICATION_DELAYED"
+    };
+
+    Assert(RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(cancelled, scheduledRuleIds));
+    Assert(!RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(delayed, scheduledRuleIds));
 }
 
 static void DisabledNativeStatusIsNotReportedAsEnabled()
@@ -522,6 +552,204 @@ static void SingleInstanceServiceSignalsPrimaryInstance()
 
     Assert(!secondaryAcquired);
     Assert(activated.Wait(TimeSpan.FromSeconds(2)));
+}
+
+static void NotificationProtocolActivationIsStrict()
+{
+    var notificationId = Guid.NewGuid();
+    const string token = "A1B2C3D4";
+    var uri = NotificationProtocolActivation.BuildUri(notificationId, token, PreNotificationAction.Delay);
+
+    Assert(NotificationProtocolActivation.TryParse(uri, out var activation));
+    Assert(activation is not null);
+    Assert(activation!.NotificationId == notificationId);
+    Assert(activation.Token == token);
+    Assert(activation.Action == PreNotificationAction.Delay);
+
+    Assert(!NotificationProtocolActivation.TryParse(
+        $"netrelay://notification?action=unknown&notificationId={notificationId:D}&token={token}",
+        out _));
+    Assert(!NotificationProtocolActivation.TryParse(
+        $"netrelay:action=delay&ruleId={notificationId:D}",
+        out _));
+    Assert(!NotificationProtocolActivation.TryParse(
+        $"https://notification?action=delay&notificationId={notificationId:D}&token={token}",
+        out _));
+    Assert(!NotificationProtocolActivation.TryParse(
+        $"netrelay://notification?action=delay&action=cancel&notificationId={notificationId:D}&token={token}",
+        out _));
+}
+
+static void NotificationActionsRequireValidOneShotTicket()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Notification-Ticket-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(directory);
+        var notification = new PreNotification(
+            Guid.NewGuid(),
+            MinutesBefore: 5,
+            AllowDelay: true,
+            DelayMinutes: 7,
+            AllowCancelOccurrence: false);
+        var rule = new AutomationRule(
+            Guid.NewGuid(),
+            "Notification action rule",
+            Enabled: true,
+            Guid.NewGuid().ToString("B"),
+            RuleAction.Disable,
+            new RuleTrigger.Daily(new TimeOnly(23, 59)),
+            Conditions: [],
+            PreNotifications: [notification],
+            Recovery: null,
+            RequireUsableBackup: false,
+            CooldownSeconds: 0);
+        configService.Current.Rules.Add(rule);
+
+        using var scheduler = new RuleSchedulerService(
+            new RuleEngine(
+                new NativeNetworkConnectionService(),
+                new ConnectivityService(),
+                configService,
+                Path.Combine(directory, "logs")),
+            configService,
+            new ConnectivityService());
+        var triggerMethod = typeof(RuleSchedulerService).GetMethod(
+            "TriggerPreNotification",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(triggerMethod is not null);
+
+        var actionRecords = new List<ExecutionRecord>();
+        scheduler.RuleExecuted += (_, record) => actionRecords.Add(record);
+        PreNotificationEventArgs? eventArgs = null;
+        using var triggered = new ManualResetEventSlim();
+        scheduler.PreNotificationTriggered += (_, args) =>
+        {
+            eventArgs = args;
+            triggered.Set();
+        };
+
+        var targetTime = DateTimeOffset.Now.AddMinutes(5);
+        triggerMethod!.Invoke(scheduler, new object[] { rule, notification, targetTime, 5 });
+        Assert(triggered.Wait(TimeSpan.FromSeconds(2)));
+        Assert(eventArgs is not null);
+
+        var wrongToken = scheduler.TryApplyPreNotificationAction(
+            eventArgs!.NotificationActionId,
+            "WRONG",
+            PreNotificationAction.Delay);
+        Assert(!wrongToken.Applied && wrongToken.ReasonCode == "NOTIFICATION_TOKEN_INVALID");
+
+        var forbiddenCancel = scheduler.TryApplyPreNotificationAction(
+            eventArgs.NotificationActionId,
+            eventArgs.NotificationActionToken,
+            PreNotificationAction.Cancel);
+        Assert(!forbiddenCancel.Applied && forbiddenCancel.ReasonCode == "NOTIFICATION_ACTION_NOT_ALLOWED");
+
+        var delayed = scheduler.TryApplyPreNotificationAction(
+            eventArgs.NotificationActionId,
+            eventArgs.NotificationActionToken,
+            PreNotificationAction.Delay);
+        Assert(delayed.Applied && delayed.ReasonCode == "NOTIFICATION_DELAYED");
+
+        var delays = GetPrivateField<Dictionary<Guid, TimeSpan>>(scheduler, "_tempRuleDelays");
+        Assert(delays.TryGetValue(rule.Id, out var delay) && delay == TimeSpan.FromMinutes(7));
+        Assert(actionRecords.Any(record =>
+            record.RuleId == rule.Id
+            && record.Source == RuleSource.Notification
+            && record.ReasonCode == "NOTIFICATION_DELAYED"));
+
+        var duplicate = scheduler.TryApplyPreNotificationAction(
+            eventArgs.NotificationActionId,
+            eventArgs.NotificationActionToken,
+            PreNotificationAction.Delay);
+        Assert(!duplicate.Applied && duplicate.ReasonCode == "NOTIFICATION_NOT_FOUND");
+
+        triggered.Reset();
+        eventArgs = null;
+        triggerMethod.Invoke(scheduler, new object[] { rule, notification, targetTime, 5 });
+        Assert(triggered.Wait(TimeSpan.FromSeconds(2)));
+        var expired = scheduler.TryApplyPreNotificationAction(
+            eventArgs!.NotificationActionId,
+            eventArgs.NotificationActionToken,
+            PreNotificationAction.Delay,
+            targetTime);
+        Assert(!expired.Applied && expired.ReasonCode == "NOTIFICATION_EXPIRED");
+
+        var cancelNotification = notification with
+        {
+            Id = Guid.NewGuid(),
+            AllowDelay = false,
+            AllowCancelOccurrence = true
+        };
+        configService.Current.Rules[0] = rule with { PreNotifications = [cancelNotification] };
+        triggered.Reset();
+        eventArgs = null;
+        triggerMethod.Invoke(scheduler, new object[] { configService.Current.Rules[0], cancelNotification, targetTime, 5 });
+        Assert(triggered.Wait(TimeSpan.FromSeconds(2)));
+        var cancelled = scheduler.TryApplyPreNotificationAction(
+            eventArgs!.NotificationActionId,
+            eventArgs.NotificationActionToken,
+            PreNotificationAction.Cancel);
+        Assert(cancelled.Applied && cancelled.ReasonCode == "NOTIFICATION_CANCELLED");
+        Assert(actionRecords.Any(record =>
+            record.RuleId == rule.Id
+            && record.Source == RuleSource.Notification
+            && record.ReasonCode == "NOTIFICATION_CANCELLED"));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void RichToastRespectsNotificationActionPermissions()
+{
+    var buildMethod = typeof(RichToastService).GetMethod(
+        "BuildPreNotificationXml",
+        BindingFlags.Static | BindingFlags.NonPublic);
+    Assert(buildMethod is not null);
+
+    var rule = new AutomationRule(
+        Guid.NewGuid(),
+        "Toast permission rule",
+        Enabled: true,
+        Guid.NewGuid().ToString("B"),
+        RuleAction.Disable,
+        new RuleTrigger.Daily(new TimeOnly(23, 59)),
+        Conditions: [],
+        PreNotifications: [],
+        Recovery: null,
+        RequireUsableBackup: false,
+        CooldownSeconds: 0);
+
+    var cancelOnly = new PreNotification(Guid.NewGuid(), 5, false, 7, true);
+    var cancelOnlyArgs = new PreNotificationEventArgs(
+        Guid.NewGuid(),
+        "TOKEN",
+        rule,
+        cancelOnly,
+        DateTimeOffset.Now.AddMinutes(5),
+        5);
+    var cancelOnlyXml = (string)buildMethod!.Invoke(null, new object[] { cancelOnlyArgs, "禁用" })!;
+    Assert(!cancelOnlyXml.Contains("延迟", StringComparison.Ordinal));
+    Assert(cancelOnlyXml.Contains("取消本次", StringComparison.Ordinal));
+
+    var both = new PreNotification(Guid.NewGuid(), 5, true, 7, true);
+    var bothArgs = new PreNotificationEventArgs(
+        Guid.NewGuid(),
+        "TOKEN",
+        rule,
+        both,
+        DateTimeOffset.Now.AddMinutes(5),
+        5);
+    var bothXml = (string)buildMethod.Invoke(null, new object[] { bothArgs, "禁用" })!;
+    Assert(bothXml.Contains("延迟 7 分钟", StringComparison.Ordinal));
+    Assert(bothXml.Contains("notificationId=", StringComparison.Ordinal));
+    Assert(bothXml.Contains("token=TOKEN", StringComparison.Ordinal));
 }
 
 static ExecutionRecord CreateRecord(Guid ruleId, RuleSource source)

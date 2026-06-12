@@ -22,7 +22,9 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        _startMinimized = Environment.GetCommandLineArgs().Contains("--startup", StringComparer.OrdinalIgnoreCase);
+        var commandLineArgs = Environment.GetCommandLineArgs();
+        _startMinimized = commandLineArgs.Contains("--startup", StringComparer.OrdinalIgnoreCase)
+            || commandLineArgs.Contains("--protocol-launch", StringComparer.OrdinalIgnoreCase);
         if (_startMinimized)
         {
             Opacity = 0;
@@ -34,7 +36,7 @@ public partial class MainWindow : Window
         var configService = new ConfigurationService();
         var connectivityService = new ConnectivityService();
         _connectionService = new NativeNetworkConnectionService();
-        
+
         _ruleEngine = new RuleEngine(_connectionService, connectivityService, configService);
         _ruleScheduler = new RuleSchedulerService(_ruleEngine, configService, connectivityService);
         _ruleScheduler.Start();
@@ -137,7 +139,7 @@ public partial class MainWindow : Window
     private void InitializeNotifyIcon()
     {
         _notifyIcon = new System.Windows.Forms.NotifyIcon();
-        
+
         try
         {
             var resourceUri = new Uri("pack://application:,,,/Assets/NetRelay.ico");
@@ -245,7 +247,7 @@ public partial class MainWindow : Window
 
             // Trigger right corner Windows native Interactive Toast
             var actionName = e.Rule.Action == RuleAction.Enable ? "启用" : "禁用";
-            RichToastService.ShowPreNotification(e.Rule.Name, actionName, e.MinutesRemaining, e.Rule.Id.ToString());
+            RichToastService.ShowPreNotification(e, actionName);
         });
     }
 
@@ -302,7 +304,7 @@ public partial class MainWindow : Window
         {
             var result = dialog.ResultRule;
             var currentRules = _viewModel.ConfigService.Current.Rules;
-            
+
             if (rule == null)
             {
                 currentRules.Add(result);
@@ -479,7 +481,7 @@ public partial class MainWindow : Window
             {
                 config.CloseAction = dialog.CloseActionResult;
                 config.DoNotRemindClose = dialog.DoNotRemindMe;
-                
+
                 _viewModel.ConfigService.Save();
 
                 if (dialog.CloseActionResult == "HideToTray")
@@ -502,79 +504,42 @@ public partial class MainWindow : Window
 
     public void HandleCommandLineArgs(string[] args)
     {
-        RestoreWindow();
-
         for (int i = 0; i < args.Length; i++)
         {
             if (string.Equals(args[i], "--protocol-launch", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
-                var url = args[i + 1];
-                HandleProtocolAction(url);
-                break;
+                HandleProtocolAction(args[i + 1]);
+                return;
             }
         }
+
+        if (args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        RestoreWindow();
     }
 
     public void HandleProtocolAction(string rawUrl)
     {
         try
         {
-            var cleanUrl = rawUrl;
-            if (cleanUrl.StartsWith("netrelay:", StringComparison.OrdinalIgnoreCase))
-            {
-                cleanUrl = cleanUrl.Substring("netrelay:".Length);
-            }
-            if (cleanUrl.StartsWith("//", StringComparison.Ordinal))
-            {
-                cleanUrl = cleanUrl.Substring(2);
-            }
-
-            var queryIndex = cleanUrl.IndexOf('?');
-            var queryString = queryIndex >= 0 ? cleanUrl.Substring(queryIndex + 1) : cleanUrl;
-
-            var parts = queryString.Split(new[] { '&', '?' }, StringSplitOptions.RemoveEmptyEntries);
-            string? action = null;
-            string? ruleIdStr = null;
-
-            foreach (var part in parts)
-            {
-                var kv = part.Split('=');
-                if (kv.Length == 2)
-                {
-                    var key = kv[0].Trim();
-                    var value = kv[1].Trim();
-                    if (string.Equals(key, "action", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(key, "type", StringComparison.OrdinalIgnoreCase))
-                    {
-                        action = value;
-                    }
-                    else if (string.Equals(key, "ruleId", StringComparison.OrdinalIgnoreCase))
-                    {
-                        ruleIdStr = value;
-                    }
-                }
-            }
-
-            if (string.IsNullOrEmpty(action) || string.IsNullOrEmpty(ruleIdStr))
+            if (!NotificationProtocolActivation.TryParse(rawUrl, out var activation) || activation is null)
             {
                 return;
             }
 
-            if (!Guid.TryParse(ruleIdStr, out var ruleId))
+            var result = _ruleScheduler.TryApplyPreNotificationAction(
+                activation.NotificationId,
+                activation.Token,
+                activation.Action);
+            if (!result.Applied)
             {
                 return;
             }
 
-            if (string.Equals(action, "delay", StringComparison.OrdinalIgnoreCase))
-            {
-                _ruleScheduler.DelayRule(ruleId, TimeSpan.FromMinutes(10));
-                _viewModel.ClearPendingNotificationIfMatches(ruleId);
-            }
-            else if (string.Equals(action, "skip", StringComparison.OrdinalIgnoreCase))
-            {
-                _ruleScheduler.SkipRuleOccurrence(ruleId);
-                _viewModel.ClearPendingNotificationIfMatches(ruleId);
-            }
+            _viewModel.ClearPendingNotificationIfMatches(activation.NotificationId);
         }
         catch
         {

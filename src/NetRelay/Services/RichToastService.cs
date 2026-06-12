@@ -51,31 +51,11 @@ public static class RichToastService
         }
     }
 
-    public static void ShowPreNotification(string ruleName, string actionName, int delayMinutes, string ruleId)
+    public static void ShowPreNotification(PreNotificationEventArgs eventArgs, string actionName)
     {
         try
         {
-            var title = $"NetRelay 自动化提醒";
-            var content = $"规则 “{ruleName}” 将在 {delayMinutes} 分钟后执行：{actionName}网卡。请确认是否延迟或取消。";
-
-            // Prepare protocol query arguments
-            var delayArgs = $"netrelay:action=delay&ruleId={ruleId}";
-            var skipArgs = $"netrelay:action=skip&ruleId={ruleId}";
-
-            var xml = $@"
-<toast scenario=""reminder"">
-  <visual>
-    <binding template=""ToastGeneric"">
-      <text>{SecurityElementEscape(title)}</text>
-      <text>{SecurityElementEscape(content)}</text>
-    </binding>
-  </visual>
-  <actions>
-    <action content=""延迟 10 分钟"" arguments=""{SecurityElementEscape(delayArgs)}"" activationType=""protocol""/>
-    <action content=""取消本次"" arguments=""{SecurityElementEscape(skipArgs)}"" activationType=""protocol""/>
-  </actions>
-</toast>";
-
+            var xml = BuildPreNotificationXml(eventArgs, actionName);
             var xmlDoc = new XmlDocument();
             xmlDoc.LoadXml(xml);
 
@@ -86,6 +66,46 @@ public static class RichToastService
         {
             // Suppress fallback exceptions
         }
+    }
+
+    private static string BuildPreNotificationXml(PreNotificationEventArgs eventArgs, string actionName)
+    {
+        var title = "NetRelay 自动化提醒";
+        var content = $"规则 “{eventArgs.Rule.Name}” 将在 {eventArgs.MinutesRemaining} 分钟后执行：{actionName}网卡。";
+        var actions = new List<string>();
+
+        if (eventArgs.Notification.AllowDelay && eventArgs.Notification.DelayMinutes > 0)
+        {
+            var delayArgs = NotificationProtocolActivation.BuildUri(
+                eventArgs.NotificationActionId,
+                eventArgs.NotificationActionToken,
+                PreNotificationAction.Delay);
+            actions.Add($"""<action content="延迟 {eventArgs.Notification.DelayMinutes} 分钟" arguments="{SecurityElementEscape(delayArgs)}" activationType="protocol"/>""");
+        }
+
+        if (eventArgs.Notification.AllowCancelOccurrence)
+        {
+            var cancelArgs = NotificationProtocolActivation.BuildUri(
+                eventArgs.NotificationActionId,
+                eventArgs.NotificationActionToken,
+                PreNotificationAction.Cancel);
+            actions.Add($"""<action content="取消本次" arguments="{SecurityElementEscape(cancelArgs)}" activationType="protocol"/>""");
+        }
+
+        var actionsXml = actions.Count > 0
+            ? $"<actions>{string.Join(string.Empty, actions)}</actions>"
+            : string.Empty;
+
+        return $@"
+<toast scenario=""reminder"">
+  <visual>
+    <binding template=""ToastGeneric"">
+      <text>{SecurityElementEscape(title)}</text>
+      <text>{SecurityElementEscape(content)}</text>
+    </binding>
+  </visual>
+  {actionsXml}
+</toast>";
     }
 
     private static string SecurityElementEscape(string text)
