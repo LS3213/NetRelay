@@ -13,7 +13,7 @@
 | 项目 | 结果 |
 | --- | --- |
 | Release 解决方案构建 | 通过，0 警告、0 错误 |
-| Release framework-dependent 发布 | 待第五阶段从当前 HEAD 重新生成 |
+| Release framework-dependent 发布 | 通过，统一输出到 `artifacts/publish/win-x64/` |
 | 仓库回归测试 | 35 项通过 |
 | Markdown 相对链接 | 通过 |
 | Git 差异空白检查 | 通过 |
@@ -56,13 +56,14 @@
 - `RuleEngine` 的 `Schedule` 禁用与 `Recovery` 恢复路径均返回成功，恢复不受原规则冷却时间阻止。
 - 使用临时配置创建的一次性规则已由真实 `RuleSchedulerService` Timer 触发，并在执行事件后成功恢复。
 - 测试程序使用 `finally` 保证尝试恢复，最终退出码为 `0`。
+- 2026-06-12 第五阶段重新发布后再次执行完整 VMnet1 验收，退出码仍为 `0`。
 
 ## 4. 已只读实机验证
 
-使用发布版 `NetRelay.exe --diagnose-adapters ... --quiet` 完成只读诊断：
+使用第五阶段重新生成的发布版 `NetRelay.exe --diagnose-adapters ... --quiet` 完成只读诊断：
 
 - 发布版 EXE 能在真实主机启动、生成报告并正常退出。
-- 进程架构为 x64，运行于 .NET 8。
+- 进程架构为 x64，运行于 .NET 8.0.15。
 - Windows Network Connections COM 枚举到 7 个可控制网络连接，无枚举异常。
 - `.NET NetworkInterface` 枚举到 8 个接口；额外接口为不可控制的 Loopback，差异符合预期。
 - 当前机器已安装 `.NET 8 Windows Desktop Runtime`。
@@ -71,7 +72,17 @@
 
 诊断报告包含设备识别信息，已在检查后从仓库工作区删除。
 
-## 5. 待受控实机验证
+## 5. 第五阶段发布验收
+
+- 旧 `artifacts/publish/win-x64/` 已清理，发布目录只保留当前统一发布文件和 `BUILD-INFO.txt`。
+- `BUILD-INFO.txt` 记录发布对应 Commit、构建时间、EXE/DLL SHA256、运行时标识和签名状态。
+- 发布版使用 `--startup` 启动后保持隐藏且进程响应正常。
+- 第二次使用 `--startup` 启动后立即退出，后台仍只有一个 NetRelay 实例。
+- 管理员运行上下文中成功注册 `NetRelay.App` AppUserModelId 与 `netrelay://` 协议。
+- 验收结束后已结束测试进程，无 NetRelay 进程残留。
+- Windows 通知中心真实按钮点击、通过界面正常退出和托盘菜单退出仍需用户手动确认。
+
+## 6. 待受控实机验证
 
 下列测试可能短暂断网或改变系统状态，当前未执行：
 
@@ -83,12 +94,14 @@
 | 休眠恢复 | 跨越触发时间休眠后唤醒 | 两分钟容差内补偿执行，超出容差记录过期 |
 | 开机自启 | 启用任务后注销并重新登录 | 程序无窗口闪烁地进入托盘，任务指向当前 EXE |
 | Windows 10/11 | 分别在目标系统运行 | 原生控制、通知、DPI 与托盘行为符合预期 |
+| Windows Rich Toast 点击 | 在发布版提前通知中点击延迟与取消 | 权限、延迟值和后台隐藏行为符合规则配置 |
+| 正常退出 | 分别通过关闭对话框与托盘菜单退出 | 一秒内无 NetRelay 进程残留 |
 
-## 6. 发布边界
+## 7. 发布边界
 
 - 当前发布为 framework-dependent，需要目标电脑安装 .NET 8 Desktop Runtime。
 - 当前没有安装包、代码签名、自动更新和 SmartScreen 信任积累。
 - 自动恢复任务保存在进程内存中，程序完全退出后不会继续执行。
 - 网络变化规则与时间规则仅在 NetRelay 托盘进程运行时有效。
 
-完成第 5 节剩余的受控实机测试后，本轮非 UI 功能验收即可结束。
+完成第 6 节剩余的受控实机测试后，本轮完整验收即可结束。
