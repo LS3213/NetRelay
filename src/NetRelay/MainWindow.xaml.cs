@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly NativeNetworkConnectionService _connectionService;
     private readonly RuleEngine _ruleEngine;
     private readonly RuleSchedulerService _ruleScheduler;
+    private readonly SettingsRuntimeService _settingsRuntimeService;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
     private readonly bool _startMinimized;
@@ -40,13 +41,16 @@ public partial class MainWindow : Window
         _ruleEngine = new RuleEngine(_connectionService, connectivityService, configService);
         _ruleScheduler = new RuleSchedulerService(_ruleEngine, configService, connectivityService);
         _ruleScheduler.Start();
+        var logService = new LogService();
+        _settingsRuntimeService = new SettingsRuntimeService(configService, logService, () => _ruleScheduler.Reload());
 
         _viewModel = new MainViewModel(
             new NetworkAdapterService(_connectionService),
             configService,
             connectivityService,
             _ruleEngine,
-            _ruleScheduler);
+            _ruleScheduler,
+            logService);
         DataContext = _viewModel;
 
         // Listen to events
@@ -78,7 +82,7 @@ public partial class MainWindow : Window
         UpdateTabSelection(0);
     }
 
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    private async void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsDialog(_viewModel.ConfigService.Current)
         {
@@ -86,7 +90,17 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog() == true)
         {
-            _viewModel.ConfigService.Save();
+            var result = await _settingsRuntimeService.ApplyAsync();
+            if (result.Success)
+            {
+                await _viewModel.LoadLogsAsync();
+            }
+
+            System.Windows.MessageBox.Show(
+                result.Message,
+                result.Success ? "NetRelay 设置" : "NetRelay 设置校验失败",
+                MessageBoxButton.OK,
+                result.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
     }
 

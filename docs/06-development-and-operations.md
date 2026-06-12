@@ -107,6 +107,8 @@ tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.Regre
 
 日志不得包含认证凭据、完整 HTTP 响应正文或用户可执行命令。
 
+执行日志保留期限来自 `config.json` 的 `keepDays`。程序启动时会按该值执行清理；用户保存设置后会立即再次清理，而不是固定保留 30 天。非法保留期限不会直接用于删除，而会安全回退到默认 30 天。设置页的防抖与冷却值仅用于新建规则，已有规则继续使用各自保存的参数。
+
 只读实机诊断命令：
 
 ```powershell

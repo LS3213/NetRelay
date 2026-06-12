@@ -6,6 +6,8 @@ namespace NetRelay.Services;
 
 public sealed class LogService
 {
+    public const int DefaultKeepDays = 30;
+
     private readonly string _logDirectory;
 
     public LogService()
@@ -123,8 +125,9 @@ public sealed class LogService
         });
     }
 
-    public Task RotateLogsAsync(int keepDays = 30)
+    public Task RotateLogsAsync(int keepDays = DefaultKeepDays)
     {
+        var validatedKeepDays = keepDays is >= 1 and <= 90 ? keepDays : DefaultKeepDays;
         return Task.Run(() =>
         {
             try
@@ -135,7 +138,7 @@ public sealed class LogService
                 }
 
                 var logFiles = Directory.GetFiles(_logDirectory, "execution-*.jsonl");
-                var cutoffDate = DateTime.Today.AddDays(-keepDays);
+                var cutoffDate = DateTime.Today.AddDays(-validatedKeepDays);
 
                 foreach (var file in logFiles)
                 {

@@ -18,6 +18,10 @@ var tests = new (string Name, Action Test)[]
     ("Zero probe attempts are rejected", ZeroProbeAttemptsAreRejected),
     ("Required endpoint threshold is validated", RequiredEndpointThresholdIsValidated),
     ("Invalid saved policy pauses automation", InvalidSavedPolicyPausesAutomation),
+    ("Settings apply custom log retention immediately", SettingsApplyCustomLogRetentionImmediately),
+    ("Invalid log retention falls back safely", InvalidLogRetentionFallsBackSafely),
+    ("Rule defaults apply only to new rules", RuleDefaultsApplyOnlyToNewRules),
+    ("Invalid settings do not enable automation", InvalidSettingsDoNotEnableAutomation),
     ("Recovery bypasses invalid probe policy gate", RecoveryBypassesInvalidProbePolicyGate),
     ("Recovery bypasses rule cooldown", RecoveryBypassesRuleCooldown),
     ("Offline transition requires an online baseline", OfflineTransitionRequiresAnOnlineBaseline),
@@ -232,6 +236,151 @@ static void InvalidSavedPolicyPausesAutomation()
 
         var reloaded = new ConfigurationService(directory);
         Assert(!reloaded.IsAutomationEnabled);
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void SettingsApplyCustomLogRetentionImmediately()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Settings-{Guid.NewGuid():N}");
+    var logDirectory = Path.Combine(directory, "logs");
+    try
+    {
+        Directory.CreateDirectory(logDirectory);
+        var oldLog = Path.Combine(logDirectory, $"execution-{DateTime.Today.AddDays(-8):yyyy-MM-dd}.jsonl");
+        var retainedLog = Path.Combine(logDirectory, $"execution-{DateTime.Today.AddDays(-2):yyyy-MM-dd}.jsonl");
+        File.WriteAllText(oldLog, string.Empty);
+        File.WriteAllText(retainedLog, string.Empty);
+
+        var configService = new ConfigurationService(Path.Combine(directory, "config"));
+        configService.Current.KeepDays = 3;
+        var reloadCount = 0;
+        var runtime = new SettingsRuntimeService(
+            configService,
+            new LogService(logDirectory),
+            () => reloadCount++);
+
+        var result = runtime.ApplyAsync().GetAwaiter().GetResult();
+
+        Assert(result.Success);
+        Assert(reloadCount == 1);
+        Assert(!File.Exists(oldLog));
+        Assert(File.Exists(retainedLog));
+
+        var reloaded = new ConfigurationService(Path.Combine(directory, "config"));
+        Assert(reloaded.Current.KeepDays == 3);
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void InvalidLogRetentionFallsBackSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Log-Retention-{Guid.NewGuid():N}");
+    try
+    {
+        Directory.CreateDirectory(directory);
+        var retainedLog = Path.Combine(directory, $"execution-{DateTime.Today.AddDays(-2):yyyy-MM-dd}.jsonl");
+        var expiredLog = Path.Combine(directory, $"execution-{DateTime.Today.AddDays(-40):yyyy-MM-dd}.jsonl");
+        File.WriteAllText(retainedLog, string.Empty);
+        File.WriteAllText(expiredLog, string.Empty);
+
+        new LogService(directory).RotateLogsAsync(0).GetAwaiter().GetResult();
+
+        Assert(File.Exists(retainedLog));
+        Assert(!File.Exists(expiredLog));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void RuleDefaultsApplyOnlyToNewRules()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Rule-Defaults-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(Path.Combine(directory, "config"));
+        var existingRule = new AutomationRule(
+            Guid.NewGuid(),
+            "Existing rule",
+            Enabled: true,
+            Guid.NewGuid().ToString("B"),
+            RuleAction.Disable,
+            new RuleTrigger.NetworkChange(new AdapterOfflineCondition(Guid.NewGuid().ToString("B")), 4),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: null,
+            RequireUsableBackup: false,
+            CooldownSeconds: 30);
+        configService.Current.Rules.Add(existingRule);
+        configService.Current.DebounceSeconds = 17;
+        configService.Current.CooldownMinutes = 9;
+
+        var runtime = new SettingsRuntimeService(
+            configService,
+            new LogService(Path.Combine(directory, "logs")),
+            () => { });
+        Assert(runtime.ApplyAsync().GetAwaiter().GetResult().Success);
+
+        Assert(RuleDefaultPolicy.GetDebounceSeconds(configService.Current) == 17);
+        Assert(RuleDefaultPolicy.GetCooldownSeconds(configService.Current) == 540);
+        Assert(configService.Current.Rules.Single().CooldownSeconds == 30);
+        Assert(configService.Current.Rules.Single().Trigger is RuleTrigger.NetworkChange { DebounceSeconds: 4 });
+
+        var reloaded = new ConfigurationService(Path.Combine(directory, "config"));
+        Assert(reloaded.Current.DebounceSeconds == 17);
+        Assert(reloaded.Current.CooldownMinutes == 9);
+        Assert(reloaded.Current.Rules.Single().CooldownSeconds == 30);
+        Assert(reloaded.Current.Rules.Single().Trigger is RuleTrigger.NetworkChange { DebounceSeconds: 4 });
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void InvalidSettingsDoNotEnableAutomation()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Invalid-Settings-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(Path.Combine(directory, "config"));
+        configService.Current.KeepDays = 0;
+        var reloadCount = 0;
+        var runtime = new SettingsRuntimeService(
+            configService,
+            new LogService(Path.Combine(directory, "logs")),
+            () => reloadCount++);
+
+        var result = runtime.ApplyAsync().GetAwaiter().GetResult();
+
+        Assert(!result.Success);
+        Assert(!configService.IsAutomationEnabled);
+        Assert(configService.AutomationDisabledReason is not null);
+        Assert(reloadCount == 1);
+
+        var reloaded = new ConfigurationService(Path.Combine(directory, "config"));
+        Assert(reloaded.Current.KeepDays == 30);
+        Assert(reloaded.IsAutomationEnabled);
     }
     finally
     {

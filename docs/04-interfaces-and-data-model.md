@@ -142,9 +142,13 @@ public sealed record ExecutionRecord(
 - **全局配置字段**：
   - `autoStart` (布尔值，默认 `false`)：是否随 Windows 登录开机自启。
   - `manualDisableProtection` (布尔值，默认 `true`)：是否在首页手动禁用物理网卡时进行备用网络连通性校验安全保护。
+  - `debounceSeconds` (整数，默认 `10`)：新建网络变化规则的默认防抖秒数，不覆盖已有规则。
+  - `cooldownMinutes` (整数，默认 `5`)：新建规则的默认冷却分钟数，创建规则时转换为规则自身的 `cooldownSeconds`。
+  - `keepDays` (整数，默认 `30`)：执行日志保留天数；程序启动和保存设置后立即应用。
 - 所有 ID 使用 GUID；网卡 ID 保存前规范化。
 - 时间戳使用 RFC 3339；每日和每周规则以 Windows 本地时区解释。
 - 配置保存前完整校验，写入时采用临时文件和原子替换。
+- 设置保存成功后调用 `SettingsRuntimeService` 重载调度器并执行日志清理；校验失败时不写入配置且自动化保持暂停。
 - `schemaVersion` 变化时先备份旧配置，再逐版本迁移。
 - 不存储账号、密码、校园网认证信息或外部服务密钥。
 

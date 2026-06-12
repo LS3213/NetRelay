@@ -17,7 +17,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly ConfigurationService _configService;
     private readonly ConnectivityService _connectivityService;
     private readonly RuleSchedulerService? _ruleScheduler;
-    private readonly LogService _logService = new();
+    private readonly LogService _logService;
     private readonly RuleEngine _ruleEngine;
 
     private NetworkAdapterInfo? _selectedAdapter;
@@ -52,12 +52,14 @@ public sealed class MainViewModel : ObservableObject
         ConfigurationService configService,
         ConnectivityService connectivityService,
         RuleEngine ruleEngine,
-        RuleSchedulerService? ruleScheduler = null)
+        RuleSchedulerService? ruleScheduler = null,
+        LogService? logService = null)
     {
         _adapterService = adapterService;
         _configService = configService;
         _connectivityService = connectivityService;
         _ruleScheduler = ruleScheduler;
+        _logService = logService ?? new LogService();
 
         _ruleEngine = ruleEngine;
 
@@ -118,7 +120,7 @@ public sealed class MainViewModel : ObservableObject
 
         LoadRules();
         _ = LoadLogsAsync();
-        _ = _logService.RotateLogsAsync(30);
+        _ = _logService.RotateLogsAsync(_configService.Current.KeepDays);
     }
 
     // Collections

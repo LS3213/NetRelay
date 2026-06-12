@@ -131,8 +131,14 @@ public sealed class ConfigurationService
 
     public void Save()
     {
-        UpdateValidationState(Current);
+        ValidateCurrent();
         SaveInternal(Current);
+    }
+
+    public string? ValidateCurrent()
+    {
+        UpdateValidationState(Current);
+        return AutomationDisabledReason;
     }
 
     private void SaveInternal(AppConfiguration config)

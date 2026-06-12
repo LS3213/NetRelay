@@ -37,10 +37,10 @@ public partial class RuleEditDialog : Window
         OnceHourComboBox.ItemsSource = hours;
         OnceMinuteComboBox.ItemsSource = hours; // wait, hours and minutes have different count, bind to minutes
         OnceMinuteComboBox.ItemsSource = minutes;
-        
+
         DailyHourComboBox.ItemsSource = hours;
         DailyMinuteComboBox.ItemsSource = minutes;
-        
+
         WeeklyHourComboBox.ItemsSource = hours;
         WeeklyMinuteComboBox.ItemsSource = minutes;
 
@@ -62,8 +62,8 @@ public partial class RuleEditDialog : Window
         {
             DialogTitleText.Text = "添加自动化规则";
             TriggerTypeComboBox.SelectedIndex = 1; // Default to Daily
-            CooldownTextBox.Text = (_config.CooldownMinutes * 60).ToString();
-            DebounceTextBox.Text = _config.DebounceSeconds.ToString();
+            CooldownTextBox.Text = RuleDefaultPolicy.GetCooldownSeconds(_config).ToString();
+            DebounceTextBox.Text = RuleDefaultPolicy.GetDebounceSeconds(_config).ToString();
             return;
         }
 
@@ -223,7 +223,7 @@ public partial class RuleEditDialog : Window
             var date = OnceDatePicker.SelectedDate.Value;
             var dt = new DateTime(date.Year, date.Month, date.Day, hr, min, 0, DateTimeKind.Local);
             var offsetTime = new DateTimeOffset(dt);
-            
+
             if (offsetTime <= DateTimeOffset.Now && _rule == null)
             {
                 ErrorMsgText.Text = "触发时间必须在未来。";
