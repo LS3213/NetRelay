@@ -3,6 +3,7 @@ using NetRelay.Services;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Collections.Concurrent;
 
 if (args.FirstOrDefault() == "--acceptance-toggle-vmnet1")
 {
@@ -24,6 +25,7 @@ var tests = new (string Name, Action Test)[]
     ("Invalid settings do not enable automation", InvalidSettingsDoNotEnableAutomation),
     ("Recovery bypasses invalid probe policy gate", RecoveryBypassesInvalidProbePolicyGate),
     ("Recovery bypasses rule cooldown", RecoveryBypassesRuleCooldown),
+    ("Recovery checks native enabled state", RecoveryChecksNativeEnabledState),
     ("Offline transition requires an online baseline", OfflineTransitionRequiresAnOnlineBaseline),
     ("Post-switch validation requires a verified backup", PostSwitchValidationRequiresAVerifiedBackup),
     ("Manual records do not suppress scheduled rules", ManualRecordsDoNotSuppressScheduledRules),
@@ -38,6 +40,7 @@ var tests = new (string Name, Action Test)[]
     ("Scheduler execution gate rejects re-entry", SchedulerExecutionGateRejectsReentry),
     ("Editing a rule resets scheduler runtime state", EditingRuleResetsSchedulerRuntimeState),
     ("Editing a rule resets engine cooldown state", EditingRuleResetsEngineCooldownState),
+    ("Missing adapter does not start cooldown", MissingAdapterDoesNotStartCooldown),
     ("Rule engine writes test logs to isolated directory", RuleEngineWritesTestLogsToIsolatedDirectory),
     ("Adapter UI statuses distinguish link and internet", AdapterUiStatusesDistinguishLinkAndInternet),
     ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance),
@@ -406,6 +409,21 @@ static void RecoveryBypassesInvalidProbePolicyGate()
     Assert(!RuleExecutionPolicy.RequiresValidProbePolicy(RuleSource.Recovery));
 }
 
+static void RecoveryChecksNativeEnabledState()
+{
+    var adapterId = Guid.NewGuid();
+    var enabled = new NativeConnectionInfo(
+        adapterId,
+        "Enabled adapter",
+        "Enabled adapter",
+        NativeConnectionStatus.Disconnected);
+    var disabled = enabled with { Status = NativeConnectionStatus.HardwareDisabled };
+
+    Assert(RuleExecutionPolicy.IsAdapterAlreadyEnabledForRecovery([enabled], adapterId.ToString("B")));
+    Assert(!RuleExecutionPolicy.IsAdapterAlreadyEnabledForRecovery([disabled], adapterId.ToString("D")));
+    Assert(!RuleExecutionPolicy.IsAdapterAlreadyEnabledForRecovery([], adapterId.ToString("D")));
+}
+
 static void OfflineTransitionRequiresAnOnlineBaseline()
 {
     Assert(!RuleExecutionPolicy.ShouldTriggerOfflineTransition(false, false, false));
@@ -664,14 +682,53 @@ static void EditingRuleResetsEngineCooldownState()
             RequireUsableBackup: false,
             CooldownSeconds: 300);
 
-        var first = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
-        var second = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
+        var cooldowns = GetPrivateField<ConcurrentDictionary<Guid, DateTimeOffset>>(engine, "_lastExecutionTimes");
+        cooldowns[rule.Id] = DateTimeOffset.Now;
+        var beforeEdit = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
         engine.ResetRuleRuntimeState(rule.Id);
         var afterEdit = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
 
-        Assert(first.ReasonCode == "ADAPTER_NOT_FOUND");
-        Assert(second.ReasonCode == "RULE_COOLDOWN_ACTIVE");
+        Assert(beforeEdit.ReasonCode == "RULE_COOLDOWN_ACTIVE");
         Assert(afterEdit.ReasonCode == "ADAPTER_NOT_FOUND");
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void MissingAdapterDoesNotStartCooldown()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Missing-Adapter-Cooldown-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(directory);
+        var engine = new RuleEngine(
+            new NativeNetworkConnectionService(),
+            new ConnectivityService(),
+            configService,
+            Path.Combine(directory, "logs"));
+        var rule = new AutomationRule(
+            Guid.NewGuid(),
+            "Missing adapter cooldown rule",
+            Enabled: true,
+            Guid.NewGuid().ToString("B"),
+            RuleAction.Disable,
+            new RuleTrigger.Once(DateTimeOffset.Now),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: null,
+            RequireUsableBackup: false,
+            CooldownSeconds: 300);
+
+        var first = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
+        var second = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
+
+        Assert(first.ReasonCode == "ADAPTER_NOT_FOUND");
+        Assert(second.ReasonCode == "ADAPTER_NOT_FOUND");
     }
     finally
     {

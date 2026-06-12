@@ -31,6 +31,15 @@ public static class RuleExecutionPolicy
             && validatedBackupCount > 0;
     }
 
+    public static bool IsAdapterAlreadyEnabledForRecovery(
+        IEnumerable<NativeConnectionInfo> connections,
+        string adapterId)
+    {
+        return connections.Any(connection =>
+            AdapterIdentity.AreEqual(connection.Id.ToString("D"), adapterId)
+            && connection.IsEnabled);
+    }
+
     public static bool ShouldTriggerOfflineTransition(
         bool hadPreviousState,
         bool wasOnline,

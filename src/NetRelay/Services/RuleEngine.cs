@@ -115,12 +115,6 @@ public sealed class RuleEngine
             return record;
         }
 
-        // Recovery must not shift the normal rule cooldown window.
-        if (source != RuleSource.Recovery)
-        {
-            _lastExecutionTimes[rule.Id] = startedAt;
-        }
-
         if (source != RuleSource.Recovery && !await AreConditionsSatisfiedAsync(rule.Conditions))
         {
             var record = new ExecutionRecord(
@@ -176,8 +170,11 @@ public sealed class RuleEngine
 
         var niTarget = NetworkInterface.GetAllNetworkInterfaces()
             .FirstOrDefault(ni => string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase));
+        var nativeConnections = _connectionService.GetConnections();
 
-        if (source == RuleSource.Recovery && targetEnabled && niTarget is not null)
+        if (source == RuleSource.Recovery
+            && targetEnabled
+            && RuleExecutionPolicy.IsAdapterAlreadyEnabledForRecovery(nativeConnections, rule.TargetAdapterId))
         {
             var record = new ExecutionRecord(
                 recordId,
@@ -201,7 +198,7 @@ public sealed class RuleEngine
         }
         else
         {
-            var conn = _connectionService.GetConnections()
+            var conn = nativeConnections
                 .FirstOrDefault(c => string.Equals(c.Id.ToString("B"), rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase) ||
                                      string.Equals(c.Id.ToString(), rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase));
             if (conn != null)
@@ -226,6 +223,12 @@ public sealed class RuleEngine
             );
             await RecordExecutionAsync(record);
             return record;
+        }
+
+        // Only an actual adapter operation starts cooldown. Recovery never shifts the normal cooldown window.
+        if (source != RuleSource.Recovery)
+        {
+            _lastExecutionTimes[rule.Id] = startedAt;
         }
 
         var toggleResult = await Task.Run(() => _connectionService.SetEnabled(rule.TargetAdapterId, adapterName, targetEnabled));
