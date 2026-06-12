@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using NetRelay.Models;
 using NetRelay.Native;
 
@@ -288,7 +289,7 @@ public sealed class ConnectivityService
             // 3. 构建 DNS 查询数据包并执行 UDP 探测
             var queryPacket = BuildDnsQuery(domain, localIp.AddressFamily == AddressFamily.InterNetworkV6);
             IPAddress? resolvedIp = null;
-            bool dnsSuccess = false;
+            var lastDnsError = "DNS 探测失败，无 DNS 响应回复。";
 
             foreach (var dnsServer in dnsServers)
             {
@@ -296,22 +297,36 @@ public sealed class ConnectivityService
                 {
                     using var socket = new Socket(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
                     socket.Bind(new IPEndPoint(localIp, 0));
-                    
+
                     var targetEndPoint = new IPEndPoint(dnsServer, 53);
                     await socket.SendToAsync(queryPacket, SocketFlags.None, targetEndPoint, cancellationToken);
-                    
+
                     var buffer = new byte[512];
                     var receiveTask = socket.ReceiveFromAsync(buffer, SocketFlags.None, targetEndPoint);
-                    
+
                     if (await Task.WhenAny(receiveTask, Task.Delay(timeout, cancellationToken)) == receiveTask)
                     {
                         var receiveResult = await receiveTask;
-                        if (receiveResult.ReceivedBytes > 12)
+                        if (!targetEndPoint.Equals(receiveResult.RemoteEndPoint))
                         {
-                            resolvedIp = ParseDnsResponseIp(buffer, receiveResult.ReceivedBytes, localIp.AddressFamily);
-                            dnsSuccess = true;
+                            lastDnsError = "DNS 响应来源与请求服务器不匹配。";
+                            continue;
+                        }
+
+                        if (TryParseDnsResponse(
+                                buffer,
+                                receiveResult.ReceivedBytes,
+                                queryPacket,
+                                localIp.AddressFamily,
+                                out resolvedIp,
+                                out lastDnsError))
+                        {
                             break;
                         }
+                    }
+                    else
+                    {
+                        lastDnsError = "DNS 探测请求超时。";
                     }
                 }
                 catch
@@ -322,25 +337,12 @@ public sealed class ConnectivityService
 
             long elapsed = stopwatch.ElapsedMilliseconds;
 
-            if (dnsSuccess)
+            if (resolvedIp is not null)
             {
-                // 4. 调用后端辅助验证连通性与防劫持的雏形方法
-                // TODO: 现阶段仅为雏形，后端接入后在此进行结果校验
-                if (resolvedIp != null)
-                {
-                    bool backendOk = await VerifyConnectivityWithBackendAsync(domain, resolvedIp, localIp, cancellationToken);
-                    if (!backendOk)
-                    {
-                        return new ProbeAttempt(uri.OriginalString, false, elapsed, "DNS 解析成功，但后端辅助防劫持校验失败。");
-                    }
-                }
-
                 return new ProbeAttempt(uri.OriginalString, true, elapsed, null);
             }
-            else
-            {
-                return new ProbeAttempt(uri.OriginalString, false, elapsed, "DNS 探测失败，无 DNS 响应回复。");
-            }
+
+            return new ProbeAttempt(uri.OriginalString, false, elapsed, lastDnsError);
         }
         catch (OperationCanceledException)
         {
@@ -448,35 +450,14 @@ public sealed class ConnectivityService
         }
     }
 
-    /// <summary>
-    /// 后端辅助验证连通性与域名解析结果防劫持的雏形方法。
-    /// TODO: 后续接入真实后端服务时，需替换为真实的后端 API 请求与握手校验逻辑，并在此阶段统一完善。
-    /// </summary>
-    public static async Task<bool> VerifyConnectivityWithBackendAsync(
-        string domainToResolve,
-        IPAddress resolvedIp,
-        IPAddress localIp,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            // 雏形占位：模拟向后端服务器发送请求
-            await Task.Delay(10, cancellationToken); // 模拟网络延迟
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static byte[] BuildDnsQuery(string domain, bool isIpv6)
     {
         var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
-        
-        writer.Write((byte)0x12);
-        writer.Write((byte)0x34);
+
+        var transactionId = RandomNumberGenerator.GetInt32(ushort.MaxValue + 1);
+        writer.Write((byte)(transactionId >> 8));
+        writer.Write((byte)transactionId);
         writer.Write((byte)0x01);
         writer.Write((byte)0x00);
         writer.Write((byte)0x00);
@@ -484,7 +465,7 @@ public sealed class ConnectivityService
         writer.Write((byte)0x00); writer.Write((byte)0x00);
         writer.Write((byte)0x00); writer.Write((byte)0x00);
         writer.Write((byte)0x00); writer.Write((byte)0x00);
-        
+
         var parts = domain.Split('.');
         foreach (var part in parts)
         {
@@ -493,86 +474,176 @@ public sealed class ConnectivityService
             writer.Write(bytes);
         }
         writer.Write((byte)0);
-        
+
         writer.Write((byte)0x00);
         writer.Write((byte)(isIpv6 ? 0x1c : 0x01));
         writer.Write((byte)0x00);
         writer.Write((byte)0x01);
-        
+
         return stream.ToArray();
     }
 
-    private static IPAddress? ParseDnsResponseIp(byte[] buffer, int length, AddressFamily family)
+    private static bool TryParseDnsResponse(
+        byte[] buffer,
+        int length,
+        byte[] queryPacket,
+        AddressFamily family,
+        out IPAddress? resolvedIp,
+        out string errorMessage)
     {
+        resolvedIp = null;
+        errorMessage = "DNS 响应格式无效。";
+
         try
         {
-            if (length < 12) return null;
+            if (length < 12 || length > buffer.Length || queryPacket.Length < 12)
+            {
+                return false;
+            }
+
+            if (buffer[0] != queryPacket[0] || buffer[1] != queryPacket[1])
+            {
+                errorMessage = "DNS 响应事务 ID 与请求不匹配。";
+                return false;
+            }
+
+            var flags = (ushort)((buffer[2] << 8) | buffer[3]);
+            if ((flags & 0x8000) == 0)
+            {
+                errorMessage = "DNS 数据包不是响应。";
+                return false;
+            }
+
+            if ((flags & 0x0200) != 0)
+            {
+                errorMessage = "DNS UDP 响应已截断。";
+                return false;
+            }
+
+            var responseCode = flags & 0x000F;
+            if (responseCode != 0)
+            {
+                errorMessage = $"DNS 服务器返回错误码 {responseCode}。";
+                return false;
+            }
+
             int questions = (buffer[4] << 8) | buffer[5];
-            if (questions == 0) return null;
+            if (questions == 0)
+            {
+                errorMessage = "DNS 响应不包含问题段。";
+                return false;
+            }
 
             int index = 12;
-            for (int q = 0; q < questions && index < length; q++)
+            for (int q = 0; q < questions; q++)
             {
-                index = SkipDnsName(buffer, index, length);
+                if (!TrySkipDnsName(buffer, index, length, out index) || index + 4 > length)
+                {
+                    return false;
+                }
+
                 index += 4;
             }
 
             int answers = (buffer[6] << 8) | buffer[7];
+            if (answers == 0)
+            {
+                errorMessage = "DNS 响应不包含有效答案。";
+                return false;
+            }
+
             for (int a = 0; a < answers && index < length; a++)
             {
-                index = SkipDnsName(buffer, index, length);
-                if (index + 10 > length) return null;
+                if (!TrySkipDnsName(buffer, index, length, out index) || index + 10 > length)
+                {
+                    return false;
+                }
 
                 ushort type = (ushort)((buffer[index] << 8) | buffer[index + 1]);
                 index += 2; // Type
+                ushort recordClass = (ushort)((buffer[index] << 8) | buffer[index + 1]);
                 index += 2; // Class
                 index += 4; // TTL
                 ushort dataLen = (ushort)((buffer[index] << 8) | buffer[index + 1]);
                 index += 2; // Data Length
 
-                if (index + dataLen > length) return null;
+                if (index + dataLen > length)
+                {
+                    return false;
+                }
 
-                if (type == 1 && family == AddressFamily.InterNetwork && dataLen == 4)
+                if (recordClass == 1 && type == 1 && family == AddressFamily.InterNetwork && dataLen == 4)
                 {
                     var ipBytes = new byte[4];
                     Array.Copy(buffer, index, ipBytes, 0, 4);
-                    return new IPAddress(ipBytes);
+                    resolvedIp = new IPAddress(ipBytes);
+                    errorMessage = string.Empty;
+                    return true;
                 }
-                else if (type == 28 && family == AddressFamily.InterNetworkV6 && dataLen == 16)
+
+                if (recordClass == 1 && type == 28 && family == AddressFamily.InterNetworkV6 && dataLen == 16)
                 {
                     var ipBytes = new byte[16];
                     Array.Copy(buffer, index, ipBytes, 0, 16);
-                    return new IPAddress(ipBytes);
+                    resolvedIp = new IPAddress(ipBytes);
+                    errorMessage = string.Empty;
+                    return true;
                 }
 
                 index += dataLen;
             }
+
+            errorMessage = family == AddressFamily.InterNetworkV6
+                ? "DNS 响应不包含有效 AAAA 地址。"
+                : "DNS 响应不包含有效 A 地址。";
         }
         catch
         {
-            // Ignore
+            errorMessage = "DNS 响应解析失败。";
         }
-        return null;
+
+        return false;
     }
 
-    private static int SkipDnsName(byte[] buffer, int index, int length)
+    private static bool TrySkipDnsName(byte[] buffer, int index, int length, out int nextIndex)
     {
+        nextIndex = index;
+
         while (index < length)
         {
             byte len = buffer[index];
             if (len == 0)
             {
-                index++;
-                break;
+                nextIndex = index + 1;
+                return true;
             }
+
             if ((len & 0xC0) == 0xC0)
             {
-                index += 2;
-                break;
+                if (index + 1 >= length)
+                {
+                    return false;
+                }
+
+                var pointer = ((len & 0x3F) << 8) | buffer[index + 1];
+                if (pointer >= length)
+                {
+                    return false;
+                }
+
+                nextIndex = index + 2;
+                return true;
             }
-            index += (1 + len);
+
+            if (len > 63 || index + 1 + len > length)
+            {
+                return false;
+            }
+
+            index += 1 + len;
         }
-        return index;
+
+        return false;
     }
 
     private static string? GetNlmConnectivityForAdapter(string adapterId)

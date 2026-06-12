@@ -14,6 +14,7 @@ var tests = new (string Name, Action Test)[]
     ("Valid probe policy is accepted", ValidProbePolicyIsAccepted),
     ("Probe policy supports ping and dns", ProbePolicySupportsPingAndDns),
     ("DNS query building and parsing works", DnsQueryBuildingAndParsingWorks),
+    ("DNS response validation rejects invalid responses", DnsResponseValidationRejectsInvalidResponses),
     ("Zero probe attempts are rejected", ZeroProbeAttemptsAreRejected),
     ("Required endpoint threshold is validated", RequiredEndpointThresholdIsValidated),
     ("Invalid saved policy pauses automation", InvalidSavedPolicyPausesAutomation),
@@ -93,65 +94,114 @@ static void ProbePolicySupportsPingAndDns()
 static void DnsQueryBuildingAndParsingWorks()
 {
     var buildMethod = typeof(ConnectivityService).GetMethod("BuildDnsQuery", BindingFlags.NonPublic | BindingFlags.Static);
-    var parseMethod = typeof(ConnectivityService).GetMethod("ParseDnsResponseIp", BindingFlags.NonPublic | BindingFlags.Static);
+    var parseMethod = typeof(ConnectivityService).GetMethod("TryParseDnsResponse", BindingFlags.NonPublic | BindingFlags.Static);
 
     Assert(buildMethod is not null);
     Assert(parseMethod is not null);
 
-    // 1. Build query for IPv4
     var queryBytes = (byte[])buildMethod!.Invoke(null, new object[] { "google.com", false })!;
     Assert(queryBytes.Length > 0);
 
-    // 2. Build mock response
-    var questionLength = queryBytes.Length - 12;
-    var response = new byte[12 + questionLength + 20];
-    
-    // Header
-    response[0] = 0x12; response[1] = 0x34;
-    response[2] = 0x81; response[3] = 0x80;
-    response[4] = 0x00; response[5] = 0x01; // 1 Question
-    response[6] = 0x00; response[7] = 0x01; // 1 Answer
+    var response = BuildDnsResponse(queryBytes, responseCode: 0, answerType: 1, answerBytes: [8, 8, 8, 8]);
+    var result = InvokeDnsResponseParser(parseMethod!, response, queryBytes, AddressFamily.InterNetwork);
+    Assert(result.Success);
+    Assert(result.ResolvedIp?.ToString() == "8.8.8.8");
 
-    // Copy question
-    Array.Copy(queryBytes, 12, response, 12, questionLength);
-
-    int index = 12 + questionLength;
-    // Answer
-    response[index++] = 0xC0; response[index++] = 0x0C; // Name pointer
-    response[index++] = 0x00; response[index++] = 0x01; // Type A
-    response[index++] = 0x00; response[index++] = 0x01; // Class IN
-    response[index++] = 0x00; response[index++] = 0x00; response[index++] = 0x00; response[index++] = 0x3C; // TTL
-    response[index++] = 0x00; response[index++] = 0x04; // Data length 4
-    response[index++] = 8; response[index++] = 8; response[index++] = 8; response[index++] = 8; // IP
-
-    var resolved = (IPAddress?)parseMethod!.Invoke(null, new object[] { response, index, AddressFamily.InterNetwork })!;
-    Assert(resolved is not null);
-    Assert(resolved!.ToString() == "8.8.8.8");
-
-    // 3. Build query for IPv6
     var queryBytesV6 = (byte[])buildMethod!.Invoke(null, new object[] { "google.com", true })!;
     Assert(queryBytesV6.Length > 0);
 
-    var questionLengthV6 = queryBytesV6.Length - 12;
-    var responseV6 = new byte[12 + questionLengthV6 + 32];
-    responseV6[0] = 0x12; responseV6[1] = 0x34;
-    responseV6[2] = 0x81; responseV6[3] = 0x80;
-    responseV6[4] = 0x00; responseV6[5] = 0x01;
-    responseV6[6] = 0x00; responseV6[7] = 0x01;
+    var responseV6 = BuildDnsResponse(queryBytesV6, responseCode: 0, answerType: 28, answerBytes: Enumerable.Repeat((byte)0xFF, 16).ToArray());
+    var resultV6 = InvokeDnsResponseParser(parseMethod!, responseV6, queryBytesV6, AddressFamily.InterNetworkV6);
+    Assert(resultV6.Success);
+    Assert(resultV6.ResolvedIp?.ToString() == "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+}
 
-    Array.Copy(queryBytesV6, 12, responseV6, 12, questionLengthV6);
+static void DnsResponseValidationRejectsInvalidResponses()
+{
+    var buildMethod = typeof(ConnectivityService).GetMethod("BuildDnsQuery", BindingFlags.NonPublic | BindingFlags.Static);
+    var parseMethod = typeof(ConnectivityService).GetMethod("TryParseDnsResponse", BindingFlags.NonPublic | BindingFlags.Static);
+    Assert(buildMethod is not null);
+    Assert(parseMethod is not null);
 
-    int indexV6 = 12 + questionLengthV6;
-    responseV6[indexV6++] = 0xC0; responseV6[indexV6++] = 0x0C;
-    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x1C; // Type AAAA = 28
-    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x01;
-    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x3C;
-    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x10; // Data length 16
-    for (int k = 0; k < 16; k++) responseV6[indexV6++] = 0xFF; // IP v6 address
+    var query = (byte[])buildMethod!.Invoke(null, new object[] { "google.com", false })!;
 
-    var resolvedV6 = (IPAddress?)parseMethod!.Invoke(null, new object[] { responseV6, indexV6, AddressFamily.InterNetworkV6 })!;
-    Assert(resolvedV6 is not null);
-    Assert(resolvedV6!.ToString() == "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+    var nxdomain = BuildDnsResponse(query, responseCode: 3);
+    Assert(!InvokeDnsResponseParser(parseMethod!, nxdomain, query, AddressFamily.InterNetwork).Success);
+
+    var emptyAnswer = BuildDnsResponse(query, responseCode: 0);
+    Assert(!InvokeDnsResponseParser(parseMethod!, emptyAnswer, query, AddressFamily.InterNetwork).Success);
+
+    var wrongTransaction = BuildDnsResponse(query, responseCode: 0, answerType: 1, answerBytes: [8, 8, 4, 4]);
+    wrongTransaction[0] ^= 0xFF;
+    Assert(!InvokeDnsResponseParser(parseMethod!, wrongTransaction, query, AddressFamily.InterNetwork).Success);
+
+    var truncated = BuildDnsResponse(query, responseCode: 0, answerType: 1, answerBytes: [1, 1, 1, 1]);
+    truncated[2] |= 0x02;
+    Assert(!InvokeDnsResponseParser(parseMethod!, truncated, query, AddressFamily.InterNetwork).Success);
+
+    var wrongRecordType = BuildDnsResponse(query, responseCode: 0, answerType: 28, answerBytes: Enumerable.Repeat((byte)0x01, 16).ToArray());
+    Assert(!InvokeDnsResponseParser(parseMethod!, wrongRecordType, query, AddressFamily.InterNetwork).Success);
+
+    var malformed = BuildDnsResponse(query, responseCode: 0, answerType: 1, answerBytes: [9, 9, 9, 9]);
+    Assert(!InvokeDnsResponseParserWithLength(parseMethod!, malformed, malformed.Length - 2, query, AddressFamily.InterNetwork).Success);
+}
+
+static byte[] BuildDnsResponse(byte[] query, int responseCode, ushort? answerType = null, byte[]? answerBytes = null)
+{
+    var questionLength = query.Length - 12;
+    var answerLength = answerType.HasValue && answerBytes is not null ? 12 + answerBytes.Length : 0;
+    var response = new byte[12 + questionLength + answerLength];
+
+    response[0] = query[0];
+    response[1] = query[1];
+    response[2] = 0x81;
+    response[3] = (byte)(0x80 | responseCode);
+    response[4] = 0x00;
+    response[5] = 0x01;
+    response[6] = 0x00;
+    response[7] = answerLength > 0 ? (byte)0x01 : (byte)0x00;
+    Array.Copy(query, 12, response, 12, questionLength);
+
+    if (answerLength > 0)
+    {
+        var index = 12 + questionLength;
+        response[index++] = 0xC0;
+        response[index++] = 0x0C;
+        response[index++] = (byte)(answerType!.Value >> 8);
+        response[index++] = (byte)answerType.Value;
+        response[index++] = 0x00;
+        response[index++] = 0x01;
+        response[index++] = 0x00;
+        response[index++] = 0x00;
+        response[index++] = 0x00;
+        response[index++] = 0x3C;
+        response[index++] = (byte)(answerBytes!.Length >> 8);
+        response[index++] = (byte)answerBytes.Length;
+        Array.Copy(answerBytes, 0, response, index, answerBytes.Length);
+    }
+
+    return response;
+}
+
+static (bool Success, IPAddress? ResolvedIp, string ErrorMessage) InvokeDnsResponseParser(
+    MethodInfo parseMethod,
+    byte[] response,
+    byte[] query,
+    AddressFamily family)
+{
+    return InvokeDnsResponseParserWithLength(parseMethod, response, response.Length, query, family);
+}
+
+static (bool Success, IPAddress? ResolvedIp, string ErrorMessage) InvokeDnsResponseParserWithLength(
+    MethodInfo parseMethod,
+    byte[] response,
+    int responseLength,
+    byte[] query,
+    AddressFamily family)
+{
+    object?[] parameters = [response, responseLength, query, family, null, null];
+    var success = (bool)parseMethod.Invoke(null, parameters)!;
+    return (success, (IPAddress?)parameters[4], (string?)parameters[5] ?? string.Empty);
 }
 
 static void ZeroProbeAttemptsAreRejected()
