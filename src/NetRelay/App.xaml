@@ -284,9 +284,7 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#EFFFFFFF" Offset="0"/>
-                        <GradientStop Color="#C0FFFFFF" Offset="0.35"/>
-                        <GradientStop Color="#60FFFFFF" Offset="0.65"/>
+                        <GradientStop Color="#60FFFFFF" Offset="0"/>
                         <GradientStop Color="#30FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
@@ -294,8 +292,7 @@
             <Setter Property="BorderBrush">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#F5FFFFFF" Offset="0"/>
-                        <GradientStop Color="#88FFFFFF" Offset="0.5"/>
+                        <GradientStop Color="#90FFFFFF" Offset="0"/>
                         <GradientStop Color="#45FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
@@ -308,7 +305,7 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
                             <Grid>
-                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#15000000" Visibility="Collapsed" Margin="-14,-9"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#12536EF2" Visibility="Collapsed" Margin="-14,-9"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -406,19 +403,16 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#F5FFFFFF" Offset="0"/>
-                        <GradientStop Color="#FFD5D7" Offset="0.35"/>
-                        <GradientStop Color="#30E85C63" Offset="0.75"/>
-                        <GradientStop Color="#15E85C63" Offset="1"/>
+                        <GradientStop Color="#20E85C63" Offset="0"/>
+                        <GradientStop Color="#48E85C63" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
             <Setter Property="BorderBrush">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#F9FFFFFF" Offset="0"/>
-                        <GradientStop Color="#BCE85C63" Offset="0.5"/>
-                        <GradientStop Color="#60E85C63" Offset="1"/>
+                        <GradientStop Color="#75E85C63" Offset="0"/>
+                        <GradientStop Color="#35E85C63" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -430,7 +424,7 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
                             <Grid>
-                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#18E85C63" Visibility="Collapsed" Margin="-14,-9"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#20E85C63" Visibility="Collapsed" Margin="-14,-9"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -471,19 +465,16 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#F5FFFFFF" Offset="0"/>
-                        <GradientStop Color="#D5E5FF" Offset="0.35"/>
-                        <GradientStop Color="#30536EF2" Offset="0.75"/>
-                        <GradientStop Color="#15536EF2" Offset="1"/>
+                        <GradientStop Color="#20536EF2" Offset="0"/>
+                        <GradientStop Color="#48536EF2" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
             <Setter Property="BorderBrush">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#F9FFFFFF" Offset="0"/>
-                        <GradientStop Color="#B0536EF2" Offset="0.5"/>
-                        <GradientStop Color="#60536EF2" Offset="1"/>
+                        <GradientStop Color="#75536EF2" Offset="0"/>
+                        <GradientStop Color="#35536EF2" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -495,7 +486,7 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
                             <Grid>
-                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#18536EF2" Visibility="Collapsed" Margin="-14,-9"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#20536EF2" Visibility="Collapsed" Margin="-14,-9"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
