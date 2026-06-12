@@ -43,10 +43,10 @@ NetRelay/
 - 目标平台为 Windows 10/11 x64。
 - 程序计划始终以管理员权限运行，不安装 Windows 服务。
 - 时间规则、提前提醒与网络变化监听均由主程序内联的后台调度服务控制，仅在程序运行时执行。
-- 断网判定使用网卡状态、Windows NLM/NCSI 和双端点 HTTP/HTTPS 探测；`ping` 仅用于诊断。
+- 当前断网判定使用网卡状态与绑定源 IP 的双端点 HTTP/HTTPS 探测；NLM/NCSI 与 `ping` 诊断尚未实现。
 - 自动禁用故障网卡前，必须确认备用网卡已经连接并可访问互联网。
-- 首版使用 JSON 配置与滚动日志，不使用数据库。
+- 首版使用 JSON 配置与按日 JSONL 执行日志，不使用数据库；自动滚动清理尚未实现。
 
 ## 源码引用说明
 
-已实现代码包含：原生界面网卡管理、系统托盘、关闭拦截对话框、程序设置页面、配置原子持久化、绑定源 IP 的 HTTP 探测服务，以及第三阶段实现的纯内联规则引擎 ([RuleEngine.cs](file:///d:/文档/项目源码/NetRelay/src/NetRelay/Services/RuleEngine.cs)) 与后台调度器 ([RuleSchedulerService.cs](file:///d:/文档/项目源码/NetRelay/src/NetRelay/Services/RuleSchedulerService.cs))。所有自动化规则及延迟恢复完全由程序内联常驻线程托管。
+已实现代码包含：原生界面网卡管理、系统托盘、关闭拦截对话框、程序设置页面、配置原子持久化、绑定源 IP 的 HTTP 探测服务，以及纯内联规则引擎 ([RuleEngine.cs](../src/NetRelay/Services/RuleEngine.cs)) 与后台调度器 ([RuleSchedulerService.cs](../src/NetRelay/Services/RuleSchedulerService.cs))。所有自动化规则及延迟恢复均由程序内联常驻线程托管。

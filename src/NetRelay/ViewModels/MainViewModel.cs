@@ -48,6 +48,7 @@ public sealed class MainViewModel : ObservableObject
         NetworkAdapterService adapterService,
         ConfigurationService configService,
         ConnectivityService connectivityService,
+        RuleEngine ruleEngine,
         RuleSchedulerService? ruleScheduler = null)
     {
         _adapterService = adapterService;
@@ -55,8 +56,7 @@ public sealed class MainViewModel : ObservableObject
         _connectivityService = connectivityService;
         _ruleScheduler = ruleScheduler;
         
-        // Retrieve RuleEngine from scheduler if possible, or instantiate a transient one
-        _ruleEngine = new RuleEngine(adapterService.ConnectionService, connectivityService, configService);
+        _ruleEngine = ruleEngine;
 
         RefreshCommand = new RelayCommand(RefreshAdapters, () => !IsLoading);
         RefreshAdapters();

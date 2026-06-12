@@ -14,6 +14,18 @@ public sealed class ConnectivityService
         var checkedAt = DateTimeOffset.Now;
         var attempts = new List<ProbeAttempt>();
 
+        if (ConnectivityProbePolicyValidator.Validate(policy) is not null)
+        {
+            return new ConnectivityResult(
+                adapterId,
+                checkedAt,
+                Online: false,
+                RoutePresent: false,
+                attempts,
+                "PROBE_POLICY_INVALID"
+            );
+        }
+
         // 1. 查找目标适配器
         var adapter = NetworkInterface.GetAllNetworkInterfaces()
             .FirstOrDefault(ni => string.Equals(ni.Id, adapterId, StringComparison.OrdinalIgnoreCase));
@@ -84,7 +96,7 @@ public sealed class ConnectivityService
             }
 
             var roundAttempts = new List<ProbeAttempt>();
-            var roundSuccess = false;
+            var successfulEndpoints = 0;
 
             foreach (var endpoint in policy.Endpoints)
             {
@@ -94,11 +106,11 @@ public sealed class ConnectivityService
 
                 if (attempt.Success)
                 {
-                    roundSuccess = true;
+                    successfulEndpoints++;
                 }
             }
 
-            if (!roundSuccess)
+            if (successfulEndpoints < policy.RequiredSuccessfulEndpoints)
             {
                 failedRounds++;
             }

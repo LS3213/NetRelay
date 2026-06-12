@@ -34,6 +34,12 @@ public sealed class ExecutionRecordViewModel
         "BACKUP_NETWORK_UNAVAILABLE" => "安全保护：无可用备份互联网，操作被中止",
         "ADAPTER_NOT_FOUND" => "找不到目标网卡接口",
         "ADAPTER_OPERATION_FAILED" => "控制网卡开关失败 (COM 错误)",
+        "RECOVERY_ALREADY_ENABLED" => "网卡已处于启用状态，无需重复恢复",
+        "POST_SWITCH_VALIDATION_FAILED" => "切换后备用网络失效，已触发安全回滚",
+        "ROLLBACK_SUCCEEDED" => "安全回滚成功，目标网卡已重新启用",
+        "ROLLBACK_FAILED" => "安全回滚失败，需要手动重新启用目标网卡",
+        "CONFIG_INVALID" => "探测配置无效，自动化规则已暂停",
+        "CONDITION_NOT_MET" => "规则附加条件不满足，已跳过执行",
         "TRIGGER_EXPIRED" => "触发已过期 (迟到太久被忽略)",
         "MANUAL_SKIP" => "用户手动取消了本次执行",
         _ => $"原因码: {Record.ReasonCode}"

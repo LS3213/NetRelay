@@ -35,18 +35,20 @@ public partial class MainWindow : Window
         _connectionService = new NativeNetworkConnectionService();
         
         _ruleEngine = new RuleEngine(_connectionService, connectivityService, configService);
-        _ruleScheduler = new RuleSchedulerService(_ruleEngine, configService);
+        _ruleScheduler = new RuleSchedulerService(_ruleEngine, configService, connectivityService);
         _ruleScheduler.Start();
 
         _viewModel = new MainViewModel(
             new NetworkAdapterService(_connectionService),
             configService,
             connectivityService,
+            _ruleEngine,
             _ruleScheduler);
         DataContext = _viewModel;
 
         // Listen to events
         _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
+        _ruleEngine.ExecutionRecorded += OnRuleExecutionRecorded;
         _viewModel.RequestEditRule += OnRequestEditRule;
 
         SourceInitialized += (_, _) =>
@@ -62,6 +64,14 @@ public partial class MainWindow : Window
         UpdateMaximizeIcon();
 
         InitializeNotifyIcon();
+        if (!_viewModel.ConfigService.IsAutomationEnabled)
+        {
+            _notifyIcon?.ShowBalloonTip(
+                8000,
+                "NetRelay 自动化已暂停",
+                _viewModel.ConfigService.AutomationDisabledReason ?? "探测配置无效，请检查配置文件。",
+                System.Windows.Forms.ToolTipIcon.Warning);
+        }
         UpdateTabSelection(0);
     }
 
@@ -197,7 +207,7 @@ public partial class MainWindow : Window
         ExitApplication();
     }
 
-    private void RestoreWindow()
+    public void RestoreWindow()
     {
         ShowInTaskbar = true;
         Show();
@@ -231,6 +241,49 @@ public partial class MainWindow : Window
                 System.Windows.Forms.ToolTipIcon.Info
             );
         });
+    }
+
+    private void OnRuleExecutionRecorded(object? sender, ExecutionRecord record)
+    {
+        if (record.Source == RuleSource.Manual)
+        {
+            return;
+        }
+
+        Dispatcher.Invoke(() =>
+        {
+            var title = record.Outcome switch
+            {
+                "SUCCESS" when record.Source == RuleSource.Recovery => "NetRelay 自动恢复完成",
+                "SUCCESS" => "NetRelay 自动操作完成",
+                "SKIPPED" => "NetRelay 自动操作已跳过",
+                _ => "NetRelay 自动操作失败"
+            };
+            var message = record.ReasonCode switch
+            {
+                "OK" => "网卡操作已成功完成。",
+                "BACKUP_NETWORK_UNAVAILABLE" => "未找到可联网的备用网卡，已取消禁用操作。",
+                "POST_SWITCH_VALIDATION_FAILED" => "切换后备用网络失效，已执行安全回滚。",
+                "ROLLBACK_SUCCEEDED" => "目标网卡已重新启用。",
+                "ROLLBACK_FAILED" => "安全回滚失败，请手动重新启用目标网卡。",
+                "RECOVERY_ALREADY_ENABLED" => "目标网卡已经启用，无需重复恢复。",
+                "CONFIG_INVALID" => "探测配置无效，自动化规则已暂停。",
+                "CONDITION_NOT_MET" => "规则附加条件不满足，本次操作已跳过。",
+                _ => $"执行结果：{record.ReasonCode}"
+            };
+
+            _notifyIcon?.ShowBalloonTip(6000, title, message, GetNotificationIcon(record.Outcome));
+        });
+    }
+
+    private static System.Windows.Forms.ToolTipIcon GetNotificationIcon(string outcome)
+    {
+        return outcome switch
+        {
+            "SUCCESS" => System.Windows.Forms.ToolTipIcon.Info,
+            "SKIPPED" => System.Windows.Forms.ToolTipIcon.Warning,
+            _ => System.Windows.Forms.ToolTipIcon.Error
+        };
     }
 
     private void OnRequestEditRule(AutomationRule? rule)

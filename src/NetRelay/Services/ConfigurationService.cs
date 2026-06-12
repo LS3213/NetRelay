@@ -13,6 +13,8 @@ public sealed class ConfigurationService
     private readonly JsonSerializerOptions _jsonOptions;
 
     public AppConfiguration Current { get; private set; }
+    public bool IsAutomationEnabled { get; private set; } = true;
+    public string? AutomationDisabledReason { get; private set; }
 
     public ConfigurationService()
     {
@@ -59,6 +61,7 @@ public sealed class ConfigurationService
             {
                 var defaultConfiguration = CreateDefaultConfiguration();
                 SaveInternal(defaultConfiguration);
+                UpdateValidationState(defaultConfiguration);
                 return defaultConfiguration;
             }
 
@@ -66,14 +69,18 @@ public sealed class ConfigurationService
             if (string.IsNullOrWhiteSpace(jsonContent))
             {
                 HandleCorruptedConfig("配置文件内容为空。");
-                return CreateDefaultConfiguration();
+                var defaultConfiguration = CreateDefaultConfiguration();
+                UpdateValidationState(defaultConfiguration);
+                return defaultConfiguration;
             }
 
             var config = JsonSerializer.Deserialize<AppConfiguration>(jsonContent, _jsonOptions);
             if (config is null)
             {
                 HandleCorruptedConfig("反序列化配置结果为 null。");
-                return CreateDefaultConfiguration();
+                var defaultConfiguration = CreateDefaultConfiguration();
+                UpdateValidationState(defaultConfiguration);
+                return defaultConfiguration;
             }
 
             // 自动迁移与修正已知失效或高延迟的默认探测端点
@@ -101,17 +108,21 @@ public sealed class ConfigurationService
                 SaveInternal(config);
             }
 
+            UpdateValidationState(config);
             return config;
         }
         catch (Exception exception)
         {
             HandleCorruptedConfig($"读取或反序列化配置发生异常：{exception.Message}");
-            return CreateDefaultConfiguration();
+            var defaultConfiguration = CreateDefaultConfiguration();
+            UpdateValidationState(defaultConfiguration);
+            return defaultConfiguration;
         }
     }
 
     public void Save()
     {
+        UpdateValidationState(Current);
         SaveInternal(Current);
     }
 
@@ -160,6 +171,12 @@ public sealed class ConfigurationService
             Rules = [],
             AutoStart = false
         };
+    }
+
+    private void UpdateValidationState(AppConfiguration config)
+    {
+        AutomationDisabledReason = ConnectivityProbePolicyValidator.Validate(config.ProbePolicy);
+        IsAutomationEnabled = AutomationDisabledReason is null;
     }
 
     private void HandleCorruptedConfig(string reason)

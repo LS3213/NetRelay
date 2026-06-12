@@ -45,6 +45,7 @@ NetRelay/
 ```powershell
 dotnet build NetRelay.sln
 dotnet run --project src/NetRelay/NetRelay.csproj
+dotnet run --project tests/NetRelay.RegressionTests/NetRelay.RegressionTests.csproj -c Release
 dotnet publish src/NetRelay/NetRelay.csproj -c Release -r win-x64 --self-contained false
 ```
 
@@ -55,6 +56,9 @@ dotnet build NetRelay.sln --no-restore
 ```
 
 当前项目不使用第三方 NuGet 包，不需要 Node.js、Rust、Cargo 或 WebView2。
+根目录 `NuGet.Config` 清空远程包源，使当前无第三方依赖的解决方案可以离线还原和构建。
+
+`NetRelay.RegressionTests` 是不依赖第三方测试框架的回归测试可执行项目，不操作真实网卡。当前覆盖探测策略边界、恢复冷却语义、定时重启去重和单实例唤醒信号。
 
 ## 4. 构建与发布
 
@@ -79,7 +83,7 @@ dotnet build NetRelay.sln --no-restore
 | --- | --- |
 | `%APPDATA%\NetRelay\config.json` | 设置、规则和探测策略 |
 | `%LOCALAPPDATA%\NetRelay\logs\execution-YYYY-MM-DD.jsonl` | 结构化执行历史 |
-| `%LOCALAPPDATA%\NetRelay\logs\app-YYYY-MM-DD.log` | 应用诊断日志 |
+| `%LOCALAPPDATA%\NetRelay\logs\app-YYYY-MM-DD.log` | 计划中的应用诊断日志，当前未实现 |
 
 日志不得包含认证凭据、完整 HTTP 响应正文或用户可执行命令。
 
@@ -88,7 +92,7 @@ dotnet build NetRelay.sln --no-restore
 - 首版为单机安装，无服务器部署。
 - 后续安装程序负责检查 .NET 8 Desktop Runtime、注册通知身份和卸载信息。
 - 卸载时应询问是否删除配置和日志，并清理 NetRelay 创建的任务计划项。
-- 配置损坏时优先加载最近有效备份，并暂停自动化。
+- 配置损坏时将原文件重命名为带时间戳的 `config.json.corrupted-*`，随后创建不含规则的默认配置。当前没有“最近有效配置备份”恢复机制。
 
 ## 8. 文档维护规则
 

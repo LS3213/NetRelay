@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using NetRelay.Models;
 
@@ -6,6 +7,7 @@ namespace NetRelay.Services;
 public sealed class NativeNetworkConnectionService
 {
     private static readonly Guid ConnectionManagerClassId = new("BA126AD1-2166-11D1-B1D0-00805FC1270E");
+    private readonly ConcurrentDictionary<Guid, object> _adapterLocks = new();
 
     public IReadOnlySet<Guid> GetControllableConnectionIds()
     {
@@ -63,6 +65,15 @@ public sealed class NativeNetworkConnectionService
             return new AdapterActionResult(false, $"“{adapterName}”没有可用于原生控制的接口 GUID。");
         }
 
+        var adapterLock = _adapterLocks.GetOrAdd(adapterGuid, _ => new object());
+        lock (adapterLock)
+        {
+            return SetEnabledCore(adapterGuid, adapterName, enabled);
+        }
+    }
+
+    private static AdapterActionResult SetEnabledCore(Guid adapterGuid, string adapterName, bool enabled)
+    {
         INetConnectionManager? manager = null;
         IEnumNetConnection? connections = null;
         try

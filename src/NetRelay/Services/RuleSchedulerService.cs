@@ -26,8 +26,10 @@ public sealed class RuleSchedulerService : IDisposable
 {
     private readonly RuleEngine _ruleEngine;
     private readonly ConfigurationService _configService;
+    private readonly ConnectivityService _connectivityService;
     private System.Threading.Timer? _timer;
     private readonly object _lock = new();
+    private int _connectivityEvaluationRunning;
     
     // Maximum tolerance (in minutes) to catch-up run a missed scheduled rule.
     private const int TriggerToleranceMinutes = 2;
@@ -53,14 +55,21 @@ public sealed class RuleSchedulerService : IDisposable
     // Last known operational status of adapters for edge trigger evaluation. Key: Adapter ID.
     private readonly Dictionary<string, OperationalStatus> _lastAdapterStatuses = new();
 
+    // Last known internet state of adapters for HTTP-probed edge trigger evaluation. Key: Adapter ID.
+    private readonly Dictionary<string, bool> _lastAdapterInternetStates = new(StringComparer.OrdinalIgnoreCase);
+
     // Events
     public event EventHandler<PreNotificationEventArgs>? PreNotificationTriggered;
     public event EventHandler<ExecutionRecord>? RuleExecuted;
 
-    public RuleSchedulerService(RuleEngine ruleEngine, ConfigurationService configService)
+    public RuleSchedulerService(
+        RuleEngine ruleEngine,
+        ConfigurationService configService,
+        ConnectivityService connectivityService)
     {
         _ruleEngine = ruleEngine;
         _configService = configService;
+        _connectivityService = connectivityService;
     }
 
     public void Start()
@@ -87,6 +96,10 @@ public sealed class RuleSchedulerService : IDisposable
             var todayLogPath = Path.Combine(logDir, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
             if (!File.Exists(todayLogPath)) return;
 
+            var scheduledTimeRuleIds = _configService.Current.Rules
+                .Where(rule => rule.Trigger is RuleTrigger.Daily or RuleTrigger.Weekly)
+                .Select(rule => rule.Id)
+                .ToHashSet();
             var lines = File.ReadAllLines(todayLogPath);
             foreach (var line in lines)
             {
@@ -95,9 +108,10 @@ public sealed class RuleSchedulerService : IDisposable
                 try
                 {
                     var record = JsonSerializer.Deserialize<ExecutionRecord>(line);
-                    if (record != null && record.RuleId.HasValue)
+                    if (record is not null
+                        && RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(record, scheduledTimeRuleIds))
                     {
-                        var ruleId = record.RuleId.Value;
+                        var ruleId = record.RuleId!.Value;
                         var ranDate = record.StartedAt.LocalDateTime.Date;
 
                         if (!_timeTriggerLastRan.TryGetValue(ruleId, out var existingDate) || existingDate < ranDate)
@@ -259,6 +273,11 @@ public sealed class RuleSchedulerService : IDisposable
     {
         try
         {
+            if (!_configService.IsAutomationEnabled)
+            {
+                return;
+            }
+
             var rules = _configService.Current.Rules.ToList();
             var now = DateTimeOffset.Now;
 
@@ -485,10 +504,84 @@ public sealed class RuleSchedulerService : IDisposable
                     }
                 }
             }
+
+            _ = EvaluateConnectivityRulesAsync(rules);
         }
         catch
         {
             // Keep timer thread safe
+        }
+    }
+
+    private async Task EvaluateConnectivityRulesAsync(IReadOnlyList<AutomationRule> rules)
+    {
+        if (Interlocked.Exchange(ref _connectivityEvaluationRunning, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var monitoredRules = rules
+                .Where(rule => rule.Enabled
+                    && rule.Trigger is RuleTrigger.NetworkChange
+                    {
+                        Condition: AdapterOfflineCondition
+                    })
+                .ToList();
+            var monitoredAdapterIds = monitoredRules
+                .Select(rule => ((AdapterOfflineCondition)((RuleTrigger.NetworkChange)rule.Trigger).Condition).AdapterId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (monitoredAdapterIds.Count == 0)
+            {
+                return;
+            }
+
+            var policy = _configService.Current.ProbePolicy;
+            var probeTasks = monitoredAdapterIds.Select(async adapterId =>
+            {
+                var result = await _connectivityService.ProbeAdapterAsync(adapterId, policy);
+                return (AdapterId: adapterId, result.Online);
+            });
+            var results = await Task.WhenAll(probeTasks);
+
+            lock (_lock)
+            {
+                foreach (var result in results)
+                {
+                    var hadPreviousState = _lastAdapterInternetStates.TryGetValue(result.AdapterId, out var wasOnline);
+                    _lastAdapterInternetStates[result.AdapterId] = result.Online;
+
+                    if (!RuleExecutionPolicy.ShouldTriggerOfflineTransition(
+                            hadPreviousState,
+                            wasOnline,
+                            result.Online))
+                    {
+                        continue;
+                    }
+
+                    foreach (var rule in monitoredRules.Where(rule =>
+                                 rule.Trigger is RuleTrigger.NetworkChange
+                                 {
+                                     Condition: AdapterOfflineCondition condition
+                                 }
+                                 && string.Equals(condition.AdapterId, result.AdapterId, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var networkChange = (RuleTrigger.NetworkChange)rule.Trigger;
+                        TriggerNetworkChangeDebounce(rule, networkChange.DebounceSeconds);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // A failed probe cycle must not stop the scheduler timer.
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _connectivityEvaluationRunning, 0);
         }
     }
 
@@ -531,6 +624,11 @@ public sealed class RuleSchedulerService : IDisposable
 
     private void OnNetworkAddressChanged(object? sender, EventArgs e)
     {
+        if (!_configService.IsAutomationEnabled)
+        {
+            return;
+        }
+
         lock (_lock)
         {
             Dictionary<string, NetworkInterface> currentInterfaces;
@@ -599,9 +697,10 @@ public sealed class RuleSchedulerService : IDisposable
                 var isStillOffline = false;
                 if (rule.Trigger is RuleTrigger.NetworkChange netChange && netChange.Condition is AdapterOfflineCondition cond)
                 {
-                    var ni = NetworkInterface.GetAllNetworkInterfaces()
-                        .FirstOrDefault(n => string.Equals(n.Id, cond.AdapterId, StringComparison.OrdinalIgnoreCase));
-                    isStillOffline = ni == null || ni.OperationalStatus != OperationalStatus.Up;
+                    var result = await _connectivityService.ProbeAdapterAsync(
+                        cond.AdapterId,
+                        _configService.Current.ProbePolicy);
+                    isStillOffline = !result.Online;
                 }
 
                 if (isStillOffline)
