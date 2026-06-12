@@ -5,7 +5,7 @@ namespace NetRelay.Models;
 public sealed class AppConfiguration
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
 
     [JsonPropertyName("probePolicy")]
     public ConnectivityProbePolicy ProbePolicy { get; set; } = new();

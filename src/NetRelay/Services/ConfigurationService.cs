@@ -85,6 +85,15 @@ public sealed class ConfigurationService
 
             // 自动迁移与修正已知失效或高延迟的默认探测端点
             bool configUpdated = false;
+
+            // 模式版本迁移：从 v1 迁移到 v2 时，将 manualDisableProtection 强制设为默认开启（true）
+            if (config.SchemaVersion < 2)
+            {
+                config.ManualDisableProtection = true;
+                config.SchemaVersion = 2;
+                configUpdated = true;
+            }
+
             if (config.ProbePolicy?.Endpoints != null)
             {
                 for (int i = 0; i < config.ProbePolicy.Endpoints.Count; i++)
@@ -166,7 +175,7 @@ public sealed class ConfigurationService
     {
         return new AppConfiguration
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
             ProbePolicy = new ConnectivityProbePolicy(),
             Rules = [],
             AutoStart = false
