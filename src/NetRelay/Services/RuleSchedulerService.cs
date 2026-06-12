@@ -1,4 +1,6 @@
+using System.IO;
 using System.Net.NetworkInformation;
+using System.Text.Json;
 using System.Threading;
 using NetRelay.Models;
 
@@ -64,9 +66,52 @@ public sealed class RuleSchedulerService : IDisposable
         {
             if (_timer != null) return;
 
+            InitializeLastRanFromLogs();
             UpdateAdapterStatuses();
             NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
             _timer = new System.Threading.Timer(OnTimerTick, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private void InitializeLastRanFromLogs()
+    {
+        try
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var logDir = Path.Combine(appData, "NetRelay", "logs");
+            if (!Directory.Exists(logDir)) return;
+
+            var todayLogPath = Path.Combine(logDir, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
+            if (!File.Exists(todayLogPath)) return;
+
+            var lines = File.ReadAllLines(todayLogPath);
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                try
+                {
+                    var record = JsonSerializer.Deserialize<ExecutionRecord>(line);
+                    if (record != null && record.RuleId.HasValue)
+                    {
+                        var ruleId = record.RuleId.Value;
+                        var ranDate = record.StartedAt.LocalDateTime.Date;
+
+                        if (!_timeTriggerLastRan.TryGetValue(ruleId, out var existingDate) || existingDate < ranDate)
+                        {
+                            _timeTriggerLastRan[ruleId] = ranDate;
+                        }
+                    }
+                }
+                catch
+                {
+                    // 忽略单行日志解析错误以维持健壮性
+                }
+            }
+        }
+        catch
+        {
+            // 忽略读取文件异常
         }
     }
 
