@@ -35,6 +35,14 @@ public partial class SettingsDialog : Window
 
         _actualAutoStartEnabled = _autoStartService.IsEnabled();
         AutoStartCheckBox.IsChecked = _actualAutoStartEnabled;
+
+        DebounceSlider.Value = _config.DebounceSeconds;
+        CooldownSlider.Value = _config.CooldownMinutes;
+        KeepDaysSlider.Value = _config.KeepDays;
+
+        DebounceValueText.Text = $"{_config.DebounceSeconds} 秒";
+        CooldownValueText.Text = $"{_config.CooldownMinutes} 分钟";
+        KeepDaysValueText.Text = $"{_config.KeepDays} 天";
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -71,7 +79,35 @@ public partial class SettingsDialog : Window
         }
 
         _config.AutoStart = autoStartEnabled;
+        _config.DebounceSeconds = (int)DebounceSlider.Value;
+        _config.CooldownMinutes = (int)CooldownSlider.Value;
+        _config.KeepDays = (int)KeepDaysSlider.Value;
+
         DialogResult = true;
+    }
+
+    private void DebounceSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (DebounceValueText != null)
+        {
+            DebounceValueText.Text = $"{(int)e.NewValue} 秒";
+        }
+    }
+
+    private void CooldownSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (CooldownValueText != null)
+        {
+            CooldownValueText.Text = $"{(int)e.NewValue} 分钟";
+        }
+    }
+
+    private void KeepDaysSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (KeepDaysValueText != null)
+        {
+            KeepDaysValueText.Text = $"{(int)e.NewValue} 天";
+        }
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)

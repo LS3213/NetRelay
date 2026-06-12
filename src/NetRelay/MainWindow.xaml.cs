@@ -30,6 +30,7 @@ public partial class MainWindow : Window
         }
 
         InitializeComponent();
+        RichToastService.Initialize();
         var configService = new ConfigurationService();
         var connectivityService = new ConnectivityService();
         _connectionService = new NativeNetworkConnectionService();
@@ -241,6 +242,10 @@ public partial class MainWindow : Window
                 $"规则“{e.Rule.Name}”将在 {e.MinutesRemaining} 分钟后执行，点击处理。",
                 System.Windows.Forms.ToolTipIcon.Info
             );
+
+            // Trigger right corner Windows native Interactive Toast
+            var actionName = e.Rule.Action == RuleAction.Enable ? "启用" : "禁用";
+            RichToastService.ShowPreNotification(e.Rule.Name, actionName, e.MinutesRemaining, e.Rule.Id.ToString());
         });
     }
 
@@ -289,7 +294,7 @@ public partial class MainWindow : Window
 
     private void OnRequestEditRule(AutomationRule? rule)
     {
-        var dialog = new RuleEditDialog(rule, _viewModel.Adapters.ToList())
+        var dialog = new RuleEditDialog(rule, _viewModel.Adapters.ToList(), _viewModel.ConfigService.Current)
         {
             Owner = this
         };
@@ -492,6 +497,88 @@ public partial class MainWindow : Window
                     Close();
                 }
             }
+        }
+    }
+
+    public void HandleCommandLineArgs(string[] args)
+    {
+        RestoreWindow();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--protocol-launch", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                var url = args[i + 1];
+                HandleProtocolAction(url);
+                break;
+            }
+        }
+    }
+
+    public void HandleProtocolAction(string rawUrl)
+    {
+        try
+        {
+            var cleanUrl = rawUrl;
+            if (cleanUrl.StartsWith("netrelay:", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanUrl = cleanUrl.Substring("netrelay:".Length);
+            }
+            if (cleanUrl.StartsWith("//", StringComparison.Ordinal))
+            {
+                cleanUrl = cleanUrl.Substring(2);
+            }
+
+            var queryIndex = cleanUrl.IndexOf('?');
+            var queryString = queryIndex >= 0 ? cleanUrl.Substring(queryIndex + 1) : cleanUrl;
+
+            var parts = queryString.Split(new[] { '&', '?' }, StringSplitOptions.RemoveEmptyEntries);
+            string? action = null;
+            string? ruleIdStr = null;
+
+            foreach (var part in parts)
+            {
+                var kv = part.Split('=');
+                if (kv.Length == 2)
+                {
+                    var key = kv[0].Trim();
+                    var value = kv[1].Trim();
+                    if (string.Equals(key, "action", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(key, "type", StringComparison.OrdinalIgnoreCase))
+                    {
+                        action = value;
+                    }
+                    else if (string.Equals(key, "ruleId", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ruleIdStr = value;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(action) || string.IsNullOrEmpty(ruleIdStr))
+            {
+                return;
+            }
+
+            if (!Guid.TryParse(ruleIdStr, out var ruleId))
+            {
+                return;
+            }
+
+            if (string.Equals(action, "delay", StringComparison.OrdinalIgnoreCase))
+            {
+                _ruleScheduler.DelayRule(ruleId, TimeSpan.FromMinutes(10));
+                _viewModel.ClearPendingNotificationIfMatches(ruleId);
+            }
+            else if (string.Equals(action, "skip", StringComparison.OrdinalIgnoreCase))
+            {
+                _ruleScheduler.SkipRuleOccurrence(ruleId);
+                _viewModel.ClearPendingNotificationIfMatches(ruleId);
+            }
+        }
+        catch
+        {
+            // Fail gracefully
         }
     }
 

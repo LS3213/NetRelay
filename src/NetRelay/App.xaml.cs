@@ -24,14 +24,18 @@ public partial class App : System.Windows.Application
         _singleInstanceService = new SingleInstanceService(GetInstanceScopeName());
         if (!_singleInstanceService.TryAcquire())
         {
-            _singleInstanceService.SignalPrimaryInstance();
+            _singleInstanceService.SignalPrimaryInstance(e.Args);
             Shutdown();
             return;
         }
 
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
-        _singleInstanceService.StartListening(() => Dispatcher.Invoke(mainWindow.RestoreWindow));
+        _singleInstanceService.StartListening(args => Dispatcher.Invoke(() => mainWindow.HandleCommandLineArgs(args)));
+        if (e.Args.Length > 0)
+        {
+            mainWindow.HandleCommandLineArgs(e.Args);
+        }
         mainWindow.Show();
     }
 

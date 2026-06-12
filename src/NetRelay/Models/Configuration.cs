@@ -24,6 +24,15 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("manualDisableProtection")]
     public bool ManualDisableProtection { get; set; } = true;
+
+    [JsonPropertyName("debounceSeconds")]
+    public int DebounceSeconds { get; set; } = 10;
+
+    [JsonPropertyName("cooldownMinutes")]
+    public int CooldownMinutes { get; set; } = 5;
+
+    [JsonPropertyName("keepDays")]
+    public int KeepDays { get; set; } = 30;
 }
 
 public sealed class ConnectivityProbePolicy

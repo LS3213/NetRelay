@@ -597,6 +597,17 @@ public sealed class MainViewModel : ObservableObject
         _pendingNotification = null;
     }
 
+    public void ClearPendingNotificationIfMatches(Guid ruleId)
+    {
+        if (_pendingRule != null && _pendingRule.Id == ruleId)
+        {
+            _countdownTimer.Stop();
+            IsPendingOverlayVisible = false;
+            _pendingRule = null;
+            _pendingNotification = null;
+        }
+    }
+
     public async Task<AdapterActionResult> SetSelectedAdapterEnabledAsync(
         NativeNetworkConnectionService connectionService,
         bool enabled)

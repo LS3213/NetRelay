@@ -46,4 +46,35 @@ public static class ConnectivityProbePolicyValidator
 
         return null;
     }
+
+    public static string? ValidateConfig(AppConfiguration? config)
+    {
+        if (config is null)
+        {
+            return "配置不存在。";
+        }
+
+        var policyReason = Validate(config.ProbePolicy);
+        if (policyReason is not null)
+        {
+            return policyReason;
+        }
+
+        if (config.DebounceSeconds is < 1 or > 60)
+        {
+            return "网络变化判定防抖时间必须在 1 到 60 秒之间。";
+        }
+
+        if (config.CooldownMinutes is < 0 or > 30)
+        {
+            return "规则执行冷却时间必须在 0 到 30 分钟之间。";
+        }
+
+        if (config.KeepDays is < 1 or > 90)
+        {
+            return "日志保留天数上限必须在 1 到 90 天之间。";
+        }
+
+        return null;
+    }
 }

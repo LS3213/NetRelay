@@ -460,13 +460,13 @@ static void SingleInstanceServiceSignalsPrimaryInstance()
     Assert(primary.TryAcquire());
 
     using var activated = new ManualResetEventSlim();
-    primary.StartListening(activated.Set);
+    primary.StartListening(args => activated.Set());
 
     var secondaryAcquired = Task.Run(() =>
     {
         using var secondary = new SingleInstanceService(scopeName);
         var acquired = secondary.TryAcquire();
-        secondary.SignalPrimaryInstance();
+        secondary.SignalPrimaryInstance(new[] { "test-arg" });
         return acquired;
     }).GetAwaiter().GetResult();
 

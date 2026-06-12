@@ -184,7 +184,7 @@ public sealed class ConfigurationService
 
     private void UpdateValidationState(AppConfiguration config)
     {
-        AutomationDisabledReason = ConnectivityProbePolicyValidator.Validate(config.ProbePolicy);
+        AutomationDisabledReason = ConnectivityProbePolicyValidator.ValidateConfig(config);
         IsAutomationEnabled = AutomationDisabledReason is null;
     }
 

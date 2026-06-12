@@ -9,14 +9,16 @@ public partial class RuleEditDialog : Window
 {
     private readonly AutomationRule? _rule;
     private readonly List<NetworkAdapterInfo> _adapters;
+    private readonly AppConfiguration _config;
 
     public AutomationRule? ResultRule { get; private set; }
 
-    public RuleEditDialog(AutomationRule? rule, List<NetworkAdapterInfo> adapters)
+    public RuleEditDialog(AutomationRule? rule, List<NetworkAdapterInfo> adapters, AppConfiguration config)
     {
         InitializeComponent();
         _rule = rule;
         _adapters = adapters;
+        _config = config;
 
         PopulateComboboxes();
         LoadData();
@@ -60,6 +62,8 @@ public partial class RuleEditDialog : Window
         {
             DialogTitleText.Text = "添加自动化规则";
             TriggerTypeComboBox.SelectedIndex = 1; // Default to Daily
+            CooldownTextBox.Text = (_config.CooldownMinutes * 60).ToString();
+            DebounceTextBox.Text = _config.DebounceSeconds.ToString();
             return;
         }
 
