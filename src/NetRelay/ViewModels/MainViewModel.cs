@@ -277,7 +277,7 @@ public sealed class MainViewModel : ObservableObject
         {
             var record = await _ruleEngine.ExecuteRuleAsync(rule, RuleSource.Manual);
             OperationMessage = record.Outcome == "SUCCESS" ? "规则执行成功" : $"规则未成功完成 ({record.ReasonCode})";
-            await Task.Delay(1000);
+            await Task.Delay(2500);
             OperationMessage = null;
             RefreshAdapters();
             _ = LoadLogsAsync();
@@ -285,6 +285,9 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             ErrorMessage = $"立即执行失败: {ex.Message}";
+            OperationMessage = $"立即执行失败: {ex.Message}";
+            await Task.Delay(2500);
+            OperationMessage = null;
         }
         finally
         {
@@ -445,7 +448,20 @@ public sealed class MainViewModel : ObservableObject
 
             await Task.Delay(700);
             RefreshAdapters();
+
+            IsOperating = false;
+            await Task.Delay(2000);
+            OperationMessage = null;
+
             return result;
+        }
+        catch (Exception ex)
+        {
+            OperationMessage = $"操作失败: {ex.Message}";
+            IsOperating = false;
+            await Task.Delay(2500);
+            OperationMessage = null;
+            throw;
         }
         finally
         {

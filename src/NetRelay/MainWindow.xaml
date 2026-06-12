@@ -466,11 +466,6 @@
                                             </StackPanel>
                                         </ScrollViewer>
                                         <StackPanel Grid.Row="3">
-                                            <Border Margin="0,0,0,10" Padding="10" CornerRadius="13" Background="#66FFFFFF"
-                                                    Visibility="{Binding HasOperationMessage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <TextBlock Text="{Binding OperationMessage}" Foreground="{StaticResource TextSecondaryBrush}"
-                                                           TextWrapping="Wrap" FontSize="10"/>
-                                            </Border>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
@@ -744,5 +739,50 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- Top-Middle Toast/Popup Notification -->
+        <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,85,0,0"
+                CornerRadius="16" Padding="20,11"
+                BorderBrush="#E0FFFFFF" Background="#F2F7FF" IsHitTestVisible="False">
+            <Border.RenderTransform>
+                <TranslateTransform Y="-20"/>
+            </Border.RenderTransform>
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource GlassCardStyle}">
+                    <Setter Property="Opacity" Value="0"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasOperationMessage}" Value="True">
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3"/>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)" To="0" Duration="0:0:0.3">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                            <DataTrigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)" To="-20" Duration="0:0:0.2"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.ExitActions>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="25" ShadowDepth="4" Opacity="0.12" Color="#15243D"/>
+            </Border.Effect>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2" FontSize="14" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Text="{Binding OperationMessage}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>
