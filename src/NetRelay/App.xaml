@@ -284,16 +284,16 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#60FFFFFF" Offset="0"/>
-                        <GradientStop Color="#30FFFFFF" Offset="1"/>
+                        <GradientStop Color="#EFFFFFFF" Offset="0"/>
+                        <GradientStop Color="#C5FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
             <Setter Property="BorderBrush">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#90FFFFFF" Offset="0"/>
-                        <GradientStop Color="#45FFFFFF" Offset="1"/>
+                        <GradientStop Color="#CCFFFFFF" Offset="0"/>
+                        <GradientStop Color="#60FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -304,6 +304,9 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10" ShadowDepth="1.5" Opacity="0.06" Color="#182236"/>
+                            </Border.Effect>
                             <Grid>
                                 <Border x:Name="HoverOverlay" CornerRadius="13" Background="#12536EF2" Visibility="Collapsed" Margin="-14,-9"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -314,7 +317,7 @@
                                 <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="Root" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.06" Color="#182236"/>
+                                        <DropShadowEffect BlurRadius="12" ShadowDepth="1.5" Opacity="0.10" Color="#182236"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
@@ -393,7 +396,7 @@
                     <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Style>
             </Style.Resources>
-            <Setter Property="Foreground" Value="#E85C63"/>
+            <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,9"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -403,16 +406,16 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#20E85C63" Offset="0"/>
-                        <GradientStop Color="#48E85C63" Offset="1"/>
+                        <GradientStop Color="#FF6B7C" Offset="0"/>
+                        <GradientStop Color="#E84A5F" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
             <Setter Property="BorderBrush">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#75E85C63" Offset="0"/>
-                        <GradientStop Color="#35E85C63" Offset="1"/>
+                        <GradientStop Color="#60FFFFFF" Offset="0"/>
+                        <GradientStop Color="#20FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -423,8 +426,11 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.22" Color="#E84A5F"/>
+                            </Border.Effect>
                             <Grid>
-                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#20E85C63" Visibility="Collapsed" Margin="-14,-9"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#20FFFFFF" Visibility="Collapsed" Margin="-14,-9"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -433,7 +439,7 @@
                                 <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="Root" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.12" Color="#E85C63"/>
+                                        <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.35" Color="#E84A5F"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
@@ -455,7 +461,7 @@
                     <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </Style>
             </Style.Resources>
-            <Setter Property="Foreground" Value="#536EF2"/>
+            <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,9"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -465,16 +471,16 @@
             <Setter Property="Background">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#20536EF2" Offset="0"/>
-                        <GradientStop Color="#48536EF2" Offset="1"/>
+                        <GradientStop Color="#637CFF" Offset="0"/>
+                        <GradientStop Color="#4A65E6" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
             <Setter Property="BorderBrush">
                 <Setter.Value>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#75536EF2" Offset="0"/>
-                        <GradientStop Color="#35536EF2" Offset="1"/>
+                        <GradientStop Color="#60FFFFFF" Offset="0"/>
+                        <GradientStop Color="#20FFFFFF" Offset="1"/>
                     </LinearGradientBrush>
                 </Setter.Value>
             </Setter>
@@ -485,8 +491,11 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.22" Color="#4A65E6"/>
+                            </Border.Effect>
                             <Grid>
-                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#20536EF2" Visibility="Collapsed" Margin="-14,-9"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#20FFFFFF" Visibility="Collapsed" Margin="-14,-9"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -495,7 +504,7 @@
                                 <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="Root" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.12" Color="#536EF2"/>
+                                        <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.35" Color="#4A65E6"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
