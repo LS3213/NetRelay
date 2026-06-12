@@ -201,13 +201,13 @@ h1, h2, h3, p { margin-top: 0; }
 .problem-section, .features, .workflow, .faq { padding-top: 150px; }
 .section-intro { max-width: 620px; }
 .section-intro.centered { margin-inline: auto; text-align: center; }
-.section-intro h2, .privacy h2, .download-cta h2 {
+.section-intro h2, .download-cta h2 {
   margin: 20px 0 18px;
   font-size: clamp(38px, 5vw, 62px);
   line-height: 1.02;
   letter-spacing: -.065em;
 }
-.section-intro p, .privacy p, .download-cta p { color: var(--muted); font-size: 16px; line-height: 1.7; }
+.section-intro p, .download-cta p { color: var(--muted); font-size: 16px; line-height: 1.7; }
 .comparison { margin-top: 55px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .comparison-card, .bento-card, .workflow-step {
   position: relative;
@@ -265,16 +265,6 @@ h1, h2, h3, p { margin-top: 0; }
 .workflow-step { min-height: 305px; }
 .workflow-step > span { position: absolute; right: 25px; top: 20px; color: rgba(83,110,242,.12); font-size: 80px; font-weight: 800; letter-spacing: -.08em; }
 .step-icon { width: 54px; height: 54px; margin-bottom: 45px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, #6983f2, #765dd7); border: 6px solid rgba(255,255,255,.72); border-radius: 18px; box-shadow: 0 14px 28px rgba(83,110,242,.22); font-size: 19px; font-weight: 800; }
-.privacy { position: relative; overflow: hidden; margin-top: 150px; padding: 105px 30px; border: 1px solid rgba(255,255,255,.1); border-radius: 34px; color: #fff; background: #0d1020; text-align: center; box-shadow: 0 30px 80px rgba(27,33,70,.2); }
-.privacy-glow { position: absolute; left: 50%; top: -210px; width: min(600px, 100%); height: 420px; border-radius: 50%; background: #536ef2; filter: blur(120px); opacity: .42; transform: translateX(-50%); }
-.privacy > *:not(.privacy-glow) { position: relative; }
-.privacy-icon { width: 62px; height: 62px; margin: 0 auto 25px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.18); border-radius: 20px; background: rgba(255,255,255,.08); font-size: 25px; }
-.privacy .eyebrow { color: #c7d0ff; background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.12); }
-.privacy h2 { max-width: 700px; margin-inline: auto; }
-.privacy p { max-width: 600px; margin-inline: auto; color: #aeb6ca; }
-.privacy-points { margin-top: 35px; display: flex; justify-content: center; flex-wrap: wrap; gap: 9px; }
-.privacy-points span { padding: 9px 13px; color: #bdc7db; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(255,255,255,.05); font-size: 10px; font-weight: 650; }
-
 .faq { display: grid; grid-template-columns: .8fr 1.2fr; gap: 70px; align-items: start; }
 .faq-list { display: grid; gap: 10px; }
 details { padding: 21px 23px; border: 1px solid rgba(255,255,255,.92); border-radius: 17px; background: rgba(255,255,255,.62); box-shadow: 0 10px 30px rgba(48,62,108,.06); }
@@ -335,7 +325,7 @@ details p { margin: 15px 0 0; color: var(--muted); font-size: 12px; line-height:
   .problem-section, .features, .workflow, .faq { padding-top: 105px; }
   .comparison-card, .bento-card, .workflow-step { padding: 24px; }
   .network-path { transform: scale(.86); margin-inline: -25px; }
-  .privacy, .download-cta { margin-top: 105px; padding: 70px 20px; }
+  .download-cta { margin-top: 105px; padding: 70px 20px; }
   .site-footer { flex-wrap: wrap; }
   .site-footer div { width: 100%; margin-left: 0; }
 }

@@ -60,6 +60,10 @@ internal interface IEnumNetworkConnections
 {
     [PreserveSig]
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
+    int get__NewEnum([MarshalAs(UnmanagedType.Interface)] out object ppEnumVar);
+
+    [PreserveSig]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     int Next(
         uint count,
         [MarshalAs(UnmanagedType.Interface)] out INetworkConnection connection,
