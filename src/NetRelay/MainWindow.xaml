@@ -439,7 +439,7 @@
                                     <RowDefinition Height="14"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="24">
+                                <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="24,20,24,18">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -448,21 +448,23 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <TextBlock Text="当前选择" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
-                                        <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                                        <StackPanel Grid.Row="1" Margin="0,6,0,0">
                                             <TextBlock Text="{Binding SelectedAdapter.Name, TargetNullValue=请选择网卡}" FontWeight="Bold" FontSize="20" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding SelectedAdapter.Description}" Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                            <TextBlock Text="{Binding SelectedAdapter.Description}" Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="10" TextWrapping="Wrap" MaxHeight="34"/>
                                         </StackPanel>
-                                        <StackPanel Grid.Row="2" Margin="0,18,0,0">
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="联网状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.InternetStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid Margin="0,0,0,11"><TextBlock Text="检测时间" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LastProbeTimeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                        </StackPanel>
+                                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" BorderThickness="0" Padding="0,0,4,0" Margin="0,12,0,0" Focusable="False">
+                                            <StackPanel>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="联网状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.InternetStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid Margin="0,0,0,8"><TextBlock Text="检测时间" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LastProbeTimeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                            </StackPanel>
+                                        </ScrollViewer>
                                         <StackPanel Grid.Row="3">
                                             <Border Margin="0,0,0,10" Padding="10" CornerRadius="13" Background="#66FFFFFF"
                                                     Visibility="{Binding HasOperationMessage, Converter={StaticResource BooleanToVisibilityConverter}}">
