@@ -221,7 +221,6 @@
         <Grid Margin="28,18,28,30">
             <Grid.RowDefinitions>
                 <RowDefinition Height="58"/>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -229,6 +228,8 @@
             <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" CornerRadius="20" Padding="16,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -242,7 +243,16 @@
                             <TextBlock Text="原生网络切换助手" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/>
                         </StackPanel>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+
+                    <!-- Compact title-bar navigation -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="54,0,0,0"
+                                VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button x:Name="TabOverviewBtn" Style="{StaticResource TabButtonStyle}" Click="TabOverviewButton_Click" Content="网络概览"/>
+                        <Button x:Name="TabRulesBtn" Style="{StaticResource TabButtonStyle}" Click="TabRulesButton_Click" Content="自动化规则"/>
+                        <Button x:Name="TabLogsBtn" Style="{StaticResource TabButtonStyle}" Click="TabLogsButton_Click" Content="执行历史"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource CaptionButtonStyle}" Click="SettingsButton_Click" ToolTip="程序设置">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" Foreground="#334158" FontSize="14"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -265,22 +275,8 @@
                 </Grid>
             </Border>
 
-            <!-- Horizontal Navigation Tab Selector -->
-            <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" CornerRadius="16" Height="48" Margin="0,15,0,15" Padding="4" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" x:Name="TabOverviewBtn" Style="{StaticResource TabButtonStyle}" Click="TabOverviewButton_Click" Content="网络概览"/>
-                    <Button Grid.Column="1" x:Name="TabRulesBtn" Style="{StaticResource TabButtonStyle}" Click="TabRulesButton_Click" Content="自动化规则"/>
-                    <Button Grid.Column="2" x:Name="TabLogsBtn" Style="{StaticResource TabButtonStyle}" Click="TabLogsButton_Click" Content="执行历史"/>
-                </Grid>
-            </Border>
-
             <!-- Main Page View Content -->
-            <TabControl Grid.Row="2" SelectedIndex="{Binding CurrentTabIndex}" BorderThickness="0" Background="Transparent">
+            <TabControl Grid.Row="1" Margin="0,15,0,0" SelectedIndex="{Binding CurrentTabIndex}" BorderThickness="0" Background="Transparent">
                 <TabControl.ItemContainerStyle>
                     <Style TargetType="TabItem">
                         <Setter Property="Visibility" Value="Collapsed"/>
