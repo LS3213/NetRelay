@@ -29,6 +29,9 @@ public sealed class RuleSchedulerService : IDisposable
     private System.Threading.Timer? _timer;
     private readonly object _lock = new();
     
+    // Maximum tolerance (in minutes) to catch-up run a missed scheduled rule.
+    private const int TriggerToleranceMinutes = 2;
+    
     // Tracks daily/weekly rule execution dates to prevent multiple fires within the matching minute.
     private readonly Dictionary<Guid, DateTime> _timeTriggerLastRan = new();
 
@@ -304,7 +307,41 @@ public sealed class RuleSchedulerService : IDisposable
                         {
                             _tempRuleDelays.Remove(rule.Id);
                         }
-                        _ = ExecuteOnceRuleAndNotifyAsync(rule);
+
+                        // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
+                        if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
+                        {
+                            _ = ExecuteOnceRuleAndNotifyAsync(rule);
+                        }
+                        else
+                        {
+                            // 迟到太久则直接标记为已执行/已失效并写日志以防重复启动
+                            lock (_lock)
+                            {
+                                var currentRules = _configService.Current.Rules;
+                                var index = currentRules.FindIndex(r => r.Id == rule.Id);
+                                if (index >= 0)
+                                {
+                                    currentRules[index] = currentRules[index] with { Enabled = false };
+                                    _configService.Save();
+                                }
+                            }
+
+                            var record = new ExecutionRecord(
+                                Guid.NewGuid(),
+                                rule.Id,
+                                RuleSource.Schedule,
+                                rule.TargetAdapterId,
+                                rule.Action,
+                                now,
+                                now,
+                                Outcome: "SKIPPED",
+                                ReasonCode: "TRIGGER_EXPIRED",
+                                WindowsErrorCode: null
+                            );
+                            _ = RuleEngine.WriteExecutionRecordAsync(record);
+                            RuleExecuted?.Invoke(this, record);
+                        }
                     }
                 }
                 else if (rule.Trigger is RuleTrigger.Daily daily)
@@ -351,7 +388,29 @@ public sealed class RuleSchedulerService : IDisposable
                             {
                                 _tempRuleDelays.Remove(rule.Id);
                             }
-                            _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+
+                            // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
+                            if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
+                            {
+                                _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+                            }
+                            else
+                            {
+                                var record = new ExecutionRecord(
+                                    Guid.NewGuid(),
+                                    rule.Id,
+                                    RuleSource.Schedule,
+                                    rule.TargetAdapterId,
+                                    rule.Action,
+                                    now,
+                                    now,
+                                    Outcome: "SKIPPED",
+                                    ReasonCode: "TRIGGER_EXPIRED",
+                                    WindowsErrorCode: null
+                                );
+                                _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                RuleExecuted?.Invoke(this, record);
+                            }
                         }
                     }
                 }
@@ -399,7 +458,29 @@ public sealed class RuleSchedulerService : IDisposable
                             {
                                 _tempRuleDelays.Remove(rule.Id);
                             }
-                            _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+
+                            // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
+                            if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
+                            {
+                                _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+                            }
+                            else
+                            {
+                                var record = new ExecutionRecord(
+                                    Guid.NewGuid(),
+                                    rule.Id,
+                                    RuleSource.Schedule,
+                                    rule.TargetAdapterId,
+                                    rule.Action,
+                                    now,
+                                    now,
+                                    Outcome: "SKIPPED",
+                                    ReasonCode: "TRIGGER_EXPIRED",
+                                    WindowsErrorCode: null
+                                );
+                                _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                RuleExecuted?.Invoke(this, record);
+                            }
                         }
                     }
                 }
