@@ -2,7 +2,7 @@
 
 [上一篇：网络检测与自动化](05-network-detection-and-automation.md) | [返回索引](README.md) | [下一篇：安全、测试与风险](07-security-testing-and-risks.md)
 
-> 当前已有原生 WPF 源码、构建配置和 Windows EXE 发布流程；安装包、升级与完整运维能力仍为计划。
+> 当前已有原生 WPF 源码、规则管理及后台调度服务、结构化日志与配置保存服务、构建配置和 Windows EXE 发布流程。
 
 ## 1. 当前目录结构
 
@@ -73,7 +73,7 @@ dotnet build NetRelay.sln --no-restore
 
 ## 6. 配置、日志与诊断
 
-以下仍为计划实现：
+当前已实现以下配置与日志路径：
 
 | 路径 | 内容 |
 | --- | --- |

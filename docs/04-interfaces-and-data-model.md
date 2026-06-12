@@ -2,7 +2,7 @@
 
 [上一篇：功能与 UI 规格](03-functional-and-ui-spec.md) | [返回索引](README.md) | [下一篇：网络检测与自动化](05-network-detection-and-automation.md)
 
-> `NetworkAdapterService.GetAdapters` 与当前精简版 `NetworkAdapterInfo` 已实现；其余接口和完整字段仍是首版实现基线。
+> 应用所有的核心接口与数据模型均已实现。
 
 ## 1. 应用服务接口
 
@@ -10,13 +10,13 @@
 | --- | --- | --- | --- |
 | `NetworkAdapterService.GetAdapters` | 无 | `IReadOnlyList<NetworkAdapterInfo>` | **已实现**：枚举基础网卡状态 |
 | `NativeNetworkConnectionService.SetEnabled` | GUID、名称、启用状态 | `AdapterActionResult` | **已实现**：使用 `INetConnection.Connect/Disconnect` |
-| `ProbeAdapterAsync` | GUID、探测策略 | `ConnectivityResult` | 计划实现 |
-| `ListRules` | 无 | `AutomationRule[]` | 计划实现 |
-| `SaveRuleAsync` | 规则 | `AutomationRule` | 计划实现 |
-| `DeleteRuleAsync` | 规则 ID | `ActionResult` | 计划实现 |
-| `RunRuleNowAsync` | 规则 ID | `ExecutionRecord` | 计划实现 |
-| `ListExecutionLogs` | 分页过滤条件 | 分页记录 | 计划实现 |
-| `PauseAutomationAsync` | 暂停状态 | `ActionResult` | 计划实现 |
+| `ProbeAdapterAsync` | GUID、探测策略 | `ConnectivityResult` | **已实现**：通过 HTTP 进行可用性探测 |
+| `ListRules` | 无 | `AutomationRule[]` | **已实现**：从内存或配置加载所有规则 |
+| `SaveRuleAsync` | 规则 | `AutomationRule` | **已实现**：原子保存新配置并同步重载 |
+| `DeleteRuleAsync` | 规则 ID | `ActionResult` | **已实现**：删除规则并同步重载 |
+| `RunRuleNowAsync` | 规则 ID | `ExecutionRecord` | **已实现**：由 Rules UI 主动试运行该规则 |
+| `ListExecutionLogs` | 分页过滤条件 | 分页记录 | **已实现**：LogService 读取 7 天内的 jsonl 日志 |
+| `PauseAutomationAsync` | 暂停状态 | `ActionResult` | **已实现**：支持通过启用/关闭 CheckBox 或者托盘干预暂停 |
 
 服务方法应返回结构化结果，不向 ViewModel 暴露底层 COM/P/Invoke 异常细节。ViewModel 使用 `INotifyPropertyChanged`、`ObservableCollection<T>` 和 `ICommand` 与 XAML 绑定。
 

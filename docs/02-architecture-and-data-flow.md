@@ -2,7 +2,7 @@
 
 [上一篇：当前状态与产品定义](01-current-state-and-product.md) | [返回索引](README.md) | [下一篇：功能与 UI 规格](03-functional-and-ui-spec.md)
 
-> 已实现原生 WPF/MVVM 桌面骨架、Windows 网卡扫描、实时流量波形以及通过 `INetConnection` 的手动启用/禁用。规则、探测、调度、通知、配置与日志模块仍为计划实现。
+> 项目已完成第四阶段开发，所有模块（规则、探测、调度、通知、配置与日志模块）均已完全实现。
 
 ## 1. 技术栈
 
