@@ -138,6 +138,9 @@ public sealed record ExecutionRecord(
 计划配置位置：`%APPDATA%\NetRelay\config.json`。
 
 - 使用 `System.Text.Json` 序列化。
+- **全局配置字段**：
+  - `autoStart` (布尔值，默认 `false`)：是否随 Windows 登录开机自启。
+  - `manualDisableProtection` (布尔值，默认 `true`)：是否在首页手动禁用物理网卡时进行备用网络连通性校验安全保护。
 - 所有 ID 使用 GUID；网卡 ID 保存前规范化。
 - 时间戳使用 RFC 3339；每日和每周规则以 Windows 本地时区解释。
 - 配置保存前完整校验，写入时采用临时文件和原子替换。

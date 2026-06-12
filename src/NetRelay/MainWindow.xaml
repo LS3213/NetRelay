@@ -465,10 +465,10 @@
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="禁用安全保护" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                            <TextBlock Text="开启后，手动与自动禁用网卡均会校验备用网络" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
+                                            <TextBlock Text="安全保护" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="开启后，手动禁用网卡前将验证备用网络" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
                                         </StackPanel>
-                                        <CheckBox Grid.Column="2" VerticalAlignment="Center" Margin="5,0,0,0"
+                                        <CheckBox Grid.Column="2" Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center" Margin="5,0,0,0"
                                                   IsChecked="{Binding ManualDisableProtection, Mode=TwoWay}"/>
                                     </Grid>
                                 </Border>

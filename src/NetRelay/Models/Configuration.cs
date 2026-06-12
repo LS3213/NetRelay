@@ -23,7 +23,7 @@ public sealed class AppConfiguration
     public bool AutoStart { get; set; } = false;
 
     [JsonPropertyName("manualDisableProtection")]
-    public bool ManualDisableProtection { get; set; } = false;
+    public bool ManualDisableProtection { get; set; } = true;
 }
 
 public sealed class ConnectivityProbePolicy
