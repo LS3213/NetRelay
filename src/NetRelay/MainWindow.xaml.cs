@@ -284,27 +284,77 @@ public partial class MainWindow : Window
 
     private void UpdateTabSelection(int tabIndex)
     {
-        var activeBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x53, 0x6E, 0xF2));
+        // Specular glass background gradient (refined high-contrast frosted glass)
+        var activeBrush = new LinearGradientBrush
+        {
+            StartPoint = new System.Windows.Point(0, 0),
+            EndPoint = new System.Windows.Point(0, 1)
+        };
+        // Top specular highlight reflection (white gloss, 92% opacity)
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(235, 0xFF, 0xFF, 0xFF), 0.0));
+        // Soft water blue reflection (72% opacity, gives it a distinct but clean color)
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(185, 0xE2, 0xEE, 0xFF), 0.35));
+        // Transition white (50% opacity)
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(128, 0xFF, 0xFF, 0xFF), 0.65));
+        // Translucent bottom (30% opacity white)
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(76, 0xFF, 0xFF, 0xFF), 1.0));
+
+        // Edge refraction gradient border (simulates light reflection on glass edge)
+        var activeBorder = new LinearGradientBrush
+        {
+            StartPoint = new System.Windows.Point(0, 0),
+            EndPoint = new System.Windows.Point(0, 1)
+        };
+        // Bright top highlight (96% opacity white)
+        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(245, 0xFF, 0xFF, 0xFF), 0.0));
+        // Soft middle transition (60% opacity white)
+        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(150, 0xFF, 0xFF, 0xFF), 0.5));
+        // Soft bottom edge (40% opacity white)
+        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(100, 0xFF, 0xFF, 0xFF), 1.0));
+
+        var activeText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x43, 0x5E, 0xEE));
+
+        // Ultra-soft, lightweight dark shadow to prevent muddy glass center
+        var activeShadow = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            BlurRadius = 10,
+            ShadowDepth = 1.2,
+            Opacity = 0.08,
+            Color = System.Windows.Media.Color.FromRgb(0x18, 0x22, 0x36)
+        };
+
         var inactiveBrush = System.Windows.Media.Brushes.Transparent;
-        var activeText = System.Windows.Media.Brushes.White;
+        var inactiveBorder = System.Windows.Media.Brushes.Transparent;
         var inactiveText = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
+
+        // Keep BorderThickness constant at 1.0 to prevent 1px text layout shift/shaking on selection
+        var uniformBorderThickness = new Thickness(1);
 
         if (TabOverviewBtn != null)
         {
             TabOverviewBtn.Background = tabIndex == 0 ? activeBrush : inactiveBrush;
+            TabOverviewBtn.BorderBrush = tabIndex == 0 ? activeBorder : inactiveBorder;
+            TabOverviewBtn.BorderThickness = uniformBorderThickness;
             TabOverviewBtn.Foreground = tabIndex == 0 ? activeText : inactiveText;
+            TabOverviewBtn.Effect = tabIndex == 0 ? activeShadow : null;
         }
 
         if (TabRulesBtn != null)
         {
             TabRulesBtn.Background = tabIndex == 1 ? activeBrush : inactiveBrush;
+            TabRulesBtn.BorderBrush = tabIndex == 1 ? activeBorder : inactiveBorder;
+            TabRulesBtn.BorderThickness = uniformBorderThickness;
             TabRulesBtn.Foreground = tabIndex == 1 ? activeText : inactiveText;
+            TabRulesBtn.Effect = tabIndex == 1 ? activeShadow : null;
         }
 
         if (TabLogsBtn != null)
         {
             TabLogsBtn.Background = tabIndex == 2 ? activeBrush : inactiveBrush;
+            TabLogsBtn.BorderBrush = tabIndex == 2 ? activeBorder : inactiveBorder;
+            TabLogsBtn.BorderThickness = uniformBorderThickness;
             TabLogsBtn.Foreground = tabIndex == 2 ? activeText : inactiveText;
+            TabLogsBtn.Effect = tabIndex == 2 ? activeShadow : null;
         }
     }
 

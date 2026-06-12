@@ -5,46 +5,6 @@
         WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False">
     <Window.Resources>
-        <!-- Reusable styles matching MainWindow/SettingsDialog -->
-        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#536EF2"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#80FFFFFF"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="14" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#657EF5"/>
-                                <Setter TargetName="Root" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect BlurRadius="18" ShadowDepth="5" Opacity="0.22" Color="#4366B0"/>
-                                    </Setter.Value>
-                                </Setter>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#415CD1"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
         <Style TargetType="Label">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
             <Setter Property="FontSize" Value="11"/>
@@ -79,19 +39,12 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style TargetType="ComboBox">
+        <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
             <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="#80FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#25000000"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Padding" Value="8,3"/>
         </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,0,15,0"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
     </Window.Resources>
 
@@ -113,8 +66,8 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Border Width="40" Height="40" CornerRadius="14" Background="#536EF2">
-                    <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                <Border Width="40" Height="40" CornerRadius="14" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
+                    <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2" FontSize="18"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">

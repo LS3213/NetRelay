@@ -31,7 +31,7 @@ NetRelay.exe --restore-adapter <adapter-guid>
 NetRelay.exe --startup
 ```
 
-- **`--startup`**：以开机自启模式运行应用。主窗口会直接隐藏到系统托盘，不显示任务栏图标。
+- **`--startup`**：以开机自启模式运行应用。主窗口会直接隐藏到系统托盘，不显示任务栏图标，不发生任何窗口显示闪烁。
 - 开机自启使用固定名称 `NetRelay AutoStart` 的 Windows 登录任务，动作仅允许为当前 NetRelay 可执行文件与 `--startup` 参数。
 - CLI 参数必须严格解析，并在配置中验证对应实体。
 - 未知参数、缺失规则、失效 GUID 或禁用规则返回非零退出码并写日志。

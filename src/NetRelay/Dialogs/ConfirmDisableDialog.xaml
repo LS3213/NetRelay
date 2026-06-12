@@ -17,8 +17,8 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <StackPanel Orientation="Horizontal">
-                <Border Width="42" Height="42" CornerRadius="15" Background="#F0D05B65">
-                    <Path Width="19" Height="19" Stretch="Uniform" Stroke="White" StrokeThickness="1.7"
+                <Border Width="42" Height="42" CornerRadius="15" Background="#1AE85C63" BorderBrush="#30E85C63" BorderThickness="1">
+                    <Path Width="19" Height="19" Stretch="Uniform" Stroke="#E85C63" StrokeThickness="1.7"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                           Data="M 10,2 L 18,17 L 2,17 Z M 10,7 L 10,12 M 10,15 L 10,15.1"
                           HorizontalAlignment="Center" VerticalAlignment="Center"/>

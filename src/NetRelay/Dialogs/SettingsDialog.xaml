@@ -4,47 +4,7 @@
         Title="程序设置" Width="430" Height="370"
         WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False">
-    <Window.Resources>
-        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#536EF2"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#80FFFFFF"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="14,9"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="14" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#657EF5"/>
-                                <Setter TargetName="Root" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect BlurRadius="18" ShadowDepth="5" Opacity="0.22" Color="#4366B0"/>
-                                    </Setter.Value>
-                                </Setter>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#415CD1"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
+
 
     <Border Margin="20" Padding="25" CornerRadius="26" Background="#F4F8FD"
             BorderBrush="#FFFFFFFF" BorderThickness="1">
@@ -60,8 +20,8 @@
 
             <!-- Header -->
             <StackPanel Orientation="Horizontal">
-                <Border Width="42" Height="42" CornerRadius="15" Background="#536EF2">
-                    <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                <Border Width="42" Height="42" CornerRadius="15" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
+                    <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2" FontSize="18"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
@@ -71,22 +31,22 @@
             </StackPanel>
 
             <!-- Content -->
-            <StackPanel Grid.Row="1" Margin="0,20,0,0">
-                <TextBlock Text="关闭窗口行为" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,10"/>
-                
-                <RadioButton x:Name="AskOnCloseRadio" GroupName="CloseActionGroup" Content="每次关闭时都进行询问" 
-                             Margin="4,4,0,8" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
-                
-                <RadioButton x:Name="HideToTrayRadio" GroupName="CloseActionGroup" Content="直接隐藏到任务栏托盘（推荐）" 
-                             Margin="4,0,0,8" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
-                
-                <RadioButton x:Name="ExitProgramRadio" GroupName="CloseActionGroup" Content="直接退出主程序" 
-                             Margin="4,0,0,12" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+            <StackPanel Grid.Row="1" Margin="0,15,0,0">
+                <TextBlock Text="关闭窗口行为" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
-                <TextBlock Text="* 您也可以在托盘图标右键菜单中随时选择退出程序。" 
-                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="4,0,0,0"/>
+                <RadioButton x:Name="AskOnCloseRadio" GroupName="CloseActionGroup" Content="每次关闭时都进行询问"
+                              Margin="4,2,0,6" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
 
-                <TextBlock Text="系统选项" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,14,0,8"/>
+                <RadioButton x:Name="HideToTrayRadio" GroupName="CloseActionGroup" Content="直接隐藏到任务栏托盘（推荐）"
+                              Margin="4,0,0,6" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+
+                <RadioButton x:Name="ExitProgramRadio" GroupName="CloseActionGroup" Content="直接退出主程序"
+                              Margin="4,0,0,8" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+
+                <TextBlock Text="* 您也可以在托盘图标右键菜单中随时选择退出程序。"
+                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="4,0,0,12"/>
+
+                <TextBlock Text="系统选项" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
                 <CheckBox x:Name="AutoStartCheckBox" Content="开机自动启动 NetRelay"
                           Margin="4,0,0,4" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"

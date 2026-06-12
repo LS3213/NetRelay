@@ -17,6 +17,166 @@
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
         </Style>
 
+        <!-- Custom CheckBox Style -->
+        <Style TargetType="CheckBox">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid x:Name="templateRoot" Background="Transparent" SnapsToDevicePixels="True">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="BoxBorder"
+                                    Width="18" Height="18"
+                                    CornerRadius="5" Background="#80FFFFFF"
+                                    BorderBrush="#25000000" BorderThickness="1.5"
+                                    VerticalAlignment="Center">
+                                <Path x:Name="CheckMark" Data="M 1,4.5 L 3.5,7 L 8,1.5"
+                                      Stroke="White" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Stretch="Uniform" Margin="3"
+                                      Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter x:Name="contentPresenter" Grid.Column="1" Focusable="False"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              Margin="8,0,0,0"
+                                              RecognizesAccessKey="True"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BoxBorder" Property="BorderBrush" Value="#536EF2"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="BoxBorder" Property="Background" Value="#536EF2"/>
+                                <Setter TargetName="BoxBorder" Property="BorderBrush" Value="#536EF2"/>
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="templateRoot" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ComboBox Toggle Button Template -->
+        <ControlTemplate x:Key="ComboBoxToggleButtonTemplate" TargetType="ToggleButton">
+            <Border x:Name="Border" CornerRadius="10" Background="#80FFFFFF"
+                    BorderBrush="#25000000" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="30"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="Segoe Fluent Icons"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="Arrow"/>
+                </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Border" Property="BorderBrush" Value="#536EF2"/>
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="Border" Property="BorderBrush" Value="#536EF2"/>
+                    <Setter TargetName="Arrow" Property="Text" Value="&#xE70E;"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Border" Property="Opacity" Value="0.5"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <!-- Custom ComboBox Style -->
+        <Style TargetType="ComboBox">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Name="ToggleButton"
+                                          Template="{StaticResource ComboBoxToggleButtonTemplate}"
+                                          Focusable="false"
+                                          IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+
+                            <ContentPresenter Name="ContentSite" IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="10,3,30,3"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+
+                            <Popup Name="Popup" Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Grid Name="DropDown" SnapsToDevicePixels="True"
+                                      MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border Name="DropDownBorder" CornerRadius="12" Background="#F2F7FF"
+                                            BorderBrush="#CCFFFFFF" BorderThickness="1" Margin="0,4,0,10">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="15" ShadowDepth="4" Opacity="0.15" Color="#263753"/>
+                                        </Border.Effect>
+                                        <ScrollViewer SnapsToDevicePixels="True" VerticalScrollBarVisibility="Auto">
+                                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="false">
+                                <Setter TargetName="DropDownBorder" Property="Height" Value="95"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Custom ComboBoxItem Style -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border Name="Border" CornerRadius="8" Background="Transparent" Margin="4,2" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#15536EF2"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#25536EF2"/>
+                                <Setter Property="Foreground" Value="#536EF2"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="GlassCardStyle" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource GlassBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource GlassBorderBrush}"/>
@@ -30,14 +190,37 @@
         </Style>
 
         <Style x:Key="SoftButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#88FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#CCFFFFFF"/>
+            <Style.Resources>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Style>
+            </Style.Resources>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,9"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#EFFFFFFF" Offset="0"/>
+                        <GradientStop Color="#C0FFFFFF" Offset="0.35"/>
+                        <GradientStop Color="#60FFFFFF" Offset="0.65"/>
+                        <GradientStop Color="#30FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#F5FFFFFF" Offset="0"/>
+                        <GradientStop Color="#88FFFFFF" Offset="0.5"/>
+                        <GradientStop Color="#45FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -45,14 +228,17 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Grid>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#15000000" Visibility="Collapsed" Margin="-14,-9"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#D9FFFFFF"/>
+                                <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="Root" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="18" ShadowDepth="5" Opacity="0.18" Color="#4366B0"/>
+                                        <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.06" Color="#182236"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
@@ -60,7 +246,7 @@
                                 <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.48"/>
+                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -126,15 +312,37 @@
         </Style>
 
         <Style x:Key="DangerButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#E85C63"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#80FFFFFF"/>
+            <Style.Resources>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Style>
+            </Style.Resources>
+            <Setter Property="Foreground" Value="#E85C63"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,9"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#F5FFFFFF" Offset="0"/>
+                        <GradientStop Color="#FFD5D7" Offset="0.35"/>
+                        <GradientStop Color="#30E85C63" Offset="0.75"/>
+                        <GradientStop Color="#15E85C63" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#F9FFFFFF" Offset="0"/>
+                        <GradientStop Color="#BCE85C63" Offset="0.5"/>
+                        <GradientStop Color="#60E85C63" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -142,19 +350,87 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="14" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Grid>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#18E85C63" Visibility="Collapsed" Margin="-14,-9"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#F06A72"/>
+                                <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter TargetName="Root" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect BlurRadius="18" ShadowDepth="5" Opacity="0.22" Color="#B83B45"/>
+                                        <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.12" Color="#E85C63"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#C84750"/>
+                                <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+            <Style.Resources>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </Style>
+            </Style.Resources>
+            <Setter Property="Foreground" Value="#536EF2"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,9"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#F5FFFFFF" Offset="0"/>
+                        <GradientStop Color="#D5E5FF" Offset="0.35"/>
+                        <GradientStop Color="#30536EF2" Offset="0.75"/>
+                        <GradientStop Color="#15536EF2" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#F9FFFFFF" Offset="0"/>
+                        <GradientStop Color="#B0536EF2" Offset="0.5"/>
+                        <GradientStop Color="#60536EF2" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Border x:Name="HoverOverlay" CornerRadius="13" Background="#18536EF2" Visibility="Collapsed" Margin="-14,-9"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="Root" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.12" Color="#536EF2"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Root" Property="Opacity" Value="0.42"/>

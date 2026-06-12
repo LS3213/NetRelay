@@ -198,6 +198,7 @@ public sealed class MainViewModel : ObservableObject
     public string PendingRuleName => _pendingRule?.Name ?? string.Empty;
 
     public int PendingDelayMinutes => _pendingNotification?.DelayMinutes ?? 10;
+    public string PendingDelayLabel => $"延迟 {PendingDelayMinutes} 分钟";
 
     public bool AllowDelay => _pendingNotification?.AllowDelay ?? true;
 
@@ -338,6 +339,7 @@ public sealed class MainViewModel : ObservableObject
         
         RaisePropertyChanged(nameof(PendingRuleName));
         RaisePropertyChanged(nameof(PendingDelayMinutes));
+        RaisePropertyChanged(nameof(PendingDelayLabel));
         RaisePropertyChanged(nameof(AllowDelay));
         RaisePropertyChanged(nameof(AllowCancel));
 

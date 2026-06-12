@@ -17,9 +17,9 @@
             </ContextMenu.Background>
             <ContextMenu.Template>
                 <ControlTemplate TargetType="ContextMenu">
-                    <Border BorderThickness="{TemplateBinding BorderThickness}" 
-                            BorderBrush="{TemplateBinding BorderBrush}" 
-                            Background="{TemplateBinding Background}" 
+                    <Border BorderThickness="{TemplateBinding BorderThickness}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            Background="{TemplateBinding Background}"
                             CornerRadius="12" Padding="4">
                         <Border.Effect>
                             <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.12" Color="#263753"/>
@@ -43,9 +43,9 @@
                                             <ColumnDefinition Width="24"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <ContentPresenter x:Name="IconPresenter" Grid.Column="0" ContentSource="Icon" 
+                                        <ContentPresenter x:Name="IconPresenter" Grid.Column="0" ContentSource="Icon"
                                                           HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                        <ContentPresenter Grid.Column="1" ContentSource="Header" 
+                                        <ContentPresenter Grid.Column="1" ContentSource="Header"
                                                           VerticalAlignment="Center" Margin="6,0,0,0"/>
                                     </Grid>
                                 </Border>
@@ -91,12 +91,19 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bg" CornerRadius="12" Background="{TemplateBinding Background}" Padding="20,8">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="Bg" CornerRadius="12"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="20,8">
+                            <Grid>
+                                <Border x:Name="HoverOverlay" CornerRadius="11" Background="#0C536EF2" Visibility="Collapsed" Margin="-20,-8"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#10000000"/>
+                                <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -178,40 +185,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#536EF2"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#80FFFFFF"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="15,9"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="13" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#657EF5"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#415CD1"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.42"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="58" CornerRadius="16" GlassFrameThickness="0" ResizeBorderThickness="7"/>
@@ -260,8 +233,8 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="38" Height="38" CornerRadius="13" Background="#536EF2">
-                            <TextBlock Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="White"
+                        <Border Width="38" Height="38" CornerRadius="13" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
+                            <TextBlock Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2"
                                        FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
@@ -488,8 +461,8 @@
                                             <ColumnDefinition Width="38"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Width="36" Height="36" CornerRadius="13" Background="#536EF2">
-                                            <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="16"
+                                        <Border Width="36" Height="36" CornerRadius="13" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
+                                            <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2" FontSize="16"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
@@ -528,12 +501,12 @@
                         <!-- List Area -->
                         <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="20" Margin="0,0,0,10">
                             <Grid>
-                                <TextBlock Text="当前没有任何自动化规则，点击右上方“新建规则”创建。" 
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                <TextBlock Text="当前没有任何自动化规则，点击右上方“新建规则”创建。"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
                                            Visibility="{Binding HasNoRules, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                                
-                                <ListBox ItemsSource="{Binding Rules}" Background="Transparent" BorderThickness="0" 
+
+                                <ListBox ItemsSource="{Binding Rules}" Background="Transparent" BorderThickness="0"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                          ItemContainerStyle="{StaticResource RuleListItemStyle}">
                                     <ListBox.ItemTemplate>
@@ -546,7 +519,7 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <!-- Action Indicator Icon -->
-                                                <Border Width="38" Height="38" CornerRadius="13" 
+                                                <Border Width="38" Height="38" CornerRadius="13"
                                                         Background="{Binding IsActionDisable, Converter={StaticResource StatusToBrushConverter}, ConverterParameter=ActionBrush}">
                                                     <TextBlock Text="&#xE8B0;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="16"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -575,22 +548,22 @@
                                                     <CheckBox IsChecked="{Binding Enabled}" Content="启用" VerticalAlignment="Center" Margin="0,0,20,0"/>
 
                                                     <!-- Run Now -->
-                                                    <Button Style="{StaticResource IconOnlyButtonStyle}" 
-                                                            Command="{Binding DataContext.RunRuleNowCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                    <Button Style="{StaticResource IconOnlyButtonStyle}"
+                                                            Command="{Binding DataContext.RunRuleNowCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                             CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="立即测试运行该规则">
                                                         <TextBlock Text="&#xF5B0;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#27B588"/>
                                                     </Button>
 
                                                     <!-- Edit -->
-                                                    <Button Style="{StaticResource IconOnlyButtonStyle}" 
-                                                            Command="{Binding DataContext.EditRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                    <Button Style="{StaticResource IconOnlyButtonStyle}"
+                                                            Command="{Binding DataContext.EditRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                             CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="修改规则配置">
                                                         <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#536EF2"/>
                                                     </Button>
 
                                                     <!-- Delete -->
-                                                    <Button Style="{StaticResource IconOnlyButtonStyle}" 
-                                                            Command="{Binding DataContext.DeleteRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                    <Button Style="{StaticResource IconOnlyButtonStyle}"
+                                                            Command="{Binding DataContext.DeleteRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                             CommandParameter="{Binding}" ToolTip="彻底删除规则">
                                                         <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#E85C63"/>
                                                     </Button>
@@ -627,8 +600,8 @@
                         <!-- Timeline Logs List -->
                         <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="20" Margin="0,0,0,10">
                             <Grid>
-                                <TextBlock Text="最近 7 天内无任何规则执行记录。" 
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                <TextBlock Text="最近 7 天内无任何规则执行记录。"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
                                            Visibility="{Binding HasNoLogs, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
@@ -703,10 +676,10 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    
+
                     <StackPanel Orientation="Horizontal">
-                        <Border Width="40" Height="40" CornerRadius="14" Background="#E85C63">
-                            <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" Foreground="White" FontSize="18"
+                        <Border Width="40" Height="40" CornerRadius="14" Background="#1AE85C63" BorderBrush="#30E85C63" BorderThickness="1">
+                            <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" Foreground="#E85C63" FontSize="18"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
@@ -714,12 +687,12 @@
                             <TextBlock Text="NetRelay 计划时间已到达" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
                         </StackPanel>
                     </StackPanel>
-                    
+
                     <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,5">
                         <TextBlock Text="{Binding PendingRuleName, StringFormat=即将执行“{0}”}" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="340"/>
                         <TextBlock Text="{Binding PendingCountdownLabel}" FontWeight="Bold" FontSize="26" Foreground="#E85C63" HorizontalAlignment="Center" Margin="0,12,0,0"/>
                     </StackPanel>
-                    
+
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -729,11 +702,11 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" Style="{StaticResource PrimaryButtonStyle}" Command="{Binding ExecutePendingNowCommand}" Content="立即执行"/>
-                        <Button Grid.Column="2" Style="{StaticResource SoftButtonStyle}" Command="{Binding DelayPendingCommand}" 
-                                Visibility="{Binding AllowDelay, Converter={StaticResource BooleanToVisibilityConverter}}" 
-                                Content="{Binding PendingDelayMinutes, StringFormat=延迟 {0} 分钟}"/>
-                        <Button Grid.Column="4" Style="{StaticResource DangerButtonStyle}" Command="{Binding CancelPendingCommand}" 
-                                Visibility="{Binding AllowCancel, Converter={StaticResource BooleanToVisibilityConverter}}" 
+                        <Button Grid.Column="2" Style="{StaticResource SoftButtonStyle}" Command="{Binding DelayPendingCommand}"
+                                Visibility="{Binding AllowDelay, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Content="{Binding PendingDelayLabel}"/>
+                        <Button Grid.Column="4" Style="{StaticResource DangerButtonStyle}" Command="{Binding CancelPendingCommand}"
+                                Visibility="{Binding AllowCancel, Converter={StaticResource BooleanToVisibilityConverter}}"
                                 Content="取消本次"/>
                     </Grid>
                 </Grid>
