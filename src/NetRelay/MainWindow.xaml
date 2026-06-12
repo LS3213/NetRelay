@@ -595,6 +595,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding RefreshLogsCommand}" Margin="0,0,10,0" Padding="15,9" Content="刷新日志"/>
+                                <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding ExportLogsCommand}" Margin="0,0,10,0" Padding="15,9" Content="导出日志"/>
                                 <Button Style="{StaticResource DangerButtonStyle}" Command="{Binding ClearLogsCommand}" Padding="15,9" Content="清空历史"/>
                             </StackPanel>
                         </Grid>

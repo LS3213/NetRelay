@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using System;
+using System.IO;
 
 namespace NetRelay.ViewModels;
 
@@ -80,6 +81,7 @@ public sealed class MainViewModel : ObservableObject
         // Commands
         RefreshLogsCommand = new RelayCommand(() => _ = LoadLogsAsync(), () => !IsLoadingLogs);
         ClearLogsCommand = new RelayCommand(() => _ = ClearLogsAsync(), () => !IsLoadingLogs);
+        ExportLogsCommand = new RelayCommand(() => _ = ExportLogsAsync(), () => !IsLoadingLogs);
 
         AddRuleCommand = new RelayCommand(() => RequestEditRule?.Invoke(null));
         EditRuleCommand = new RelayCommand<AutomationRuleViewModel>(vm => { if (vm != null) RequestEditRule?.Invoke(vm.Rule); });
@@ -131,6 +133,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand RefreshCommand { get; }
     public RelayCommand RefreshLogsCommand { get; }
     public RelayCommand ClearLogsCommand { get; }
+    public RelayCommand ExportLogsCommand { get; }
     public RelayCommand AddRuleCommand { get; }
     public RelayCommand<AutomationRuleViewModel> EditRuleCommand { get; }
     public RelayCommand<AutomationRuleViewModel> DeleteRuleCommand { get; }
@@ -281,6 +284,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 RefreshLogsCommand.RaiseCanExecuteChanged();
                 ClearLogsCommand.RaiseCanExecuteChanged();
+                ExportLogsCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -347,6 +351,94 @@ public sealed class MainViewModel : ObservableObject
         finally
         {
             IsLoadingLogs = false;
+        }
+    }
+
+    private async Task ExportLogsAsync()
+    {
+        if (IsLoadingLogs)
+        {
+            return;
+        }
+
+        var saveFileDialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "ZIP 压缩文件 (*.zip)|*.zip",
+            FileName = $"NetRelay-detailed-logs-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            Title = "导出详细日志与诊断报告"
+        };
+
+        if (saveFileDialog.ShowDialog() == true)
+        {
+            var zipPath = saveFileDialog.FileName;
+            IsLoadingLogs = true;
+            OperationMessage = "正在准备日志与诊断报告...";
+            try
+            {
+                await Task.Run(() =>
+                {
+                    var tempDir = Path.Combine(Path.GetTempPath(), $"NetRelay-Export-{Guid.NewGuid():N}");
+                    Directory.CreateDirectory(tempDir);
+
+                    try
+                    {
+                        // 1. Copy config file
+                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                        var configPath = Path.Combine(appData, "NetRelay", "config.json");
+                        if (File.Exists(configPath))
+                        {
+                            File.Copy(configPath, Path.Combine(tempDir, "config.json"), true);
+                        }
+
+                        // 2. Copy execution logs
+                        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                        var logsDir = Path.Combine(localAppData, "NetRelay", "logs");
+                        var logsDestDir = Path.Combine(tempDir, "logs");
+                        if (Directory.Exists(logsDir))
+                        {
+                            Directory.CreateDirectory(logsDestDir);
+                            var logFiles = Directory.GetFiles(logsDir, "execution-*.jsonl");
+                            foreach (var file in logFiles)
+                            {
+                                var destFile = Path.Combine(logsDestDir, Path.GetFileName(file));
+                                File.Copy(file, destFile, true);
+                            }
+                        }
+
+                        // 3. Write adapter diagnostics report
+                        var reportPath = Path.Combine(tempDir, "adapter-diagnostics.json");
+                        AdapterDiagnosticService.WriteReport(reportPath);
+
+                        // 4. Create zip archive
+                        if (File.Exists(zipPath))
+                        {
+                            File.Delete(zipPath);
+                        }
+                        System.IO.Compression.ZipFile.CreateFromDirectory(tempDir, zipPath);
+                    }
+                    finally
+                    {
+                        if (Directory.Exists(tempDir))
+                        {
+                            Directory.Delete(tempDir, recursive: true);
+                        }
+                    }
+                });
+
+                OperationMessage = $"日志成功导出至：{Path.GetFileName(zipPath)}";
+                await Task.Delay(2500);
+                OperationMessage = null;
+            }
+            catch (Exception ex)
+            {
+                OperationMessage = $"导出日志失败: {ex.Message}";
+                await Task.Delay(2500);
+                OperationMessage = null;
+            }
+            finally
+            {
+                IsLoadingLogs = false;
+            }
         }
     }
 
