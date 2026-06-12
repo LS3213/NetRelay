@@ -30,7 +30,9 @@ var tests = new (string Name, Action Test)[]
     ("Editing a rule resets engine cooldown state", EditingRuleResetsEngineCooldownState),
     ("Rule engine writes test logs to isolated directory", RuleEngineWritesTestLogsToIsolatedDirectory),
     ("Adapter UI statuses distinguish link and internet", AdapterUiStatusesDistinguishLinkAndInternet),
-    ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance)
+    ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance),
+    ("Scheduler triggers automatic recovery on time elapsed", SchedulerTriggersAutomaticRecoveryOnTimeElapsed),
+    ("Scheduler skips expired automatic recovery", SchedulerSkipsExpiredAutomaticRecovery)
 };
 
 var failures = new List<string>();
@@ -716,4 +718,152 @@ static NativeConnectionInfo? FindVmnet1(IEnumerable<NativeConnectionInfo> connec
     return connections.SingleOrDefault(connection =>
         string.Equals(connection.Name, "VMware Network Adapter VMnet1", StringComparison.Ordinal)
         && connection.DeviceName.Contains("VMnet1", StringComparison.OrdinalIgnoreCase));
+}
+
+static void SchedulerTriggersAutomaticRecoveryOnTimeElapsed()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Recovery-Elapsed-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(directory);
+        var ruleId = Guid.NewGuid();
+        var adapterId = Guid.NewGuid().ToString("B");
+        var rule = new AutomationRule(
+            ruleId,
+            "Recovery elapsed rule",
+            Enabled: true,
+            adapterId,
+            RuleAction.Disable,
+            new RuleTrigger.Once(DateTimeOffset.Now.AddDays(1)),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: new RecoveryPolicy(Enabled: true, DelayMinutes: 5),
+            RequireUsableBackup: false,
+            CooldownSeconds: 0);
+        configService.Current.Rules.Add(rule);
+        configService.Save();
+
+        var engine = new RuleEngine(
+            new NativeNetworkConnectionService(),
+            new ConnectivityService(),
+            configService,
+            Path.Combine(directory, "logs"));
+
+        // Write a successful disable log that happened 5 minutes ago
+        var disableTime = DateTimeOffset.Now.AddMinutes(-5).AddSeconds(-1);
+        var disableRecord = new ExecutionRecord(
+            Guid.NewGuid(),
+            ruleId,
+            RuleSource.Schedule,
+            adapterId,
+            RuleAction.Disable,
+            disableTime,
+            disableTime,
+            "SUCCESS",
+            "OK",
+            null);
+        engine.WriteExecutionRecordAsync(disableRecord).GetAwaiter().GetResult();
+
+        // Start scheduler and verify it executes recovery immediately
+        using var scheduler = new RuleSchedulerService(engine, configService, new ConnectivityService());
+        ExecutionRecord? recoveryRecord = null;
+        using var eventSlim = new ManualResetEventSlim();
+        scheduler.RuleExecuted += (_, record) =>
+        {
+            if (record.RuleId == ruleId && record.Source == RuleSource.Recovery)
+            {
+                recoveryRecord = record;
+                eventSlim.Set();
+            }
+        };
+
+        scheduler.Start();
+        eventSlim.Wait(TimeSpan.FromSeconds(3));
+        scheduler.Stop();
+
+        Assert(recoveryRecord is not null);
+        Assert(recoveryRecord!.Outcome == "FAILED");
+        Assert(recoveryRecord.RequestedAction == RuleAction.Enable);
+        Assert(recoveryRecord.Source == RuleSource.Recovery);
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void SchedulerSkipsExpiredAutomaticRecovery()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Recovery-Expired-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(directory);
+        var ruleId = Guid.NewGuid();
+        var adapterId = Guid.NewGuid().ToString("B");
+        var rule = new AutomationRule(
+            ruleId,
+            "Recovery expired rule",
+            Enabled: true,
+            adapterId,
+            RuleAction.Disable,
+            new RuleTrigger.Once(DateTimeOffset.Now.AddDays(1)),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: new RecoveryPolicy(Enabled: true, DelayMinutes: 5),
+            RequireUsableBackup: false,
+            CooldownSeconds: 0);
+        configService.Current.Rules.Add(rule);
+        configService.Save();
+
+        var engine = new RuleEngine(
+            new NativeNetworkConnectionService(),
+            new ConnectivityService(),
+            configService,
+            Path.Combine(directory, "logs"));
+
+        // Write a successful disable log that happened 8 minutes ago (which is past 5 mins + 2 mins tolerance = 7 mins)
+        var disableTime = DateTimeOffset.Now.AddMinutes(-8);
+        var disableRecord = new ExecutionRecord(
+            Guid.NewGuid(),
+            ruleId,
+            RuleSource.Schedule,
+            adapterId,
+            RuleAction.Disable,
+            disableTime,
+            disableTime,
+            "SUCCESS",
+            "OK",
+            null);
+        engine.WriteExecutionRecordAsync(disableRecord).GetAwaiter().GetResult();
+
+        using var scheduler = new RuleSchedulerService(engine, configService, new ConnectivityService());
+        ExecutionRecord? recoveryRecord = null;
+        using var eventSlim = new ManualResetEventSlim();
+        scheduler.RuleExecuted += (_, record) =>
+        {
+            if (record.RuleId == ruleId && record.Source == RuleSource.Recovery)
+            {
+                recoveryRecord = record;
+                eventSlim.Set();
+            }
+        };
+
+        scheduler.Start();
+        eventSlim.Wait(TimeSpan.FromSeconds(3));
+        scheduler.Stop();
+
+        Assert(recoveryRecord is not null);
+        Assert(recoveryRecord!.Outcome == "SKIPPED");
+        Assert(recoveryRecord.ReasonCode == "TRIGGER_EXPIRED");
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

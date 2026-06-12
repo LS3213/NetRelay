@@ -24,6 +24,7 @@ public sealed class RuleEngine
     ];
 
     public event EventHandler<ExecutionRecord>? ExecutionRecorded;
+    public string ExecutionLogDirectory => _executionLogDirectory;
 
     public RuleEngine(
         NativeNetworkConnectionService connectionService,
@@ -316,26 +317,6 @@ public sealed class RuleEngine
         );
 
         await RecordExecutionAsync(finalRecord);
-
-        // 4. Auto recovery queue
-        if (outcome == "SUCCESS"
-            && rule.Action == RuleAction.Disable
-            && rule.Recovery is { Enabled: true, DelayMinutes: var delayMinutes and > 0 })
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromMinutes(delayMinutes));
-                    var recoveryRule = rule with { Action = RuleAction.Enable };
-                    await ExecuteRuleAsync(recoveryRule, RuleSource.Recovery);
-                }
-                catch
-                {
-                    // Ignore exceptions to keep background task safe
-                }
-            });
-        }
 
         return finalRecord;
     }

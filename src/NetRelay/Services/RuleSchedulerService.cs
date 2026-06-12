@@ -59,6 +59,9 @@ public sealed class RuleSchedulerService : IDisposable
     // Last known internet state of adapters for HTTP-probed edge trigger evaluation. Key: Adapter ID.
     private readonly Dictionary<string, bool> _lastAdapterInternetStates = new(StringComparer.OrdinalIgnoreCase);
 
+    // Tracks execution records from the last 2 days (yesterday and today) in-memory for stateless recovery evaluation.
+    private readonly List<ExecutionRecord> _executionHistory = new();
+
     // Events
     public event EventHandler<PreNotificationEventArgs>? PreNotificationTriggered;
     public event EventHandler<ExecutionRecord>? RuleExecuted;
@@ -82,48 +85,57 @@ public sealed class RuleSchedulerService : IDisposable
             InitializeLastRanFromLogs();
             UpdateAdapterStatuses();
             NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+            _ruleEngine.ExecutionRecorded += OnRuleExecutionRecorded;
             _timer = new System.Threading.Timer(OnTimerTick, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
         }
     }
 
     private void InitializeLastRanFromLogs()
     {
+        _executionHistory.Clear();
         try
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var logDir = Path.Combine(appData, "NetRelay", "logs");
+            var logDir = _ruleEngine.ExecutionLogDirectory;
             if (!Directory.Exists(logDir)) return;
-
-            var todayLogPath = Path.Combine(logDir, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
-            if (!File.Exists(todayLogPath)) return;
 
             var scheduledTimeRuleIds = _configService.Current.Rules
                 .Where(rule => rule.Trigger is RuleTrigger.Daily or RuleTrigger.Weekly)
                 .Select(rule => rule.Id)
                 .ToHashSet();
-            var lines = File.ReadAllLines(todayLogPath);
-            foreach (var line in lines)
+
+            for (int dayOffset = -1; dayOffset <= 0; dayOffset++)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                var logPath = Path.Combine(logDir, $"execution-{DateTime.Today.AddDays(dayOffset):yyyy-MM-dd}.jsonl");
+                if (!File.Exists(logPath)) continue;
 
-                try
+                var lines = File.ReadAllLines(logPath);
+                foreach (var line in lines)
                 {
-                    var record = JsonSerializer.Deserialize<ExecutionRecord>(line);
-                    if (record is not null
-                        && RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(record, scheduledTimeRuleIds))
-                    {
-                        var ruleId = record.RuleId!.Value;
-                        var ranDate = record.StartedAt.LocalDateTime.Date;
+                    if (string.IsNullOrWhiteSpace(line)) continue;
 
-                        if (!_timeTriggerLastRan.TryGetValue(ruleId, out var existingDate) || existingDate < ranDate)
+                    try
+                    {
+                        var record = JsonSerializer.Deserialize<ExecutionRecord>(line);
+                        if (record is not null)
                         {
-                            _timeTriggerLastRan[ruleId] = ranDate;
+                            _executionHistory.Add(record);
+
+                            if (dayOffset == 0 && RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(record, scheduledTimeRuleIds))
+                            {
+                                var ruleId = record.RuleId!.Value;
+                                var ranDate = record.StartedAt.LocalDateTime.Date;
+
+                                if (!_timeTriggerLastRan.TryGetValue(ruleId, out var existingDate) || existingDate < ranDate)
+                                {
+                                    _timeTriggerLastRan[ruleId] = ranDate;
+                                }
+                            }
                         }
                     }
-                }
-                catch
-                {
-                    // 忽略单行日志解析错误以维持健壮性
+                    catch
+                    {
+                        // 忽略单行日志解析错误以维持健壮性
+                    }
                 }
             }
         }
@@ -138,6 +150,7 @@ public sealed class RuleSchedulerService : IDisposable
         lock (_lock)
         {
             NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+            _ruleEngine.ExecutionRecorded -= OnRuleExecutionRecorded;
 
             if (_timer != null)
             {
@@ -533,6 +546,65 @@ public sealed class RuleSchedulerService : IDisposable
                     }
                 }
 
+                // 3. Evaluate Automatic Recoveries
+                foreach (var rule in rules)
+                {
+                    if (!rule.Enabled) continue;
+                    if (rule.Recovery is not { Enabled: true, DelayMinutes: var delayMinutes and > 0 }) continue;
+
+                    // Find the last successful Disable execution of this rule
+                    var lastDisableRecord = _executionHistory
+                        .Where(r => r.RuleId == rule.Id
+                            && r.RequestedAction == RuleAction.Disable
+                            && r.Outcome == "SUCCESS")
+                        .OrderByDescending(r => r.StartedAt)
+                        .FirstOrDefault();
+
+                    if (lastDisableRecord == null) continue;
+
+                    // Check if there is any subsequent record for this rule or target adapter
+                    // that indicates recovery has already been executed/skipped or the adapter was enabled
+                    var hasSubsequentAction = _executionHistory.Any(r =>
+                        r.StartedAt > lastDisableRecord.StartedAt
+                        && (
+                            // Either this rule had a recovery/enable attempt (success, failed, or expired)
+                            (r.RuleId == rule.Id && (r.RequestedAction == RuleAction.Enable || r.ReasonCode == "TRIGGER_EXPIRED"))
+                            // Or there was a manual enable on this adapter
+                            || (string.Equals(r.TargetAdapterId, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase)
+                                && r.RequestedAction == RuleAction.Enable
+                                && r.Outcome == "SUCCESS")
+                           )
+                    );
+
+                    if (hasSubsequentAction) continue;
+
+                    var recoveryTime = lastDisableRecord.StartedAt.AddMinutes(delayMinutes);
+                    if (now >= recoveryTime)
+                    {
+                        if (now <= recoveryTime.AddMinutes(TriggerToleranceMinutes))
+                        {
+                            _ = ExecuteRecoveryRuleAndNotifyAsync(rule);
+                        }
+                        else
+                        {
+                            var record = new ExecutionRecord(
+                                Guid.NewGuid(),
+                                rule.Id,
+                                RuleSource.Recovery,
+                                rule.TargetAdapterId,
+                                RuleAction.Enable,
+                                now,
+                                now,
+                                Outcome: "SKIPPED",
+                                ReasonCode: "TRIGGER_EXPIRED",
+                                WindowsErrorCode: null
+                            );
+                            _ = _ruleEngine.WriteExecutionRecordAsync(record);
+                            RuleExecuted?.Invoke(this, record);
+                        }
+                    }
+                }
+
                 _ = EvaluateConnectivityRulesAsync(rules);
             }
         }
@@ -748,6 +820,30 @@ public sealed class RuleSchedulerService : IDisposable
             {
             }
         });
+    }
+
+    private void OnRuleExecutionRecorded(object? sender, ExecutionRecord record)
+    {
+        lock (_lock)
+        {
+            _executionHistory.Add(record);
+            var threshold = DateTimeOffset.Now.AddDays(-2);
+            _executionHistory.RemoveAll(r => r.StartedAt < threshold);
+        }
+    }
+
+    private async Task ExecuteRecoveryRuleAndNotifyAsync(AutomationRule rule)
+    {
+        try
+        {
+            var recoveryRule = rule with { Action = RuleAction.Enable };
+            var record = await _ruleEngine.ExecuteRuleAsync(recoveryRule, RuleSource.Recovery);
+            RuleExecuted?.Invoke(this, record);
+        }
+        catch
+        {
+            // Ignore execution failure
+        }
     }
 
     public void Dispose()

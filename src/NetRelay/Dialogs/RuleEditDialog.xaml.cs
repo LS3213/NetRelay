@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using NetRelay.Models;
+using NetRelay.Services;
 
 namespace NetRelay.Dialogs;
 
@@ -65,7 +66,7 @@ public partial class RuleEditDialog : Window
         DialogTitleText.Text = "编辑自动化规则";
         RuleNameTextBox.Text = _rule.Name;
         ActionComboBox.SelectedIndex = _rule.Action == RuleAction.Disable ? 0 : 1;
-        TargetAdapterComboBox.SelectedValue = _rule.TargetAdapterId;
+        TargetAdapterComboBox.SelectedValue = FindMatchingAdapterId(TargetAdapterComboBox.ItemsSource, _rule.TargetAdapterId);
         CooldownTextBox.Text = _rule.CooldownSeconds.ToString();
         RequireBackupCheck.IsChecked = _rule.RequireUsableBackup;
 
@@ -104,7 +105,7 @@ public partial class RuleEditDialog : Window
             DebounceTextBox.Text = netChange.DebounceSeconds.ToString();
             if (netChange.Condition is AdapterOfflineCondition cond)
             {
-                ConditionAdapterComboBox.SelectedValue = cond.AdapterId;
+                ConditionAdapterComboBox.SelectedValue = FindMatchingAdapterId(ConditionAdapterComboBox.ItemsSource, cond.AdapterId);
             }
         }
 
@@ -343,5 +344,18 @@ public partial class RuleEditDialog : Window
 
         DialogResult = true;
         Close();
+    }
+
+    private static string? FindMatchingAdapterId(System.Collections.IEnumerable? itemsSource, string? id)
+    {
+        if (itemsSource is null || string.IsNullOrEmpty(id)) return id;
+        foreach (var item in itemsSource)
+        {
+            if (item is NetworkAdapterInfo adapter && AdapterIdentity.AreEqual(adapter.Id, id))
+            {
+                return adapter.Id;
+            }
+        }
+        return id;
     }
 }
