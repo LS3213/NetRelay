@@ -458,15 +458,18 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="38"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Width="36" Height="36" CornerRadius="13" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
+                                        <Border Grid.Column="0" Width="36" Height="36" CornerRadius="13" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
                                             <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2" FontSize="16"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
-                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="安全保护" FontWeight="SemiBold" FontSize="11"/>
-                                            <TextBlock Text="自动切换前将验证备用网络" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
+                                        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="禁用安全保护" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="开启后，手动与自动禁用网卡均会校验备用网络" Foreground="{StaticResource TextSecondaryBrush}" FontSize="9" Margin="0,3,0,0"/>
                                         </StackPanel>
+                                        <CheckBox Grid.Column="2" VerticalAlignment="Center" Margin="5,0,0,0"
+                                                  IsChecked="{Binding ManualDisableProtection, Mode=TwoWay}"/>
                                     </Grid>
                                 </Border>
                             </Grid>

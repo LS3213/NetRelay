@@ -146,47 +146,10 @@ public sealed class RuleEngine
             var targetNi = NetworkInterface.GetAllNetworkInterfaces()
                 .FirstOrDefault(ni => string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase));
 
-            // 如果目标网卡本身就是虚拟网卡，禁用它不会切断真实外网，因此无需强制要求有备份网络
-            if (targetNi == null || !IsVirtualHeuristic(targetNi))
+            var isVirtual = targetNi != null && IsVirtualHeuristic(targetNi);
+            if (!isVirtual)
             {
-                var currentInterfaces = NetworkInterface.GetAllNetworkInterfaces();
-                var backupInterfaces = currentInterfaces
-                    .Where(ni => !string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase) &&
-                                 ni.OperationalStatus == OperationalStatus.Up)
-                    .ToList();
-
-                var physicalBackups = backupInterfaces
-                    .Where(ni => !IsVirtualHeuristic(ni))
-                    .ToList();
-
-                if (physicalBackups.Count == 0)
-                {
-                    var record = new ExecutionRecord(
-                        recordId,
-                        rule.Id,
-                        source,
-                        rule.TargetAdapterId,
-                        rule.Action,
-                        startedAt,
-                        DateTimeOffset.Now,
-                        Outcome: "SKIPPED",
-                        ReasonCode: "BACKUP_NETWORK_UNAVAILABLE",
-                        WindowsErrorCode: null
-                    );
-                    await RecordExecutionAsync(record);
-                    return record;
-                }
-
-                var policy = _configService.Current.ProbePolicy;
-                foreach (var backup in physicalBackups)
-                {
-                    var result = await _connectivityService.ProbeAdapterAsync(backup.Id, policy);
-                    if (result.Online)
-                    {
-                        validatedBackupAdapterIds.Add(backup.Id);
-                    }
-                }
-
+                validatedBackupAdapterIds = await GetUsableBackupAdaptersAsync(rule.TargetAdapterId);
                 if (validatedBackupAdapterIds.Count == 0)
                 {
                     var record = new ExecutionRecord(
@@ -397,6 +360,53 @@ public sealed class RuleEngine
         {
             // Fail silently on logging failure to not crash the rule engine
         }
+    }
+
+    public async Task<bool> IsBackupNetworkUsableAsync(string targetAdapterId)
+    {
+        var targetNi = NetworkInterface.GetAllNetworkInterfaces()
+            .FirstOrDefault(ni => string.Equals(ni.Id, targetAdapterId, StringComparison.OrdinalIgnoreCase));
+
+        // 如果目标网卡本身就是虚拟网卡，禁用它不会切断真实外网，因此无需强制要求有备份网络
+        if (targetNi != null && IsVirtualHeuristic(targetNi))
+        {
+            return true;
+        }
+
+        var backups = await GetUsableBackupAdaptersAsync(targetAdapterId);
+        return backups.Count > 0;
+    }
+
+    public async Task<List<string>> GetUsableBackupAdaptersAsync(string targetAdapterId)
+    {
+        var validatedBackupAdapterIds = new List<string>();
+        var targetNi = NetworkInterface.GetAllNetworkInterfaces()
+            .FirstOrDefault(ni => string.Equals(ni.Id, targetAdapterId, StringComparison.OrdinalIgnoreCase));
+
+        if (targetNi == null || !IsVirtualHeuristic(targetNi))
+        {
+            var currentInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+            var backupInterfaces = currentInterfaces
+                .Where(ni => !string.Equals(ni.Id, targetAdapterId, StringComparison.OrdinalIgnoreCase) &&
+                             ni.OperationalStatus == OperationalStatus.Up)
+                .ToList();
+
+            var physicalBackups = backupInterfaces
+                .Where(ni => !IsVirtualHeuristic(ni))
+                .ToList();
+
+            var policy = _configService.Current.ProbePolicy;
+            foreach (var backup in physicalBackups)
+            {
+                var result = await _connectivityService.ProbeAdapterAsync(backup.Id, policy);
+                if (result.Online)
+                {
+                    validatedBackupAdapterIds.Add(backup.Id);
+                }
+            }
+        }
+
+        return validatedBackupAdapterIds;
     }
 
     private static string GetDefaultExecutionLogDirectory()

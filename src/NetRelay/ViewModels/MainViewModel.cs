@@ -125,6 +125,20 @@ public sealed class MainViewModel : ObservableObject
 
     public ConfigurationService ConfigService => _configService;
 
+    public bool ManualDisableProtection
+    {
+        get => _configService.Current.ManualDisableProtection;
+        set
+        {
+            if (_configService.Current.ManualDisableProtection != value)
+            {
+                _configService.Current.ManualDisableProtection = value;
+                _configService.Save();
+                RaisePropertyChanged(nameof(ManualDisableProtection));
+            }
+        }
+    }
+
     public int CurrentTabIndex
     {
         get => _currentTabIndex;
@@ -496,6 +510,37 @@ public sealed class MainViewModel : ObservableObject
         OperationMessage = enabled ? $"正在启用“{adapter.Name}”…" : $"正在禁用“{adapter.Name}”…";
         try
         {
+            if (!enabled && ManualDisableProtection)
+            {
+                OperationMessage = "正在验证备用网络可用性…";
+                var isBackupUsable = await _ruleEngine.IsBackupNetworkUsableAsync(adapter.Id);
+                if (!isBackupUsable)
+                {
+                    OperationMessage = "安全保护：无可用备份互联网，操作被中止。";
+                    var skippedRecord = new ExecutionRecord(
+                        Guid.NewGuid(),
+                        null,
+                        RuleSource.Manual,
+                        adapter.Id,
+                        RuleAction.Disable,
+                        DateTimeOffset.Now,
+                        DateTimeOffset.Now,
+                        "SKIPPED",
+                        "BACKUP_NETWORK_UNAVAILABLE",
+                        null
+                    );
+                    await _ruleEngine.WriteExecutionRecordAsync(skippedRecord);
+                    _ = LoadLogsAsync();
+
+                    IsOperating = false;
+                    await Task.Delay(2500);
+                    if (OperationMessage == "安全保护：无可用备份互联网，操作被中止。")
+                    {
+                        OperationMessage = null;
+                    }
+                    return new AdapterActionResult(false, "无可用备份互联网，操作被中止。");
+                }
+            }
             var result = await Task.Run(() => connectionService.SetEnabled(adapter.Id, adapter.Name, enabled));
             OperationMessage = result.Message;
 
