@@ -440,6 +440,21 @@
             </Setter>
         </Style>
 
+        <!-- Pixel-based scrolling with touch-friendly inertial settings. -->
+        <Style TargetType="{x:Type ScrollViewer}">
+            <Setter Property="CanContentScroll" Value="False"/>
+            <Setter Property="IsDeferredScrollingEnabled" Value="False"/>
+            <Setter Property="PanningMode" Value="VerticalFirst"/>
+            <Setter Property="PanningDeceleration" Value="0.001"/>
+            <Setter Property="PanningRatio" Value="1"/>
+        </Style>
+
+        <Style TargetType="{x:Type ListBox}">
+            <Setter Property="ScrollViewer.CanContentScroll" Value="False"/>
+            <Setter Property="ScrollViewer.IsDeferredScrollingEnabled" Value="False"/>
+            <Setter Property="ScrollViewer.PanningMode" Value="VerticalFirst"/>
+        </Style>
+
         <Style x:Key="AdapterListItemStyle" TargetType="ListBoxItem">
             <Setter Property="Margin" Value="0,0,0,10"/>
             <Setter Property="Padding" Value="0"/>

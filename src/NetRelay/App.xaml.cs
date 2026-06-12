@@ -1,6 +1,7 @@
 using System.Security.Principal;
 using System.Threading;
 using System.Windows;
+using NetRelay.Infrastructure;
 using NetRelay.Services;
 
 namespace NetRelay;
@@ -12,6 +13,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        SmoothScrollBehavior.Enable();
 
         if (TryRunAdapterDiagnostic(e.Args, out var diagnosticExitCode))
         {
