@@ -28,6 +28,7 @@ var tests = new (string Name, Action Test)[]
     ("Scheduler execution gate rejects re-entry", SchedulerExecutionGateRejectsReentry),
     ("Editing a rule resets scheduler runtime state", EditingRuleResetsSchedulerRuntimeState),
     ("Editing a rule resets engine cooldown state", EditingRuleResetsEngineCooldownState),
+    ("Rule engine writes test logs to isolated directory", RuleEngineWritesTestLogsToIsolatedDirectory),
     ("Adapter UI statuses distinguish link and internet", AdapterUiStatusesDistinguishLinkAndInternet),
     ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance)
 };
@@ -268,7 +269,11 @@ static void EditingRuleResetsSchedulerRuntimeState()
             CooldownSeconds: 0));
 
         using var scheduler = new RuleSchedulerService(
-            new RuleEngine(new NativeNetworkConnectionService(), new ConnectivityService(), configService),
+            new RuleEngine(
+                new NativeNetworkConnectionService(),
+                new ConnectivityService(),
+                configService,
+                Path.Combine(directory, "logs")),
             configService,
             new ConnectivityService());
         var lastRan = GetPrivateField<Dictionary<Guid, DateTime>>(scheduler, "_timeTriggerLastRan");
@@ -323,7 +328,8 @@ static void EditingRuleResetsEngineCooldownState()
         var engine = new RuleEngine(
             new NativeNetworkConnectionService(),
             new ConnectivityService(),
-            configService);
+            configService,
+            Path.Combine(directory, "logs"));
         var rule = new AutomationRule(
             Guid.NewGuid(),
             "Edited cooldown rule",
@@ -447,6 +453,34 @@ static void AdapterUiStatusesDistinguishLinkAndInternet()
     Assert(adapter.BadgeStatusLabel == "已禁用");
 }
 
+static void RuleEngineWritesTestLogsToIsolatedDirectory()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Log-Isolation-{Guid.NewGuid():N}");
+    try
+    {
+        var logDirectory = Path.Combine(directory, "logs");
+        var engine = new RuleEngine(
+            new NativeNetworkConnectionService(),
+            new ConnectivityService(),
+            new ConfigurationService(directory),
+            logDirectory);
+        var record = CreateRecord(Guid.NewGuid(), RuleSource.Schedule);
+
+        engine.WriteExecutionRecordAsync(record).GetAwaiter().GetResult();
+
+        var logPath = Path.Combine(logDirectory, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
+        Assert(File.Exists(logPath));
+        Assert(File.ReadAllText(logPath).Contains(record.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
 static T GetPrivateField<T>(object instance, string fieldName)
 {
     return (T)(instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
@@ -566,7 +600,11 @@ static int RunVmnet1AcceptanceTest(string? reportPath)
     try
     {
         var configService = new ConfigurationService(configDirectory);
-        var ruleEngine = new RuleEngine(service, new ConnectivityService(), configService);
+        var ruleEngine = new RuleEngine(
+            service,
+            new ConnectivityService(),
+            configService,
+            Path.Combine(configDirectory, "logs"));
         var rule = new AutomationRule(
             Guid.NewGuid(),
             "VMnet1 acceptance",

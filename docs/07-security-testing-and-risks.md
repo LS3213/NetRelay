@@ -44,6 +44,8 @@ NetRelay 能禁用网络适配器且始终以管理员权限运行，错误实�
 | C# 单元测试 | 规则评估、连续失败、冷却、迁移、错误映射 | 不操作真实网卡 |
 | 前端单元测试 | 页面状态、规则表单、危险操作确认 | 使用模拟命令 |
 | 集成测试 | 配置、内联调度、日志 | 使用临时目录和模拟 Windows 接口 |
+
+回归测试和受控实机验收必须注入临时执行日志目录，禁止写入用户正式 `%LOCALAPPDATA%\NetRelay\logs`。此约束由“Rule engine writes test logs to isolated directory”回归用例验证。
 | Windows 真机测试 | 网卡控制、通知、休眠恢复 | 使用专用测试机 |
 | 发布验收 | 安装、升级、卸载、签名、SmartScreen | Windows 10/11 x64 |
 

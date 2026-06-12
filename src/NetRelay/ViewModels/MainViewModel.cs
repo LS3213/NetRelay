@@ -512,7 +512,7 @@ public sealed class MainViewModel : ObservableObject
                 result.Success ? "OK" : "ADAPTER_OPERATION_FAILED",
                 result.WindowsErrorCode
             );
-            await RuleEngine.WriteExecutionRecordAsync(record);
+            await _ruleEngine.WriteExecutionRecordAsync(record);
             _ = LoadLogsAsync();
 
             await Task.Delay(700);

@@ -256,7 +256,7 @@ public sealed class RuleSchedulerService : IDisposable
                         ReasonCode: "MANUAL_SKIP",
                         WindowsErrorCode: null
                     );
-                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                    _ = _ruleEngine.WriteExecutionRecordAsync(record);
                     RuleExecuted?.Invoke(this, record);
                 }
                 else
@@ -276,7 +276,7 @@ public sealed class RuleSchedulerService : IDisposable
                         ReasonCode: "MANUAL_SKIP",
                         WindowsErrorCode: null
                     );
-                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                    _ = _ruleEngine.WriteExecutionRecordAsync(record);
                     RuleExecuted?.Invoke(this, record);
                 }
             }
@@ -392,7 +392,7 @@ public sealed class RuleSchedulerService : IDisposable
                                     ReasonCode: "TRIGGER_EXPIRED",
                                     WindowsErrorCode: null
                                 );
-                                _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                _ = _ruleEngine.WriteExecutionRecordAsync(record);
                                 RuleExecuted?.Invoke(this, record);
                             }
                         }
@@ -458,7 +458,7 @@ public sealed class RuleSchedulerService : IDisposable
                                         ReasonCode: "TRIGGER_EXPIRED",
                                         WindowsErrorCode: null
                                     );
-                                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                    _ = _ruleEngine.WriteExecutionRecordAsync(record);
                                     RuleExecuted?.Invoke(this, record);
                                 }
                             }
@@ -525,7 +525,7 @@ public sealed class RuleSchedulerService : IDisposable
                                         ReasonCode: "TRIGGER_EXPIRED",
                                         WindowsErrorCode: null
                                     );
-                                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                    _ = _ruleEngine.WriteExecutionRecordAsync(record);
                                     RuleExecuted?.Invoke(this, record);
                                 }
                             }

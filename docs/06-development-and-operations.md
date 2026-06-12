@@ -58,7 +58,7 @@ dotnet build NetRelay.sln --no-restore
 当前项目不使用第三方 NuGet 包，不需要 Node.js、Rust、Cargo 或 WebView2。
 根目录 `NuGet.Config` 清空远程包源，使当前无第三方依赖的解决方案可以离线还原和构建。
 
-`NetRelay.RegressionTests` 是不依赖第三方测试框架的回归测试可执行项目，不启用或禁用真实网卡。当前覆盖探测策略边界、恢复冷却语义、定时重启去重、禁用网卡清单保留、只读诊断报告和单实例唤醒信号。
+`NetRelay.RegressionTests` 是不依赖第三方测试框架的回归测试可执行项目，不启用或禁用真实网卡。当前覆盖探测策略边界、恢复冷却语义、定时重启去重、禁用网卡清单保留、只读诊断报告和单实例唤醒信号。回归测试和 VMnet1 验收会向 `RuleEngine` 注入各自的临时日志目录，不得写入 `%LOCALAPPDATA%\NetRelay\logs` 正式执行历史。
 
 专用测试机上可使用管理员权限运行固定 VMnet1 受控切换验收。该入口只接受名称和设备描述均匹配 `VMware Network Adapter VMnet1` 的网卡，并在 `finally` 中尝试恢复：
 

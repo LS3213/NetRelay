@@ -11,6 +11,7 @@ public sealed class RuleEngine
     private readonly NativeNetworkConnectionService _connectionService;
     private readonly ConnectivityService _connectivityService;
     private readonly ConfigurationService _configService;
+    private readonly string _executionLogDirectory;
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastExecutionTimes = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _ruleLocks = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _adapterLocks = new(StringComparer.OrdinalIgnoreCase);
@@ -27,11 +28,13 @@ public sealed class RuleEngine
     public RuleEngine(
         NativeNetworkConnectionService connectionService,
         ConnectivityService connectivityService,
-        ConfigurationService configService)
+        ConfigurationService configService,
+        string? executionLogDirectory = null)
     {
         _connectionService = connectionService;
         _connectivityService = connectivityService;
         _configService = configService;
+        _executionLogDirectory = executionLogDirectory ?? GetDefaultExecutionLogDirectory();
     }
 
     public void ResetRuleRuntimeState(Guid ruleId)
@@ -399,14 +402,12 @@ public sealed class RuleEngine
         }
     }
 
-    public static async Task WriteExecutionRecordAsync(ExecutionRecord record)
+    public async Task WriteExecutionRecordAsync(ExecutionRecord record)
     {
         try
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var logDir = Path.Combine(appData, "NetRelay", "logs");
-            Directory.CreateDirectory(logDir);
-            var logPath = Path.Combine(logDir, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
+            Directory.CreateDirectory(_executionLogDirectory);
+            var logPath = Path.Combine(_executionLogDirectory, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
 
             var line = JsonSerializer.Serialize(record) + Environment.NewLine;
             await File.AppendAllTextAsync(logPath, line);
@@ -415,5 +416,11 @@ public sealed class RuleEngine
         {
             // Fail silently on logging failure to not crash the rule engine
         }
+    }
+
+    private static string GetDefaultExecutionLogDirectory()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(appData, "NetRelay", "logs");
     }
 }
