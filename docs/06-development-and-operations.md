@@ -22,12 +22,20 @@ NetRelay/
 │   ├── MainWindow.xaml
 │   ├── app.manifest
 │   └── NetRelay.csproj
+├── website/                      # 零依赖静态产品官网
+│   ├── assets/                   # 官网图标等静态资源
+│   ├── downloads/                # 可选的本地发布包目录
+│   ├── index.html                # 官网页面结构与中文产品文案
+│   ├── styles.css                # 响应式视觉与产品界面示意图
+│   ├── script.js                 # 入场动画与下载地址配置
+│   └── README.md                 # 官网预览和部署说明
 ├── global.json
 ├── NetRelay.sln
 └── README.md
 ```
 
 界面使用 WPF/XAML；业务状态使用 MVVM；Windows API 调用限制在 `Native` 和 `Services` 层。
+`website/` 是独立的产品展示站，不会被桌面程序加载，也不改变桌面程序不使用 WebView、HTML、CSS 或 JavaScript 的约束。
 
 ## 2. 开发环境
 
@@ -116,7 +124,45 @@ NetRelay.exe --diagnose-adapters .\adapter-diagnostic.json --quiet
 - 配置损坏时将原文件重命名为带时间戳的 `config.json.corrupted-*`，随后创建不含规则的默认配置。当前没有“最近有效配置备份”恢复机制。
 - 开机自启状态不仅检查任务名称，还校验任务动作仍指向当前 EXE 且参数为 `--startup`；程序移动后旧任务会显示为未启用，用户重新勾选即可重建。
 
-## 8. 文档维护规则
+## 8. 产品官网维护与部署
+
+产品官网位于 `website/`，为零依赖静态站点。页面视觉参考简洁的软件产品落地页结构，并延续桌面程序的浅色蓝紫渐变与磨砂玻璃风格。首屏产品展示图当前由 HTML 与 CSS 构建，无需额外截图资源。
+
+本地预览：
+
+```powershell
+python -m http.server 4173 --directory website
+```
+
+随后访问 `http://localhost:4173`。也可以直接打开 `website/index.html`，但 HTTP 预览更接近实际部署行为。
+
+下载按钮由 `website/script.js` 顶部的 `downloadUrl` 常量统一配置：
+
+```js
+const downloadUrl = "https://example.com/NetRelay.exe";
+```
+
+- 留空时，下载按钮只显示“下载地址尚未配置”的提示，不会请求不存在的发布包。
+- 正式发布时应填写 GitHub Release、对象存储或其他稳定下载地址。
+- `website/downloads/` 默认忽略实际发布包，避免将大型二进制文件提交到 Git；仅保留 `.gitkeep`。
+
+静态部署不需要构建命令：
+
+| 平台 | 配置 |
+| --- | --- |
+| Cloudflare Pages / Netlify | 构建命令留空，输出目录设为 `website` |
+| GitHub Pages | 发布 `website/` 内容或使用 Pages 工作流 |
+| Nginx / 静态服务器 | 将 `website/` 中的全部文件复制至站点根目录 |
+
+官网变更的最低验证要求：
+
+- 桌面端与移动端均不得产生横向滚动。
+- 浏览器控制台不得出现 JavaScript 错误或静态资源加载错误。
+- 导航锚点、FAQ、下载按钮和响应式布局必须可用。
+- 产品能力文案必须与当前实现一致；尚未实现的功能不得描述为已提供。
+- 若替换首屏 CSS 产品示意图，应使用经过脱敏的正式截图，不得包含网卡 GUID、真实 IP、MAC 地址或其他设备识别信息。
+
+## 9. 文档维护规则
 
 实现开始后，每次影响下列内容的变更必须同步文档：
 
@@ -124,3 +170,4 @@ NetRelay.exe --diagnose-adapters .\adapter-diagnostic.json --quiet
 - 网卡控制、断网判定、保护或恢复语义。
 - 任务计划命名、权限或安装行为。
 - 配置字段、迁移、日志和故障排查流程。
+- 官网产品文案、下载地址配置、部署方式或目录结构。

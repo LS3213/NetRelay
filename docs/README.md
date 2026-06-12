@@ -34,6 +34,7 @@ NetRelay/
 ├── assets/                   # 图标源文件
 ├── docs/                     # 设计与维护文档
 ├── src/NetRelay/             # C# / WPF 原生桌面程序
+├── website/                  # 零依赖静态产品官网
 ├── NetRelay.sln
 ├── global.json
 └── README.md
@@ -48,6 +49,7 @@ NetRelay/
 - 当前断网判定采用多协议探测（支持 HTTP/HTTPS/PING/DNS 协议），配合 Windows 原生 NLM/NCSI COM 状态实时监测与 UI 联动。
 - 自动禁用故障网卡前，必须确认备用网卡已经连接并可访问互联网。
 - 首版使用 JSON 配置与按日 JSONL 执行日志，不使用数据库；已实现基于保留天数（30天）的后台日志自动滚动清理。
+- 产品官网位于 `website/`，使用原生 HTML、CSS 和少量 JavaScript，可独立部署到任意静态文件服务器，不影响桌面程序的原生技术栈。
 
 ## 源码引用说明
 
