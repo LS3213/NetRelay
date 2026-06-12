@@ -34,3 +34,13 @@ src/NetRelay/bin/Release/net8.0-windows/win-x64/publish/NetRelay.exe
 ```
 
 完整设计与维护文档见 [docs/README.md](docs/README.md)。
+
+## 官网
+
+零依赖静态官网位于 [`website/`](website/)，可自行部署到 GitHub Pages、Cloudflare Pages、Netlify、Nginx 或任意静态文件服务器。
+
+```powershell
+python -m http.server 4173 --directory website
+```
+
+本地访问 `http://localhost:4173`。部署和下载地址配置说明见 [website/README.md](website/README.md)。
