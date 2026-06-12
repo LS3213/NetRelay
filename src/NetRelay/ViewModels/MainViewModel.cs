@@ -197,8 +197,8 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public int ConnectedCount => Adapters.Count(adapter => adapter.IsConnected);
-    public string NetworkSummary => ConnectedCount > 0 ? "网络已连接" : "当前无连接";
-    public string ConnectedDescription => $"{ConnectedCount} 个接口处于连接状态";
+    public string NetworkSummary => ConnectedCount > 0 ? "存在活动链路" : "当前无活动链路";
+    public string ConnectedDescription => $"{ConnectedCount} 个接口链路正常";
 
     // Pre-Notification Properties
     public string PendingRuleName => _pendingRule?.Name ?? string.Empty;

@@ -84,6 +84,7 @@ public sealed class ConnectivityService
         // 优先选择 IPv4 地址进行探测
         var localIp = unicastAddresses.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork)
             ?? unicastAddresses.First();
+        var routePresent = HasDefaultGateway(adapter);
 
         // 3. 执行多轮探测逻辑
         int failedRounds = 0;
@@ -117,16 +118,36 @@ public sealed class ConnectivityService
         }
 
         bool isOnline = failedRounds < policy.RequiredFailedAttempts;
-        string reasonCode = isOnline ? "ONLINE" : "PROBE_FAILED";
+        string reasonCode = isOnline
+            ? "ONLINE"
+            : routePresent
+                ? "PROBE_FAILED"
+                : "PROBE_ROUTE_UNAVAILABLE";
 
         return new ConnectivityResult(
             adapterId,
             checkedAt,
             isOnline,
-            RoutePresent: true,
+            RoutePresent: routePresent,
             attempts,
             reasonCode
         );
+    }
+
+    private static bool HasDefaultGateway(NetworkInterface adapter)
+    {
+        try
+        {
+            return adapter.GetIPProperties().GatewayAddresses.Any(gateway =>
+                !gateway.Address.Equals(IPAddress.Any)
+                && !gateway.Address.Equals(IPAddress.IPv6Any)
+                && !gateway.Address.Equals(IPAddress.None)
+                && !gateway.Address.Equals(IPAddress.IPv6None));
+        }
+        catch (NetworkInformationException)
+        {
+            return false;
+        }
     }
 
     private static async Task<ProbeAttempt> TryProbeEndpointAsync(

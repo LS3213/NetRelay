@@ -28,6 +28,7 @@ var tests = new (string Name, Action Test)[]
     ("Scheduler execution gate rejects re-entry", SchedulerExecutionGateRejectsReentry),
     ("Editing a rule resets scheduler runtime state", EditingRuleResetsSchedulerRuntimeState),
     ("Editing a rule resets engine cooldown state", EditingRuleResetsEngineCooldownState),
+    ("Adapter UI statuses distinguish link and internet", AdapterUiStatusesDistinguishLinkAndInternet),
     ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance)
 };
 
@@ -399,6 +400,53 @@ static void Assert(bool condition)
     }
 }
 
+static void AdapterUiStatusesDistinguishLinkAndInternet()
+{
+    var adapter = new NetworkAdapterInfo
+    {
+        Id = Guid.NewGuid().ToString("D"),
+        Name = "Test adapter",
+        Description = "Test adapter",
+        InterfaceType = System.Net.NetworkInformation.NetworkInterfaceType.Ethernet,
+        OperationalStatus = System.Net.NetworkInformation.OperationalStatus.Up,
+        IsEnabled = true,
+        Speed = 100_000_000,
+        MacAddress = "00-00-00-00-00-00",
+        IpAddresses = ["192.0.2.10"],
+        IsLikelyVirtual = false,
+        ClassificationLabel = "物理候选",
+        CanToggle = true
+    };
+
+    Assert(adapter.EnabledStatusLabel == "已启用");
+    Assert(adapter.LinkStatusLabel == "链路正常");
+    Assert(adapter.InternetStatusLabel == "等待检测");
+    Assert(adapter.BadgeStatusLabel == "未检测");
+
+    adapter.LastProbeTime = DateTimeOffset.Now;
+    adapter.ProbeReasonCode = "PROBE_ROUTE_UNAVAILABLE";
+    Assert(adapter.InternetStatusLabel == "仅本地网络");
+    Assert(adapter.BadgeStatusLabel == "仅本地");
+
+    adapter.ProbeReasonCode = "PROBE_FAILED";
+    Assert(adapter.InternetStatusLabel == "联网探测失败");
+    Assert(adapter.BadgeStatusLabel == "联网失败");
+
+    adapter.IsInternetOnline = true;
+    Assert(adapter.InternetStatusLabel == "可访问互联网");
+    Assert(adapter.BadgeStatusLabel == "可联网");
+
+    adapter.OperationalStatus = System.Net.NetworkInformation.OperationalStatus.Down;
+    Assert(adapter.LinkStatusLabel == "链路断开");
+    Assert(adapter.InternetStatusLabel == "链路断开");
+    Assert(adapter.BadgeStatusLabel == "链路断开");
+
+    adapter.IsEnabled = false;
+    Assert(adapter.EnabledStatusLabel == "已禁用");
+    Assert(adapter.InternetStatusLabel == "网卡已禁用");
+    Assert(adapter.BadgeStatusLabel == "已禁用");
+}
+
 static T GetPrivateField<T>(object instance, string fieldName)
 {
     return (T)(instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
@@ -476,7 +524,7 @@ static int RunVmnet1AcceptanceTest(string? reportPath)
                 .SingleOrDefault(adapter => AdapterIdentity.AreEqual(adapter.Id, before.Id.ToString("B")));
             Report(uiAdapter is null
                 ? "UI_LIST_AFTER_DISABLE: Missing"
-                : $"UI_LIST_AFTER_DISABLE: Status={uiAdapter.StatusLabel} Enabled={uiAdapter.IsEnabled} CanToggle={uiAdapter.CanToggle}");
+                : $"UI_LIST_AFTER_DISABLE: Status={uiAdapter.BadgeStatusLabel} Enabled={uiAdapter.IsEnabled} CanToggle={uiAdapter.CanToggle}");
             acceptancePassed = uiAdapter is { IsEnabled: false, CanToggle: true };
             if (!acceptancePassed)
             {

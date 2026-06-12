@@ -38,7 +38,9 @@ public sealed class NetworkAdapterInfo : ObservableObject
             if (SetProperty(ref _operationalStatus, value))
             {
                 RaisePropertyChanged(nameof(IsConnected));
-                RaisePropertyChanged(nameof(StatusLabel));
+                RaisePropertyChanged(nameof(LinkStatusLabel));
+                RaisePropertyChanged(nameof(InternetStatusLabel));
+                RaisePropertyChanged(nameof(BadgeStatusLabel));
             }
         }
     }
@@ -50,7 +52,10 @@ public sealed class NetworkAdapterInfo : ObservableObject
         {
             if (SetProperty(ref _isEnabled, value))
             {
-                RaisePropertyChanged(nameof(StatusLabel));
+                RaisePropertyChanged(nameof(EnabledStatusLabel));
+                RaisePropertyChanged(nameof(LinkStatusLabel));
+                RaisePropertyChanged(nameof(InternetStatusLabel));
+                RaisePropertyChanged(nameof(BadgeStatusLabel));
             }
         }
     }
@@ -107,7 +112,19 @@ public sealed class NetworkAdapterInfo : ObservableObject
         NetworkInterfaceType.Tunnel => "隧道接口",
         _ => "其他网卡"
     };
-    public string StatusLabel => IsConnected ? "已连接" : IsEnabled ? "未连接" : "已禁用";
+    public string EnabledStatusLabel => IsEnabled ? "已启用" : "已禁用";
+    public string LinkStatusLabel => !IsEnabled ? "不可用" : IsConnected ? "链路正常" : "链路断开";
+    public string BadgeStatusLabel => !IsEnabled
+        ? "已禁用"
+        : !IsConnected
+            ? "链路断开"
+            : !LastProbeTime.HasValue
+                ? "未检测"
+                : IsInternetOnline
+                    ? "可联网"
+                    : ProbeReasonCode == "PROBE_ROUTE_UNAVAILABLE"
+                        ? "仅本地"
+                        : "联网失败";
     public string PrimaryIpAddress => IpAddresses.FirstOrDefault() ?? "未分配";
     public string SpeedLabel => Speed <= 0 ? "未知" : $"{Speed / 1_000_000d:0.#} Mbps";
     public IReadOnlyList<double> TrafficHistory => _trafficHistory;
@@ -135,6 +152,7 @@ public sealed class NetworkAdapterInfo : ObservableObject
             if (SetProperty(ref _isInternetOnline, value))
             {
                 RaisePropertyChanged(nameof(InternetStatusLabel));
+                RaisePropertyChanged(nameof(BadgeStatusLabel));
             }
         }
     }
@@ -147,6 +165,8 @@ public sealed class NetworkAdapterInfo : ObservableObject
             if (SetProperty(ref _lastProbeTime, value))
             {
                 RaisePropertyChanged(nameof(LastProbeTimeLabel));
+                RaisePropertyChanged(nameof(InternetStatusLabel));
+                RaisePropertyChanged(nameof(BadgeStatusLabel));
             }
         }
     }
@@ -154,10 +174,27 @@ public sealed class NetworkAdapterInfo : ObservableObject
     public string ProbeReasonCode
     {
         get => _probeReasonCode;
-        set => SetProperty(ref _probeReasonCode, value);
+        set
+        {
+            if (SetProperty(ref _probeReasonCode, value))
+            {
+                RaisePropertyChanged(nameof(InternetStatusLabel));
+                RaisePropertyChanged(nameof(BadgeStatusLabel));
+            }
+        }
     }
 
-    public string InternetStatusLabel => IsInternetOnline ? "已连接" : "未连接";
+    public string InternetStatusLabel => !IsEnabled
+        ? "网卡已禁用"
+        : !IsConnected
+            ? "链路断开"
+            : !LastProbeTime.HasValue
+                ? "等待检测"
+                : IsInternetOnline
+                    ? "可访问互联网"
+                    : ProbeReasonCode == "PROBE_ROUTE_UNAVAILABLE"
+                        ? "仅本地网络"
+                        : "联网探测失败";
 
     public string LastProbeTimeLabel => LastProbeTime.HasValue
         ? LastProbeTime.Value.ToString("HH:mm:ss")
