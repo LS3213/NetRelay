@@ -28,6 +28,7 @@ public sealed class RuleSchedulerService : IDisposable
     private readonly ConfigurationService _configService;
     private readonly ConnectivityService _connectivityService;
     private System.Threading.Timer? _timer;
+    private CancellationTokenSource _cts = new();
     private readonly object _lock = new();
     private readonly NonReentrantGate _timerTickGate = new();
     private readonly NonReentrantGate _connectivityEvaluationGate = new();
@@ -82,6 +83,7 @@ public sealed class RuleSchedulerService : IDisposable
         {
             if (_timer != null) return;
 
+            _cts = new CancellationTokenSource();
             InitializeLastRanFromLogs();
             UpdateAdapterStatuses();
             NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
@@ -149,14 +151,16 @@ public sealed class RuleSchedulerService : IDisposable
     {
         lock (_lock)
         {
+            if (_timer == null) return;
+
             NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
             _ruleEngine.ExecutionRecorded -= OnRuleExecutionRecorded;
 
-            if (_timer != null)
-            {
-                _timer.Dispose();
-                _timer = null;
-            }
+            _timer.Dispose();
+            _timer = null;
+
+            _cts.Cancel();
+            _cts.Dispose();
 
             foreach (var cts in _networkChangeDebouncers.Values)
             {
@@ -645,10 +649,30 @@ public sealed class RuleSchedulerService : IDisposable
             }
 
             var policy = _configService.Current.ProbePolicy;
+            CancellationToken token;
+            try
+            {
+                lock (_lock)
+                {
+                    token = _cts.Token;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+
             var probeTasks = monitoredAdapterIds.Select(async adapterId =>
             {
-                var result = await _connectivityService.ProbeAdapterAsync(adapterId, policy);
-                return (AdapterId: adapterId, result.Online);
+                try
+                {
+                    var result = await _connectivityService.ProbeAdapterAsync(adapterId, policy, token);
+                    return (AdapterId: adapterId, result.Online);
+                }
+                catch
+                {
+                    return (AdapterId: adapterId, Online: false);
+                }
             });
             var results = await Task.WhenAll(probeTasks);
 
@@ -804,7 +828,8 @@ public sealed class RuleSchedulerService : IDisposable
                 {
                     var result = await _connectivityService.ProbeAdapterAsync(
                         cond.AdapterId,
-                        _configService.Current.ProbePolicy);
+                        _configService.Current.ProbePolicy,
+                        cts.Token);
                     isStillOffline = !result.Online;
                 }
 

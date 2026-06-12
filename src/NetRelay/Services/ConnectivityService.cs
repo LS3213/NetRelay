@@ -9,7 +9,7 @@ namespace NetRelay.Services;
 
 public sealed class ConnectivityService
 {
-    public async Task<ConnectivityResult> ProbeAdapterAsync(string adapterId, ConnectivityProbePolicy policy)
+    public async Task<ConnectivityResult> ProbeAdapterAsync(string adapterId, ConnectivityProbePolicy policy, CancellationToken cancellationToken = default)
     {
         var checkedAt = DateTimeOffset.Now;
         var attempts = new List<ProbeAttempt>();
@@ -101,7 +101,7 @@ public sealed class ConnectivityService
 
             foreach (var endpoint in policy.Endpoints)
             {
-                var attempt = await TryProbeEndpointAsync(endpoint, localIp, policy.Timeout);
+                var attempt = await TryProbeEndpointAsync(endpoint, localIp, policy.Timeout, cancellationToken);
                 roundAttempts.Add(attempt);
                 attempts.Add(attempt);
 
@@ -153,7 +153,8 @@ public sealed class ConnectivityService
     private static async Task<ProbeAttempt> TryProbeEndpointAsync(
         ProbeEndpoint endpoint,
         IPAddress localIp,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
         try
@@ -194,7 +195,7 @@ public sealed class ConnectivityService
 
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) NetRelay/1.0");
 
-            var response = await client.GetAsync(endpoint.Url);
+            var response = await client.GetAsync(endpoint.Url, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 return new ProbeAttempt(

@@ -122,4 +122,45 @@ public sealed class LogService
             }
         });
     }
+
+    public Task RotateLogsAsync(int keepDays = 30)
+    {
+        return Task.Run(() =>
+        {
+            try
+            {
+                if (!Directory.Exists(_logDirectory))
+                {
+                    return;
+                }
+
+                var logFiles = Directory.GetFiles(_logDirectory, "execution-*.jsonl");
+                var cutoffDate = DateTime.Today.AddDays(-keepDays);
+
+                foreach (var file in logFiles)
+                {
+                    try
+                    {
+                        var filename = Path.GetFileNameWithoutExtension(file);
+                        var dateStr = filename.Replace("execution-", "");
+                        if (DateTime.TryParse(dateStr, out var date))
+                        {
+                            if (date < cutoffDate)
+                            {
+                                File.Delete(file);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore individual file deletion errors
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore general exceptions
+            }
+        });
+    }
 }

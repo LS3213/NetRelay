@@ -117,6 +117,7 @@ public sealed class MainViewModel : ObservableObject
 
         LoadRules();
         _ = LoadLogsAsync();
+        _ = _logService.RotateLogsAsync(30);
     }
 
     // Collections
@@ -798,7 +799,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 try
                 {
-                    var result = await _connectivityService.ProbeAdapterAsync(adapter.Id, policy);
+                    var result = await _connectivityService.ProbeAdapterAsync(adapter.Id, policy, cts.Token);
 
                     if (!cts.IsCancellationRequested)
                     {
@@ -897,5 +898,20 @@ public sealed class MainViewModel : ObservableObject
     private static bool AdapterIdsEqual(string adapterId, string? selectedId)
     {
         return AdapterIdentity.AreEqual(adapterId, selectedId);
+    }
+
+    public void Shutdown()
+    {
+        _trafficTimer.Stop();
+        _countdownTimer.Stop();
+        try
+        {
+            _probeCts?.Cancel();
+            _probeCts?.Dispose();
+        }
+        catch
+        {
+            // Ignore cancel/dispose exceptions on shutdown
+        }
     }
 }

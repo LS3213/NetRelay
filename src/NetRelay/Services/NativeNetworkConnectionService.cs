@@ -152,10 +152,17 @@ public sealed class NativeNetworkConnectionService
 
     private static bool TryGetConnectionId(INetConnection connection, out Guid connectionId)
     {
-        if (TryGetConnectionInfo(connection, out var connectionInfo))
+        try
         {
-            connectionId = connectionInfo.Id;
-            return true;
+            if (TryGetConnectionInfo(connection, out var connectionInfo))
+            {
+                connectionId = connectionInfo.Id;
+                return true;
+            }
+        }
+        catch
+        {
+            // Ignore COM exceptions during connection ID retrieval
         }
 
         connectionId = Guid.Empty;
@@ -169,25 +176,37 @@ public sealed class NativeNetworkConnectionService
             string.Empty,
             string.Empty,
             NativeConnectionStatus.Disconnected);
-        var result = connection.GetProperties(out var propertiesPointer);
-        if (result != 0 || propertiesPointer == IntPtr.Zero)
-        {
-            return false;
-        }
 
         try
         {
-            var properties = Marshal.PtrToStructure<NetConProperties>(propertiesPointer);
-            connectionInfo = new NativeConnectionInfo(
-                properties.Id,
-                Marshal.PtrToStringUni(properties.Name) ?? string.Empty,
-                Marshal.PtrToStringUni(properties.DeviceName) ?? string.Empty,
-                (NativeConnectionStatus)properties.Status);
-            return true;
+            var result = connection.GetProperties(out var propertiesPointer);
+            if (result != 0 || propertiesPointer == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                var properties = Marshal.PtrToStructure<NetConProperties>(propertiesPointer);
+                connectionInfo = new NativeConnectionInfo(
+                    properties.Id,
+                    Marshal.PtrToStringUni(properties.Name) ?? string.Empty,
+                    Marshal.PtrToStringUni(properties.DeviceName) ?? string.Empty,
+                    (NativeConnectionStatus)properties.Status);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                NcFreeNetconProperties(propertiesPointer);
+            }
         }
-        finally
+        catch
         {
-            NcFreeNetconProperties(propertiesPointer);
+            return false;
         }
     }
 

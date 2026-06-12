@@ -221,6 +221,7 @@ public partial class MainWindow : Window
     private void ExitApplication()
     {
         Hide();
+        _viewModel.Shutdown();
         _ruleScheduler?.Stop();
         _ruleScheduler?.Dispose();
         _notifyIcon?.Dispose();
@@ -453,6 +454,7 @@ public partial class MainWindow : Window
             else // Exit
             {
                 Hide();
+                _viewModel.Shutdown();
                 _ruleScheduler?.Stop();
                 _ruleScheduler?.Dispose();
                 _notifyIcon?.Dispose();
@@ -482,6 +484,7 @@ public partial class MainWindow : Window
                 else
                 {
                     Hide();
+                    _viewModel.Shutdown();
                     _ruleScheduler?.Stop();
                     _ruleScheduler?.Dispose();
                     _notifyIcon?.Dispose();
