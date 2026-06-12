@@ -534,7 +534,7 @@
                                 <TextBlock Text="当前没有任何自动化规则，点击右上方“新建规则”创建。" 
                                            HorizontalAlignment="Center" VerticalAlignment="Center" 
                                            Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
-                                           Visibility="{Binding Rules.Count, Converter={StaticResource StatusToBrushConverter}, ConverterParameter=EmptyToVisible}"/>
+                                           Visibility="{Binding HasNoRules, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                 
                                 <ListBox ItemsSource="{Binding Rules}" Background="Transparent" BorderThickness="0" 
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -633,7 +633,7 @@
                                 <TextBlock Text="最近 7 天内无任何规则执行记录。" 
                                            HorizontalAlignment="Center" VerticalAlignment="Center" 
                                            Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"
-                                           Visibility="{Binding Logs.Count, Converter={StaticResource StatusToBrushConverter}, ConverterParameter=EmptyToVisible}"/>
+                                           Visibility="{Binding HasNoLogs, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                                 <ListBox ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
