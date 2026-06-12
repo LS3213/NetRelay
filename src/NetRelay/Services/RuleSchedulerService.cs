@@ -29,11 +29,12 @@ public sealed class RuleSchedulerService : IDisposable
     private readonly ConnectivityService _connectivityService;
     private System.Threading.Timer? _timer;
     private readonly object _lock = new();
-    private int _connectivityEvaluationRunning;
-    
+    private readonly NonReentrantGate _timerTickGate = new();
+    private readonly NonReentrantGate _connectivityEvaluationGate = new();
+
     // Maximum tolerance (in minutes) to catch-up run a missed scheduled rule.
     private const int TriggerToleranceMinutes = 2;
-    
+
     // Tracks daily/weekly rule execution dates to prevent multiple fires within the matching minute.
     private readonly Dictionary<Guid, DateTime> _timeTriggerLastRan = new();
 
@@ -158,7 +159,7 @@ public sealed class RuleSchedulerService : IDisposable
         lock (_lock)
         {
             var ruleIds = _configService.Current.Rules.Select(r => r.Id).ToHashSet();
-            
+
             var keysToRemove = _timeTriggerLastRan.Keys.Where(id => !ruleIds.Contains(id)).ToList();
             foreach (var key in keysToRemove) _timeTriggerLastRan.Remove(key);
 
@@ -183,7 +184,7 @@ public sealed class RuleSchedulerService : IDisposable
                     cts.Dispose();
                 }
             }
-            
+
             UpdateAdapterStatuses();
         }
     }
@@ -271,6 +272,11 @@ public sealed class RuleSchedulerService : IDisposable
 
     private void OnTimerTick(object? state)
     {
+        if (!_timerTickGate.TryEnter())
+        {
+            return;
+        }
+
         try
         {
             if (!_configService.IsAutomationEnabled)
@@ -278,131 +284,49 @@ public sealed class RuleSchedulerService : IDisposable
                 return;
             }
 
-            var rules = _configService.Current.Rules.ToList();
-            var now = DateTimeOffset.Now;
-
-            foreach (var rule in rules)
+            lock (_lock)
             {
-                if (!rule.Enabled) continue;
+                var rules = _configService.Current.Rules.ToList();
+                var now = DateTimeOffset.Now;
 
-                if (rule.Trigger is RuleTrigger.Once once)
+                foreach (var rule in rules)
                 {
-                    var delayOffset = TimeSpan.Zero;
-                    lock (_lock)
+                    if (!rule.Enabled) continue;
+
+                    if (rule.Trigger is RuleTrigger.Once once)
                     {
+                        var delayOffset = TimeSpan.Zero;
                         if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
                         {
                             delayOffset = offset;
                         }
-                    }
-                    var adjustedTarget = once.At + delayOffset;
+                        var adjustedTarget = once.At + delayOffset;
 
-                    // 1. Evaluate Pre-Notifications
-                    if (!_onceTriggerRan.Contains(rule.Id))
-                    {
-                        foreach (var preNotify in rule.PreNotifications)
+                        // 1. Evaluate Pre-Notifications
+                        if (!_onceTriggerRan.Contains(rule.Id))
                         {
-                            var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
-                            if (now >= preNotifyTime && now < adjustedTarget)
+                            foreach (var preNotify in rule.PreNotifications)
                             {
-                                var key = (rule.Id, preNotify.MinutesBefore);
-                                lock (_lock)
+                                var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
+                                if (now >= preNotifyTime && now < adjustedTarget)
                                 {
-                                    if (!_oncePreNotificationsTriggered.Contains(key))
+                                    var key = (rule.Id, preNotify.MinutesBefore);
+                                    lock (_lock)
                                     {
-                                        _oncePreNotificationsTriggered.Add(key);
-                                        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                        if (!_oncePreNotificationsTriggered.Contains(key))
+                                        {
+                                            _oncePreNotificationsTriggered.Add(key);
+                                            _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // 2. Evaluate Rule Execution
-                    if (now >= adjustedTarget && !_onceTriggerRan.Contains(rule.Id))
-                    {
-                        _onceTriggerRan.Add(rule.Id);
-                        lock (_lock)
+                        // 2. Evaluate Rule Execution
+                        if (now >= adjustedTarget && !_onceTriggerRan.Contains(rule.Id))
                         {
-                            _tempRuleDelays.Remove(rule.Id);
-                        }
-
-                        // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
-                        if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
-                        {
-                            _ = ExecuteOnceRuleAndNotifyAsync(rule);
-                        }
-                        else
-                        {
-                            // 迟到太久则直接标记为已执行/已失效并写日志以防重复启动
-                            lock (_lock)
-                            {
-                                var currentRules = _configService.Current.Rules;
-                                var index = currentRules.FindIndex(r => r.Id == rule.Id);
-                                if (index >= 0)
-                                {
-                                    currentRules[index] = currentRules[index] with { Enabled = false };
-                                    _configService.Save();
-                                }
-                            }
-
-                            var record = new ExecutionRecord(
-                                Guid.NewGuid(),
-                                rule.Id,
-                                RuleSource.Schedule,
-                                rule.TargetAdapterId,
-                                rule.Action,
-                                now,
-                                now,
-                                Outcome: "SKIPPED",
-                                ReasonCode: "TRIGGER_EXPIRED",
-                                WindowsErrorCode: null
-                            );
-                            _ = RuleEngine.WriteExecutionRecordAsync(record);
-                            RuleExecuted?.Invoke(this, record);
-                        }
-                    }
-                }
-                else if (rule.Trigger is RuleTrigger.Daily daily)
-                {
-                    var targetToday = new DateTimeOffset(now.Year, now.Month, now.Day, daily.LocalTime.Hour, daily.LocalTime.Minute, 0, now.Offset);
-                    var delayOffset = TimeSpan.Zero;
-                    lock (_lock)
-                    {
-                        if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
-                        {
-                            delayOffset = offset;
-                        }
-                    }
-                    var adjustedTarget = targetToday + delayOffset;
-
-                    // 1. Evaluate Pre-Notifications
-                    if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date)
-                    {
-                        foreach (var preNotify in rule.PreNotifications)
-                        {
-                            var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
-                            if (now >= preNotifyTime && now < adjustedTarget)
-                            {
-                                var key = (rule.Id, preNotify.MinutesBefore);
-                                lock (_lock)
-                                {
-                                    if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
-                                    {
-                                        _preNotificationLastTriggeredDate[key] = now.Date;
-                                        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. Evaluate Rule Execution
-                    if (now >= adjustedTarget)
-                    {
-                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDateDailyExec) || lastRanDateDailyExec < now.Date)
-                        {
-                            _timeTriggerLastRan[rule.Id] = now.Date;
+                            _onceTriggerRan.Add(rule.Id);
                             lock (_lock)
                             {
                                 _tempRuleDelays.Remove(rule.Id);
@@ -411,10 +335,22 @@ public sealed class RuleSchedulerService : IDisposable
                             // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
                             if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
                             {
-                                _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+                                _ = ExecuteOnceRuleAndNotifyAsync(rule);
                             }
                             else
                             {
+                                // 迟到太久则直接标记为已执行/已失效并写日志以防重复启动
+                                lock (_lock)
+                                {
+                                    var currentRules = _configService.Current.Rules;
+                                    var index = currentRules.FindIndex(r => r.Id == rule.Id);
+                                    if (index >= 0)
+                                    {
+                                        currentRules[index] = currentRules[index] with { Enabled = false };
+                                        _configService.Save();
+                                    }
+                                }
+
                                 var record = new ExecutionRecord(
                                     Guid.NewGuid(),
                                     rule.Id,
@@ -432,90 +368,158 @@ public sealed class RuleSchedulerService : IDisposable
                             }
                         }
                     }
-                }
-                else if (rule.Trigger is RuleTrigger.Weekly weekly)
-                {
-                    var targetToday = new DateTimeOffset(now.Year, now.Month, now.Day, weekly.LocalTime.Hour, weekly.LocalTime.Minute, 0, now.Offset);
-                    var delayOffset = TimeSpan.Zero;
-                    lock (_lock)
+                    else if (rule.Trigger is RuleTrigger.Daily daily)
                     {
+                        var targetToday = new DateTimeOffset(now.Year, now.Month, now.Day, daily.LocalTime.Hour, daily.LocalTime.Minute, 0, now.Offset);
+                        var delayOffset = TimeSpan.Zero;
                         if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
                         {
                             delayOffset = offset;
                         }
-                    }
-                    var adjustedTarget = targetToday + delayOffset;
+                        var adjustedTarget = targetToday + delayOffset;
 
-                    // 1. Evaluate Pre-Notifications
-                    if (weekly.Weekdays.Contains(now.DayOfWeek) && (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date))
-                    {
-                        foreach (var preNotify in rule.PreNotifications)
+                        // 1. Evaluate Pre-Notifications
+                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date)
                         {
-                            var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
-                            if (now >= preNotifyTime && now < adjustedTarget)
+                            foreach (var preNotify in rule.PreNotifications)
                             {
-                                var key = (rule.Id, preNotify.MinutesBefore);
-                                lock (_lock)
+                                var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
+                                if (now >= preNotifyTime && now < adjustedTarget)
                                 {
-                                    if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
+                                    var key = (rule.Id, preNotify.MinutesBefore);
+                                    lock (_lock)
                                     {
-                                        _preNotificationLastTriggeredDate[key] = now.Date;
-                                        _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                        if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
+                                        {
+                                            _preNotificationLastTriggeredDate[key] = now.Date;
+                                            _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    // 2. Evaluate Rule Execution
-                    if (weekly.Weekdays.Contains(now.DayOfWeek) && now >= adjustedTarget)
-                    {
-                        if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDateWeeklyExec) || lastRanDateWeeklyExec < now.Date)
+                        // 2. Evaluate Rule Execution
+                        if (now >= adjustedTarget)
                         {
-                            _timeTriggerLastRan[rule.Id] = now.Date;
-                            lock (_lock)
+                            if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDateDailyExec) || lastRanDateDailyExec < now.Date)
                             {
-                                _tempRuleDelays.Remove(rule.Id);
-                            }
+                                _timeTriggerLastRan[rule.Id] = now.Date;
+                                lock (_lock)
+                                {
+                                    _tempRuleDelays.Remove(rule.Id);
+                                }
 
-                            // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
-                            if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
-                            {
-                                _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+                                // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
+                                if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
+                                {
+                                    _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+                                }
+                                else
+                                {
+                                    var record = new ExecutionRecord(
+                                        Guid.NewGuid(),
+                                        rule.Id,
+                                        RuleSource.Schedule,
+                                        rule.TargetAdapterId,
+                                        rule.Action,
+                                        now,
+                                        now,
+                                        Outcome: "SKIPPED",
+                                        ReasonCode: "TRIGGER_EXPIRED",
+                                        WindowsErrorCode: null
+                                    );
+                                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                    RuleExecuted?.Invoke(this, record);
+                                }
                             }
-                            else
+                        }
+                    }
+                    else if (rule.Trigger is RuleTrigger.Weekly weekly)
+                    {
+                        var targetToday = new DateTimeOffset(now.Year, now.Month, now.Day, weekly.LocalTime.Hour, weekly.LocalTime.Minute, 0, now.Offset);
+                        var delayOffset = TimeSpan.Zero;
+                        if (_tempRuleDelays.TryGetValue(rule.Id, out var offset))
+                        {
+                            delayOffset = offset;
+                        }
+                        var adjustedTarget = targetToday + delayOffset;
+
+                        // 1. Evaluate Pre-Notifications
+                        if (weekly.Weekdays.Contains(now.DayOfWeek) && (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDate) || lastRanDate < now.Date))
+                        {
+                            foreach (var preNotify in rule.PreNotifications)
                             {
-                                var record = new ExecutionRecord(
-                                    Guid.NewGuid(),
-                                    rule.Id,
-                                    RuleSource.Schedule,
-                                    rule.TargetAdapterId,
-                                    rule.Action,
-                                    now,
-                                    now,
-                                    Outcome: "SKIPPED",
-                                    ReasonCode: "TRIGGER_EXPIRED",
-                                    WindowsErrorCode: null
-                                );
-                                _ = RuleEngine.WriteExecutionRecordAsync(record);
-                                RuleExecuted?.Invoke(this, record);
+                                var preNotifyTime = adjustedTarget - TimeSpan.FromMinutes(preNotify.MinutesBefore);
+                                if (now >= preNotifyTime && now < adjustedTarget)
+                                {
+                                    var key = (rule.Id, preNotify.MinutesBefore);
+                                    lock (_lock)
+                                    {
+                                        if (!_preNotificationLastTriggeredDate.TryGetValue(key, out var lastTriggered) || lastTriggered < now.Date)
+                                        {
+                                            _preNotificationLastTriggeredDate[key] = now.Date;
+                                            _ = Task.Run(() => PreNotificationTriggered?.Invoke(this, new PreNotificationEventArgs(rule, preNotify, adjustedTarget, preNotify.MinutesBefore)));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Evaluate Rule Execution
+                        if (weekly.Weekdays.Contains(now.DayOfWeek) && now >= adjustedTarget)
+                        {
+                            if (!_timeTriggerLastRan.TryGetValue(rule.Id, out var lastRanDateWeeklyExec) || lastRanDateWeeklyExec < now.Date)
+                            {
+                                _timeTriggerLastRan[rule.Id] = now.Date;
+                                lock (_lock)
+                                {
+                                    _tempRuleDelays.Remove(rule.Id);
+                                }
+
+                                // 检查是否迟到太久（允许最大偏离 TriggerToleranceMinutes 分钟）
+                                if (now <= adjustedTarget.AddMinutes(TriggerToleranceMinutes))
+                                {
+                                    _ = ExecuteRuleAndNotifyAsync(rule, RuleSource.Schedule);
+                                }
+                                else
+                                {
+                                    var record = new ExecutionRecord(
+                                        Guid.NewGuid(),
+                                        rule.Id,
+                                        RuleSource.Schedule,
+                                        rule.TargetAdapterId,
+                                        rule.Action,
+                                        now,
+                                        now,
+                                        Outcome: "SKIPPED",
+                                        ReasonCode: "TRIGGER_EXPIRED",
+                                        WindowsErrorCode: null
+                                    );
+                                    _ = RuleEngine.WriteExecutionRecordAsync(record);
+                                    RuleExecuted?.Invoke(this, record);
+                                }
                             }
                         }
                     }
                 }
+
+                _ = EvaluateConnectivityRulesAsync(rules);
             }
-
-            _ = EvaluateConnectivityRulesAsync(rules);
         }
         catch
         {
             // Keep timer thread safe
         }
+        finally
+        {
+            _timerTickGate.Exit();
+        }
     }
 
     private async Task EvaluateConnectivityRulesAsync(IReadOnlyList<AutomationRule> rules)
     {
-        if (Interlocked.Exchange(ref _connectivityEvaluationRunning, 1) != 0)
+        if (!_connectivityEvaluationGate.TryEnter())
         {
             return;
         }
@@ -581,7 +585,7 @@ public sealed class RuleSchedulerService : IDisposable
         }
         finally
         {
-            Interlocked.Exchange(ref _connectivityEvaluationRunning, 0);
+            _connectivityEvaluationGate.Exit();
         }
     }
 
@@ -651,7 +655,7 @@ public sealed class RuleSchedulerService : IDisposable
                 if (netChange.Condition is AdapterOfflineCondition cond)
                 {
                     var adapterId = cond.AdapterId;
-                    var isCurrentlyUp = currentInterfaces.TryGetValue(adapterId, out var currentNi) && 
+                    var isCurrentlyUp = currentInterfaces.TryGetValue(adapterId, out var currentNi) &&
                                         currentNi.OperationalStatus == OperationalStatus.Up;
 
                     _lastAdapterStatuses.TryGetValue(adapterId, out var lastStatus);
@@ -691,7 +695,7 @@ public sealed class RuleSchedulerService : IDisposable
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(debounceSeconds), cts.Token);
-                
+
                 if (cts.Token.IsCancellationRequested) return;
 
                 var isStillOffline = false;

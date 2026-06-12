@@ -40,6 +40,8 @@ NetRelay.exe
 
 `MainWindow`、`MainViewModel` 与 `RuleSchedulerService` 共享同一个 `RuleEngine` 实例。规则引擎按规则 ID 和目标网卡 GUID 串行执行，避免手动立即执行、定时触发和网络变化触发并发操作同一网卡。
 
+调度器的完整 5 秒扫描周期和异步联网状态评估分别使用防重入门禁。上一轮尚未完成时跳过新一轮，避免普通字典状态竞争、重复通知和重复调度。
+
 ## 3. 总体架构
 
 ```mermaid
@@ -131,4 +133,4 @@ sequenceDiagram
 - Rule Engine 依赖抽象的 Adapter 与 Connectivity 接口，便于测试替身。
 - Windows 错误必须转换为稳定的应用错误码，同时保留原始错误码供诊断。
 - 探测端点失败、配置损坏或任务同步失败不能导致应用崩溃；应进入可恢复错误状态并通知用户。
-- `NativeNetworkConnectionService` 缓存最近成功枚举及成功切换后的预期原生状态。原生 COM 枚举短暂漏项时，最多保留 12 次查询，避免禁用网卡从 UI 立即消失；持续缺失后自动移除陈旧项。UI 刷新合并按 GUID 语义比较，不受带花括号或无花括号的字符串格式影响。
+- `NativeNetworkConnectionService` 缓存最近成功枚举及成功切换后的预期原生状态。原生 COM 枚举短暂漏项时，最多保留 12 次查询，避免禁用网卡从 UI 立即消失；持续缺失后自动移除陈旧项。部分驱动在成功禁用后仍短暂报告 `Disconnected`，此时优先保留 NetRelay 已确认的预期禁用状态，直到原生状态收敛或达到查询上限。UI 刷新合并按 GUID 语义比较，不受带花括号或无花括号的字符串格式影响。

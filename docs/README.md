@@ -24,6 +24,7 @@
 5. [网络检测与自动化](05-network-detection-and-automation.md)
 6. [开发与运维](06-development-and-operations.md)
 7. [安全、测试与风险](07-security-testing-and-risks.md)
+8. [验收状态与实机测试清单](08-acceptance-status.md)
 
 ## 目录结构
 

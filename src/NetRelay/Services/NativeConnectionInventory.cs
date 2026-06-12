@@ -29,7 +29,16 @@ public sealed class NativeConnectionInventory
 
             foreach (var connection in observed.Values)
             {
-                _entries[connection.Id] = new InventoryEntry(connection, 0);
+                if (_entries.TryGetValue(connection.Id, out var existing)
+                    && existing.ExpectedEnabled.HasValue
+                    && existing.ExpectedRefreshesRemaining > 0)
+                {
+                    _entries[connection.Id] = MergeExpectedState(existing, connection);
+                }
+                else
+                {
+                    _entries[connection.Id] = new InventoryEntry(connection, 0, null, 0);
+                }
             }
 
             foreach (var id in _entries.Keys.Where(id => !observed.ContainsKey(id)).ToArray())
@@ -61,9 +70,40 @@ public sealed class NativeConnectionInventory
             var connection = _entries.TryGetValue(id, out var existing)
                 ? existing.Connection with { Status = status }
                 : new NativeConnectionInfo(id, name, deviceName, status);
-            _entries[id] = new InventoryEntry(connection, 0);
+            _entries[id] = new InventoryEntry(
+                connection,
+                MissingRefreshes: 0,
+                ExpectedEnabled: enabled,
+                ExpectedRefreshesRemaining: _missingRefreshLimit);
         }
     }
 
-    private sealed record InventoryEntry(NativeConnectionInfo Connection, int MissingRefreshes);
+    private static InventoryEntry MergeExpectedState(
+        InventoryEntry existing,
+        NativeConnectionInfo observed)
+    {
+        var expectedEnabled = existing.ExpectedEnabled!.Value;
+        var observedMatchesExpectation = expectedEnabled
+            ? observed.IsEnabled
+            : observed.Status == NativeConnectionStatus.HardwareDisabled;
+        if (observedMatchesExpectation)
+        {
+            return new InventoryEntry(observed, 0, null, 0);
+        }
+
+        var expectedStatus = expectedEnabled
+            ? NativeConnectionStatus.Disconnected
+            : NativeConnectionStatus.HardwareDisabled;
+        return new InventoryEntry(
+            observed with { Status = expectedStatus },
+            MissingRefreshes: 0,
+            ExpectedEnabled: expectedEnabled,
+            ExpectedRefreshesRemaining: existing.ExpectedRefreshesRemaining - 1);
+    }
+
+    private sealed record InventoryEntry(
+        NativeConnectionInfo Connection,
+        int MissingRefreshes,
+        bool? ExpectedEnabled,
+        int ExpectedRefreshesRemaining);
 }

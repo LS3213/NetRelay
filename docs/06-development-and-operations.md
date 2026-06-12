@@ -60,11 +60,20 @@ dotnet build NetRelay.sln --no-restore
 
 `NetRelay.RegressionTests` 是不依赖第三方测试框架的回归测试可执行项目，不启用或禁用真实网卡。当前覆盖探测策略边界、恢复冷却语义、定时重启去重、禁用网卡清单保留、只读诊断报告和单实例唤醒信号。
 
+专用测试机上可使用管理员权限运行固定 VMnet1 受控切换验收。该入口只接受名称和设备描述均匹配 `VMware Network Adapter VMnet1` 的网卡，并在 `finally` 中尝试恢复：
+
+```powershell
+tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.RegressionTests.exe --acceptance-toggle-vmnet1
+```
+
+该验收会测试原生禁用/启用、主界面网卡合并列表、`RuleEngine` 调度来源与恢复来源，以及一次性规则的真实 Timer 触发；同时会写入正常的结构化执行日志。
+
 ## 4. 构建与发布
 
 - Debug 输出：`src/NetRelay/bin/Debug/net8.0-windows/win-x64/NetRelay.exe`
 - Release 发布输出：`src/NetRelay/bin/Release/net8.0-windows/win-x64/publish/NetRelay.exe`
 - 发布模式为 framework-dependent，目标电脑需要 .NET 8 Desktop Runtime。
+- 当前发布目录包含 `NetRelay.exe`、`NetRelay.dll`、`.deps.json` 与 `.runtimeconfig.json`；程序尚未签名。
 - 使用 `app.manifest` 声明管理员权限与 Windows 10/11 兼容性；Per-Monitor V2 DPI 通过 `ApplicationHighDpiMode` 项目属性配置。
 - 正式发布前应增加代码签名和安装包。
 
@@ -103,6 +112,7 @@ NetRelay.exe --diagnose-adapters .\adapter-diagnostic.json --quiet
 - 后续安装程序负责检查 .NET 8 Desktop Runtime、注册通知身份和卸载信息。
 - 卸载时应询问是否删除配置和日志，并清理 NetRelay 创建的任务计划项。
 - 配置损坏时将原文件重命名为带时间戳的 `config.json.corrupted-*`，随后创建不含规则的默认配置。当前没有“最近有效配置备份”恢复机制。
+- 开机自启状态不仅检查任务名称，还校验任务动作仍指向当前 EXE 且参数为 `--startup`；程序移动后旧任务会显示为未启用，用户重新勾选即可重建。
 
 ## 8. 文档维护规则
 

@@ -14,8 +14,18 @@ public sealed class AutoStartService
 
     public bool IsEnabled()
     {
-        var result = RunTaskScheduler("/Query", "/TN", TaskName, "/XML");
-        return result.ExitCode == 0;
+        try
+        {
+            var result = RunTaskScheduler("/Query", "/TN", TaskName, "/XML");
+            var executablePath = Environment.ProcessPath;
+            return result.ExitCode == 0
+                && !string.IsNullOrWhiteSpace(executablePath)
+                && AutoStartTaskPolicy.MatchesCurrentExecutable(result.StandardOutput, executablePath);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public AutoStartResult SetEnabled(bool enabled)
@@ -58,7 +68,7 @@ public sealed class AutoStartService
             }
 
             var deleteResult = RunTaskScheduler("/Delete", "/TN", TaskName, "/F");
-            return deleteResult.ExitCode == 0 || !IsEnabled()
+            return deleteResult.ExitCode == 0 || !TaskExists()
                 ? new AutoStartResult(true)
                 : new AutoStartResult(false, GetFailureMessage(deleteResult));
         }
@@ -133,6 +143,11 @@ public sealed class AutoStartService
         var standardError = process.StandardError.ReadToEnd();
         process.WaitForExit();
         return new ProcessResult(process.ExitCode, standardOutput, standardError);
+    }
+
+    private static bool TaskExists()
+    {
+        return RunTaskScheduler("/Query", "/TN", TaskName).ExitCode == 0;
     }
 
     private static string GetFailureMessage(ProcessResult result)
