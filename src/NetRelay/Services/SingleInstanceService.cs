@@ -42,7 +42,7 @@ public sealed class SingleInstanceService : IDisposable
         {
             using var pipeClient = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out);
             pipeClient.Connect(1000); // Wait up to 1 second
-            
+
             using var writer = new StreamWriter(pipeClient);
             var json = JsonSerializer.Serialize(args);
             writer.WriteLine(json);

@@ -220,7 +220,7 @@
                             <TextBox x:Name="CooldownTextBox" Text="300"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2" VerticalAlignment="Bottom" Height="32">
-                            <CheckBox x:Name="RequireBackupCheck" Content="启用备用网络保护" IsChecked="True" 
+                            <CheckBox x:Name="RequireBackupCheck" Content="启用备用网络保护" IsChecked="True"
                                       ToolTip="禁用网卡前探测是否有其他网卡可访问互联网，防止整机彻底断网"/>
                         </StackPanel>
                     </Grid>
@@ -260,7 +260,7 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
-                    
+
                     <TextBlock x:Name="ErrorMsgText" Text="" Foreground="#E85C63" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
                 </StackPanel>
             </ScrollViewer>

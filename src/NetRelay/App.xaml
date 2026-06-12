@@ -85,7 +85,7 @@
                                 </Border.BorderBrush>
                                 <Grid>
                                     <!-- Thumb -->
-                                    <Border x:Name="Thumb" Width="14" Height="14" CornerRadius="7" 
+                                    <Border x:Name="Thumb" Width="14" Height="14" CornerRadius="7"
                                             Background="White" HorizontalAlignment="Left" VerticalAlignment="Center"
                                             Margin="2,0,0,0">
                                         <Border.RenderTransform>
@@ -103,15 +103,15 @@
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" 
-                                                             Storyboard.TargetProperty="X" 
-                                                             To="20" Duration="0:0:0.18" 
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="20" Duration="0:0:0.18"
                                                              DecelerationRatio="0.8"/>
-                                            <ColorAnimation Storyboard.TargetName="Track" 
-                                                             Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)" 
+                                            <ColorAnimation Storyboard.TargetName="Track"
+                                                             Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                                              To="#536EF2" Duration="0:0:0.18"/>
-                                            <ColorAnimation Storyboard.TargetName="Track" 
-                                                             Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)" 
+                                            <ColorAnimation Storyboard.TargetName="Track"
+                                                             Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                                              To="#30536EF2" Duration="0:0:0.18"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -119,15 +119,15 @@
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" 
-                                                             Storyboard.TargetProperty="X" 
-                                                             To="0" Duration="0:0:0.18" 
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate"
+                                                             Storyboard.TargetProperty="X"
+                                                             To="0" Duration="0:0:0.18"
                                                              DecelerationRatio="0.8"/>
-                                            <ColorAnimation Storyboard.TargetName="Track" 
-                                                             Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)" 
+                                            <ColorAnimation Storyboard.TargetName="Track"
+                                                             Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                                              To="#25000000" Duration="0:0:0.18"/>
-                                            <ColorAnimation Storyboard.TargetName="Track" 
-                                                             Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)" 
+                                            <ColorAnimation Storyboard.TargetName="Track"
+                                                             Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)"
                                                              To="#15000000" Duration="0:0:0.18"/>
                                         </Storyboard>
                                     </BeginStoryboard>

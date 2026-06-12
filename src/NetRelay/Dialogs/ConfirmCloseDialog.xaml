@@ -31,7 +31,7 @@
                        Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
                        Text="为了保证您的自动化网络规则能继续监控并运行，程序可以隐藏到系统托盘常驻后台。您也可以选择直接退出。"/>
 
-            <CheckBox Grid.Row="2" x:Name="DoNotRemindCheckBox" Content="不再提醒我，以后按此选择执行" 
+            <CheckBox Grid.Row="2" x:Name="DoNotRemindCheckBox" Content="不再提醒我，以后按此选择执行"
                       Margin="0,0,0,16" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
                       VerticalAlignment="Center"/>
 
