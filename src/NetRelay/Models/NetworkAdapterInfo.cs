@@ -15,6 +15,7 @@ public sealed class NetworkAdapterInfo : ObservableObject
     private bool _isInternetOnline;
     private DateTimeOffset? _lastProbeTime;
     private string _probeReasonCode = "PENDING";
+    private string? _nlmConnectivity = "Unknown";
 
     private OperationalStatus _operationalStatus;
     private bool _isEnabled;
@@ -199,6 +200,31 @@ public sealed class NetworkAdapterInfo : ObservableObject
     public string LastProbeTimeLabel => LastProbeTime.HasValue
         ? LastProbeTime.Value.ToString("HH:mm:ss")
         : "从未检测";
+
+    public string? NlmConnectivity
+    {
+        get => _nlmConnectivity;
+        set
+        {
+            if (SetProperty(ref _nlmConnectivity, value))
+            {
+                RaisePropertyChanged(nameof(NlmConnectivityLabel));
+            }
+        }
+    }
+
+    public string NlmConnectivityLabel => NlmConnectivity switch
+    {
+        "Internet" => "可访问互联网",
+        "LocalNetwork" => "仅局域网网络",
+        "Subnet" => "仅本地子网",
+        "Disconnected" => "未连接",
+        "Unknown" => "未知/未检测",
+        null => "不适用",
+        string s when s.Contains("Internet") => "可访问互联网",
+        string s when s.Contains("LocalNetwork") => "仅局域网网络",
+        _ => NlmConnectivity ?? "未知"
+    };
 
     public void UpdateTraffic(long bytesReceived, long bytesSent, DateTimeOffset sampledAt)
     {

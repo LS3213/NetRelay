@@ -8,7 +8,8 @@ public sealed record ConnectivityResult(
     [property: JsonPropertyName("online")] bool Online,
     [property: JsonPropertyName("routePresent")] bool RoutePresent,
     [property: JsonPropertyName("attempts")] IReadOnlyList<ProbeAttempt> Attempts,
-    [property: JsonPropertyName("reasonCode")] string ReasonCode
+    [property: JsonPropertyName("reasonCode")] string ReasonCode,
+    [property: JsonPropertyName("nlmConnectivity")] string? NlmConnectivity
 );
 
 public sealed record ProbeAttempt(

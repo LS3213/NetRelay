@@ -18,9 +18,9 @@ public static class ConnectivityProbePolicyValidator
 
         if (policy.Endpoints.Any(endpoint =>
                 !Uri.TryCreate(endpoint.Url, UriKind.Absolute, out var uri)
-                || uri.Scheme is not ("http" or "https")))
+                || uri.Scheme is not ("http" or "https" or "ping" or "dns")))
         {
-            return "联网探测端点必须是合法的 HTTP/HTTPS 绝对地址。";
+            return "联网探测端点必须是合法的 HTTP/HTTPS/PING/DNS 绝对地址。";
         }
 
         if (policy.TimeoutSeconds is < 0.5 or > 30)

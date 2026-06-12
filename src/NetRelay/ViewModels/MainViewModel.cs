@@ -811,6 +811,7 @@ public sealed class MainViewModel : ObservableObject
                                 adapter.IsInternetOnline = result.Online;
                                 adapter.LastProbeTime = result.CheckedAt;
                                 adapter.ProbeReasonCode = result.ReasonCode;
+                                adapter.NlmConnectivity = result.NlmConnectivity;
                             });
                         }
                         else
@@ -818,6 +819,7 @@ public sealed class MainViewModel : ObservableObject
                             adapter.IsInternetOnline = result.Online;
                             adapter.LastProbeTime = result.CheckedAt;
                             adapter.ProbeReasonCode = result.ReasonCode;
+                            adapter.NlmConnectivity = result.NlmConnectivity;
                         }
                     }
                 }

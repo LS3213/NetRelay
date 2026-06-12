@@ -1,5 +1,7 @@
 using NetRelay.Models;
 using NetRelay.Services;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 
 if (args.FirstOrDefault() == "--acceptance-toggle-vmnet1")
@@ -10,6 +12,8 @@ if (args.FirstOrDefault() == "--acceptance-toggle-vmnet1")
 var tests = new (string Name, Action Test)[]
 {
     ("Valid probe policy is accepted", ValidProbePolicyIsAccepted),
+    ("Probe policy supports ping and dns", ProbePolicySupportsPingAndDns),
+    ("DNS query building and parsing works", DnsQueryBuildingAndParsingWorks),
     ("Zero probe attempts are rejected", ZeroProbeAttemptsAreRejected),
     ("Required endpoint threshold is validated", RequiredEndpointThresholdIsValidated),
     ("Invalid saved policy pauses automation", InvalidSavedPolicyPausesAutomation),
@@ -62,6 +66,92 @@ return 0;
 static void ValidProbePolicyIsAccepted()
 {
     Assert(ConnectivityProbePolicyValidator.Validate(new ConnectivityProbePolicy()) is null);
+}
+
+static void ProbePolicySupportsPingAndDns()
+{
+    var policy = new ConnectivityProbePolicy
+    {
+        Endpoints = new List<ProbeEndpoint>
+        {
+            new() { Url = "ping://1.1.1.1" },
+            new() { Url = "dns://www.google.com" }
+        }
+    };
+    Assert(ConnectivityProbePolicyValidator.Validate(policy) is null);
+
+    var invalidPolicy = new ConnectivityProbePolicy
+    {
+        Endpoints = new List<ProbeEndpoint>
+        {
+            new() { Url = "ftp://1.1.1.1" }
+        }
+    };
+    Assert(ConnectivityProbePolicyValidator.Validate(invalidPolicy) is not null);
+}
+
+static void DnsQueryBuildingAndParsingWorks()
+{
+    var buildMethod = typeof(ConnectivityService).GetMethod("BuildDnsQuery", BindingFlags.NonPublic | BindingFlags.Static);
+    var parseMethod = typeof(ConnectivityService).GetMethod("ParseDnsResponseIp", BindingFlags.NonPublic | BindingFlags.Static);
+
+    Assert(buildMethod is not null);
+    Assert(parseMethod is not null);
+
+    // 1. Build query for IPv4
+    var queryBytes = (byte[])buildMethod!.Invoke(null, new object[] { "google.com", false })!;
+    Assert(queryBytes.Length > 0);
+
+    // 2. Build mock response
+    var questionLength = queryBytes.Length - 12;
+    var response = new byte[12 + questionLength + 20];
+    
+    // Header
+    response[0] = 0x12; response[1] = 0x34;
+    response[2] = 0x81; response[3] = 0x80;
+    response[4] = 0x00; response[5] = 0x01; // 1 Question
+    response[6] = 0x00; response[7] = 0x01; // 1 Answer
+
+    // Copy question
+    Array.Copy(queryBytes, 12, response, 12, questionLength);
+
+    int index = 12 + questionLength;
+    // Answer
+    response[index++] = 0xC0; response[index++] = 0x0C; // Name pointer
+    response[index++] = 0x00; response[index++] = 0x01; // Type A
+    response[index++] = 0x00; response[index++] = 0x01; // Class IN
+    response[index++] = 0x00; response[index++] = 0x00; response[index++] = 0x00; response[index++] = 0x3C; // TTL
+    response[index++] = 0x00; response[index++] = 0x04; // Data length 4
+    response[index++] = 8; response[index++] = 8; response[index++] = 8; response[index++] = 8; // IP
+
+    var resolved = (IPAddress?)parseMethod!.Invoke(null, new object[] { response, index, AddressFamily.InterNetwork })!;
+    Assert(resolved is not null);
+    Assert(resolved!.ToString() == "8.8.8.8");
+
+    // 3. Build query for IPv6
+    var queryBytesV6 = (byte[])buildMethod!.Invoke(null, new object[] { "google.com", true })!;
+    Assert(queryBytesV6.Length > 0);
+
+    var questionLengthV6 = queryBytesV6.Length - 12;
+    var responseV6 = new byte[12 + questionLengthV6 + 32];
+    responseV6[0] = 0x12; responseV6[1] = 0x34;
+    responseV6[2] = 0x81; responseV6[3] = 0x80;
+    responseV6[4] = 0x00; responseV6[5] = 0x01;
+    responseV6[6] = 0x00; responseV6[7] = 0x01;
+
+    Array.Copy(queryBytesV6, 12, responseV6, 12, questionLengthV6);
+
+    int indexV6 = 12 + questionLengthV6;
+    responseV6[indexV6++] = 0xC0; responseV6[indexV6++] = 0x0C;
+    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x1C; // Type AAAA = 28
+    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x01;
+    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x3C;
+    responseV6[indexV6++] = 0x00; responseV6[indexV6++] = 0x10; // Data length 16
+    for (int k = 0; k < 16; k++) responseV6[indexV6++] = 0xFF; // IP v6 address
+
+    var resolvedV6 = (IPAddress?)parseMethod!.Invoke(null, new object[] { responseV6, indexV6, AddressFamily.InterNetworkV6 })!;
+    Assert(resolvedV6 is not null);
+    Assert(resolvedV6!.ToString() == "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
 }
 
 static void ZeroProbeAttemptsAreRejected()

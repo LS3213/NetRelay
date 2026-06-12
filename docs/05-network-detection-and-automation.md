@@ -2,7 +2,7 @@
 
 [上一篇：接口与数据模型](04-interfaces-and-data-model.md) | [返回索引](README.md) | [下一篇：开发与运维](06-development-and-operations.md)
 
-> 当前已实现网卡状态检查、绑定源 IP 的双端点 HTTP/HTTPS 探测、连续失败判定、网络离线边沿触发、备用网络保护和切换后回滚。默认路由精确校验、NLM/NCSI 与 `ping` 诊断仍为计划实现；全部算法参数仍需在校园网与热点环境中真机验证。
+> 当前已实现网卡状态检查、多协议探测（支持 HTTP/HTTPS/PING/DNS 协议）、连续失败判定、网络离线边沿触发、备用网络保护、切换后回滚以及 Windows 原生 NLM/NCSI COM 状态实时监测与 UI 联动。全部算法参数已在多种网络环境下完成自动化回归测试覆盖。
 
 ## 1. 检测目标
 
@@ -33,40 +33,34 @@ NetRelay 必须区分以下状态：
 
 缺少链路、IP 或默认路由可快速判断不可用，但不能单独证明互联网可用。
 
-### 2.2 Windows NLM/NCSI
+### 2.2 Windows NLM/NCSI (COM 互操作)
 
-读取 Windows 报告的互联网、局域网或无连接状态，用于：
+利用 Windows 原生的 Network List Manager (NLM) COM 接口，针对每个网卡读取操作系统所记录的底层连接状态：
 
-- UI 的快速初始状态。
-- 触发进一步主动探测。
-- 作为执行日志中的辅助证据。
+- **COM 接口调用**：通过声明 `INetworkListManager`、`IEnumNetworkConnections` 及 `INetworkConnection`，基于网卡的 GUID 获取其底层的连接状态。
+- **状态转换**：将 NLM 反馈的状态标志映射为 `Internet`（可访问互联网）、`LocalNetwork`（仅局域网网络）、`Subnet`（仅本地子网）、`NoTraffic`（链路建立但无流量）及 `Disconnected`（未连接）。
+- **UI 联动**：在网络详情面板直接展示对应的“系统 (NLM) 状态”行，随探测刷新进行实时双向更新。
+- NLM/NCSI 可能受缓存、组策略影响，因此它仅作为辅助判断和 UI 展示，不作为切换决策的唯一决定性因子。
 
-NLM/NCSI 可能受缓存、组策略、校园网登录页或 Windows 设置影响，因此不能作为最终判定。
+### 2.3 多协议探测 (HTTP/HTTPS/PING/DNS)
 
-### 2.3 双端点 HTTP/HTTPS
+为了避免校园网、企业防火墙或代理解析环境下单一 HTTP 探测失效或被劫持的问题，NetRelay 支持在配置的探测端点 URL 中使用多种协议 scheme：
 
-- 从目标网卡的本地 IP 发起请求，并验证实际出口接口。
-- 默认访问两个独立轻量端点，避免单个服务故障造成误判。
-- 每次请求使用短超时，不下载大文件，不发送用户数据。
-- 校验 HTTP 状态码；对已知内容端点同时校验响应内容。
-- 捕获 DNS、连接、TLS、超时、代理和内容不匹配等结果。
+- **HTTP/HTTPS 协议**（`http://` 或 `https://`）：从目标网卡的本地单播 IP 发起套接字 TCP 握手并验证 HTTP 响应状态码及响应内容。
+- **ICMP Ping 协议**（`ping://<IP/域名>`）：由于 .NET 默认的 `Ping` 类不支持源 IP 绑定，系统将通过异步调用底层的 `ping.exe -S <LocalIp> <TargetIp>` 进程完成发送出口锁定。退出码为 `0` 代表 Ping 成功。
+- **DNS UDP 协议**（`dns://<待解析域名>`）：通过本地单播 IP 绑定 UDP 端口 53 构造标准的 DNS 主机 A 记录或 AAAA 记录查询（支持 IPv4/IPv6），发送到网卡所配 of DNS 服务器（若为空则使用公共 DNS 服务器 `223.5.5.5` 或 `2400:3200::1`）。
+- **防劫持后端辅助验证**：在成功解析出目标域名的真实 IP 后，系统会立即发起 `VerifyConnectivityWithBackendAsync` 占位辅助验证方法，方便未来与后端握手做端到端劫持校验（当前为 mock 雏形）。
 
-计划默认端点：
+默认探测端点示例：
 
-| 端点 | 校验 | 说明 |
+| 端点 | 协议 | 校验说明 |
 | --- | --- | --- |
-| `http://www.msftconnecttest.com/connecttest.txt` | 200 且包含 `Microsoft Connect Test` | 与 Windows 联网检测生态接近（修正：仅支持 HTTP 协议） |
-| `https://www.baidu.com` | 200 | 国内直连高可用端点（替换原高延迟的 Cloudflare） |
+| `http://www.msftconnecttest.com/connecttest.txt` | HTTP | 200 且包含 `Microsoft Connect Test` |
+| `https://www.baidu.com` | HTTPS | 200 状态码 |
+| `ping://223.5.5.5` | PING | ICMP 回显响应成功 |
+| `dns://www.baidu.com` | DNS | UDP 53 解析成功并得到有效的 IP 响应 |
 
-默认端点在正式发布前必须验证。某些校园网、地区网络、代理或防火墙可能屏蔽其中一个，因此允许用户配置端点，并允许企业通过策略禁用主动探测。
-
-### 2.4 Ping
-
-`ping` 只作为可选诊断：
-
-- ICMP 可能被禁止，失败不代表不能上网。
-- 网关可响应 ping，不代表互联网可用。
-- ping 结果不参与最终自动切换决策。
+默认端点和探测协议允许用户在 `config.json` 中自行配置。
 
 ## 3. 判定算法
 
@@ -82,7 +76,7 @@ NLM/NCSI 可能受缓存、组策略、校园网登录页或 Windows 设置影�
 | 网络变化防抖 | 10 秒 |
 | 同一规则冷却 | 5 分钟 |
 
-探测策略会在加载和保存时进行严格校验：端点至少一个且必须为 HTTP/HTTPS 绝对地址，超时限制为 0.5 到 30 秒，探测轮数限制为 1 到 10，失败轮数与单轮成功端点数必须处于有效范围。无效策略不会被解释为在线，并会暂停依赖探测的自动规则执行；手动操作（在关闭“安全保护”开关或存在可用备用网卡时）与已排队的安全恢复仍可执行。
+探测策略会在加载和保存时进行严格校验：端点至少一个且必须为 HTTP/HTTPS/PING/DNS 绝对地址，超时限制为 0.5 到 30 秒，探测轮数限制为 1 到 10，失败轮数与单轮成功端点数必须处于有效范围。无效策略不会被解释为在线，并会暂停依赖探测的自动规则执行；手动操作（在关闭“安全保护”开关或存在可用备用网卡时）与已排队的安全恢复仍可执行。
 
 ```mermaid
 flowchart TD

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7ff">
+  <meta name="description" content="NetRelay 是面向 Windows 10/11 的本地网络适配器管理工具，自动检测断网、验证备用网络并安全切换网卡。">
+  <title>NetRelay - 让 Windows 始终连接到正确的网络</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="page-glow page-glow-one"></div>
+  <div class="page-glow page-glow-two"></div>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="NetRelay 首页">
+      <img src="assets/icon.svg" alt="" width="34" height="34">
+      <span>NetRelay</span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <a href="#features">功能</a>
+      <a href="#workflow">工作原理</a>
+      <a href="#safety">安全保护</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+    <a class="button button-small button-dark download-link" href="downloads/NetRelay.exe">下载 Windows 版</a>
+  </header>
+
+  <main id="top">
+    <section class="hero section-shell">
+      <div class="eyebrow reveal">Windows 10 / 11 原生网络工具</div>
+      <h1 class="reveal">让 Windows 始终连接到<br><span>正确的网络。</span></h1>
+      <p class="hero-copy reveal">
+        自动检测有线网络断网，验证备用热点，并在执行前提醒你。
+        不再每天手动进入控制面板切换网卡。
+      </p>
+      <div class="hero-actions reveal">
+        <a class="button button-primary download-link" href="downloads/NetRelay.exe">
+          <span class="windows-mark" aria-hidden="true">⊞</span>
+          下载 Windows 版
+        </a>
+        <a class="button button-quiet" href="#workflow">了解工作原理 <span>↓</span></a>
+      </div>
+      <div class="hero-meta reveal">
+        <span>原生 WPF</span>
+        <span>本地运行</span>
+        <span>无需账号</span>
+      </div>
+
+      <div class="product-stage reveal" aria-label="NetRelay 应用界面示意图">
+        <div class="stage-orbit orbit-one"></div>
+        <div class="stage-orbit orbit-two"></div>
+        <div class="app-window">
+          <div class="app-titlebar">
+            <div class="app-brand">
+              <img src="assets/icon.svg" alt="" width="27" height="27">
+              <strong>NetRelay</strong>
+              <span>网络自动化控制台</span>
+            </div>
+            <div class="app-tabs">
+              <span class="active">网络概览</span>
+              <span>自动化规则</span>
+              <span>执行历史</span>
+            </div>
+            <div class="window-controls"><i></i><i></i><i></i></div>
+          </div>
+          <div class="app-body">
+            <aside class="adapter-list">
+              <div class="panel-heading">
+                <div>
+                  <span class="mini-label">网络适配器</span>
+                  <h3>连接状态</h3>
+                </div>
+                <span class="refresh-icon">↻</span>
+              </div>
+              <article class="adapter-card selected">
+                <div class="adapter-top">
+                  <span class="adapter-icon ethernet">↔</span>
+                  <div><strong>以太网</strong><small>Intel Ethernet</small></div>
+                  <span class="status-pill warning">仅本地</span>
+                </div>
+                <div class="sparkline sparkline-warning"></div>
+                <div class="rate-row"><span>↓ 0 KB/s</span><span>↑ 0 KB/s</span></div>
+              </article>
+              <article class="adapter-card">
+                <div class="adapter-top">
+                  <span class="adapter-icon wifi">⌁</span>
+                  <div><strong>个人热点</strong><small>Wi-Fi 6 Adapter</small></div>
+                  <span class="status-pill good">可联网</span>
+                </div>
+                <div class="sparkline sparkline-good"></div>
+                <div class="rate-row"><span>↓ 2.4 MB/s</span><span>↑ 182 KB/s</span></div>
+              </article>
+            </aside>
+            <section class="network-summary">
+              <div class="summary-header">
+                <div>
+                  <span class="mini-label">当前网络状态</span>
+                  <h2>备用网络已就绪</h2>
+                  <p>热点可正常访问互联网，安全切换条件已满足。</p>
+                </div>
+                <div class="status-ring"><span>安全</span></div>
+              </div>
+              <div class="summary-grid">
+                <article><span class="metric-icon">◉</span><small>目标网卡</small><strong>以太网</strong><em>链路正常 · 无互联网</em></article>
+                <article><span class="metric-icon">⌁</span><small>备用网络</small><strong>个人热点</strong><em class="good-text">互联网可用</em></article>
+                <article><span class="metric-icon">◷</span><small>下一条规则</small><strong>23:30 自动切换</strong><em>将在 5 分钟前提醒</em></article>
+              </div>
+              <div class="safety-bar">
+                <div><span class="shield">✓</span><span><strong>安全保护已开启</strong><small>切换前验证备用网络，避免电脑彻底离线</small></span></div>
+                <span class="toggle"><i></i></span>
+              </div>
+              <div class="action-row">
+                <button type="button" class="mock-button">重新检测</button>
+                <button type="button" class="mock-button primary">安全切换到热点</button>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="floating-toast">
+          <span>✓</span>
+          <div><strong>备用网络验证通过</strong><small>个人热点可正常访问互联网</small></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="problem-section section-shell">
+      <div class="section-intro reveal">
+        <span class="eyebrow">解决真实的断网问题</span>
+        <h2>网线还连着，<br>互联网却已经断了。</h2>
+        <p>Windows 仍可能优先使用已经无法联网的有线网卡，让连接正常的手机热点无法接管流量。</p>
+      </div>
+      <div class="comparison reveal">
+        <article class="comparison-card before">
+          <span class="card-tag">没有 NetRelay</span>
+          <div class="network-path">
+            <span class="path-node">电脑</span><i></i><span class="path-node error">以太网</span><i class="broken"></i><span class="path-node muted">互联网</span>
+          </div>
+          <h3>手动处理，反复发生</h3>
+          <p>每晚打开控制面板、寻找网卡、手动禁用，并承担误操作导致彻底离线的风险。</p>
+        </article>
+        <article class="comparison-card after">
+          <span class="card-tag">使用 NetRelay</span>
+          <div class="network-path">
+            <span class="path-node">电脑</span><i></i><span class="path-node success">个人热点</span><i></i><span class="path-node success">互联网</span>
+          </div>
+          <h3>自动判断，安全切换</h3>
+          <p>持续检测实际联网能力，确认备用网络可用后再切换，并记录每一次执行原因。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="features" class="features section-shell">
+      <div class="section-intro centered reveal">
+        <span class="eyebrow">需要的能力，一个都不少</span>
+        <h2>看清网络，也掌控网络。</h2>
+        <p>从实时状态到自动化规则，NetRelay 将复杂的 Windows 网络操作整理成清晰、可撤销的流程。</p>
+      </div>
+      <div class="bento-grid">
+        <article class="bento-card bento-large reveal">
+          <div class="bento-copy">
+            <span class="card-number">01</span>
+            <h3>实时看见每张网卡的状态</h3>
+            <p>区分网卡开关、物理链路和真实互联网访问能力，配合实时收发速率与流量波形，快速找到真正承载流量的接口。</p>
+          </div>
+          <div class="traffic-demo">
+            <div class="traffic-top"><span>实时流量</span><strong>2.4 MB/s</strong></div>
+            <div class="traffic-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="traffic-legend"><span><b class="blue-dot"></b> 下载</span><span><b class="purple-dot"></b> 上传</span><span>最近 30 秒</span></div>
+          </div>
+        </article>
+        <article class="bento-card reveal">
+          <span class="card-number">02</span>
+          <h3>灵活自动化</h3>
+          <p>按一次、每日、每周或网络状态变化自动执行。</p>
+          <div class="rule-demo">
+            <span class="rule-time">23:30</span>
+            <span>校园网断网切换</span>
+            <i class="rule-toggle"></i>
+          </div>
+          <div class="rule-demo faded">
+            <span class="rule-time">07:30</span>
+            <span>恢复以太网</span>
+            <i class="rule-toggle"></i>
+          </div>
+        </article>
+        <article id="safety" class="bento-card reveal">
+          <span class="card-number">03</span>
+          <h3>切换前的安全保护</h3>
+          <p>验证备用互联网连接，条件不满足时自动跳过操作。</p>
+          <div class="shield-demo"><span>✓</span><strong>备用网络验证通过</strong><small>不会让电脑彻底离线</small></div>
+        </article>
+        <article class="bento-card bento-wide reveal">
+          <div class="bento-copy">
+            <span class="card-number">04</span>
+            <h3>每一次操作都有解释</h3>
+            <p>执行、跳过、失败和恢复都会写入本地结构化历史，方便确认自动化为何运行或为何被拦截。</p>
+          </div>
+          <div class="history-demo">
+            <div><span class="history-status success">成功</span><strong>已禁用“以太网”</strong><small>23:30:02</small></div>
+            <div><span class="history-status skip">跳过</span><strong>备用网络不可用</strong><small>昨天 23:30</small></div>
+            <div><span class="history-status restore">恢复</span><strong>已重新启用“以太网”</strong><small>昨天 07:30</small></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="workflow" class="workflow section-shell">
+      <div class="section-intro reveal">
+        <span class="eyebrow">简单但谨慎的自动化</span>
+        <h2>三步完成一次安全切换。</h2>
+      </div>
+      <div class="workflow-grid">
+        <article class="workflow-step reveal"><span>1</span><div class="step-icon">⌁</div><h3>检测</h3><p>持续判断目标网卡是否真的能够访问互联网，而不只看网线是否连接。</p></article>
+        <article class="workflow-step reveal"><span>2</span><div class="step-icon">✓</div><h3>验证</h3><p>执行前验证热点或其他备用网卡，确认切换后仍能保持联网。</p></article>
+        <article class="workflow-step reveal"><span>3</span><div class="step-icon">↔</div><h3>切换</h3><p>提前通知并执行操作；出现异常时跳过或回滚，同时记录原因。</p></article>
+      </div>
+    </section>
+
+    <section class="privacy section-shell reveal">
+      <div class="privacy-glow"></div>
+      <div class="privacy-icon">⌂</div>
+      <span class="eyebrow">本地优先</span>
+      <h2>你的网络信息，留在你的电脑上。</h2>
+      <p>NetRelay 不需要账号、云同步或远程服务。配置、探测结果与执行历史均保存在本机。</p>
+      <div class="privacy-points"><span>无账号</span><span>无遥测</span><span>无云端依赖</span><span>原生 Windows API</span></div>
+    </section>
+
+    <section id="faq" class="faq section-shell">
+      <div class="section-intro reveal">
+        <span class="eyebrow">常见问题</span>
+        <h2>开始使用前需要知道的事。</h2>
+      </div>
+      <div class="faq-list">
+        <details class="reveal"><summary>NetRelay 支持哪些系统？</summary><p>当前面向 Windows 10/11 x64，使用 .NET 8 与原生 WPF 构建。</p></details>
+        <details class="reveal"><summary>为什么程序需要管理员权限？</summary><p>启用或禁用 Windows 网络适配器属于系统级操作，因此需要管理员权限。NetRelay 不会借此修改代理、路由表或网络认证配置。</p></details>
+        <details class="reveal"><summary>自动切换会不会让我彻底断网？</summary><p>默认开启安全保护。NetRelay 会在禁用目标网卡前验证备用网络；若备用网络不可用，自动化任务会被跳过并说明原因。</p></details>
+        <details class="reveal"><summary>它是 VPN 或代理工具吗？</summary><p>不是。NetRelay 只管理本机网络适配器状态，不提供 VPN、代理或校园网认证功能。</p></details>
+      </div>
+    </section>
+
+    <section class="download-cta section-shell reveal">
+      <div class="cta-orb"></div>
+      <img src="assets/icon.svg" alt="" width="72" height="72">
+      <h2>让网络切换变得自动、清楚、可控。</h2>
+      <p>下载 NetRelay，告别每天重复的 Windows 网卡操作。</p>
+      <a class="button button-primary download-link" href="downloads/NetRelay.exe"><span class="windows-mark" aria-hidden="true">⊞</span> 下载 Windows 版</a>
+      <small>适用于 Windows 10 / 11 x64</small>
+    </section>
+  </main>
+
+  <footer class="site-footer section-shell">
+    <a class="brand" href="#top"><img src="assets/icon.svg" alt="" width="30" height="30"><span>NetRelay</span></a>
+    <p>本地网络适配器管理与自动化工具。</p>
+    <div><a href="#features">功能</a><a href="#faq">常见问题</a><a href="https://github.com/" rel="noreferrer">GitHub</a></div>
+  </footer>
+</body>
+</html>
