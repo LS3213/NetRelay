@@ -18,9 +18,17 @@ public partial class MainWindow : Window
     private readonly RuleSchedulerService _ruleScheduler;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
+    private readonly bool _startMinimized;
 
     public MainWindow()
     {
+        _startMinimized = Environment.GetCommandLineArgs().Contains("--startup", StringComparer.OrdinalIgnoreCase);
+        if (_startMinimized)
+        {
+            Opacity = 0;
+            ShowInTaskbar = false;
+        }
+
         InitializeComponent();
         var configService = new ConfigurationService();
         var connectivityService = new ConnectivityService();
@@ -41,7 +49,15 @@ public partial class MainWindow : Window
         _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
         _viewModel.RequestEditRule += OnRequestEditRule;
 
-        SourceInitialized += (_, _) => WindowBackdrop.Apply(this);
+        SourceInitialized += (_, _) =>
+        {
+            WindowBackdrop.Apply(this);
+            if (_startMinimized)
+            {
+                Hide();
+                Opacity = 1;
+            }
+        };
         StateChanged += (_, _) => UpdateMaximizeIcon();
         UpdateMaximizeIcon();
 
@@ -183,6 +199,7 @@ public partial class MainWindow : Window
 
     private void RestoreWindow()
     {
+        ShowInTaskbar = true;
         Show();
         if (WindowState == WindowState.Minimized)
         {

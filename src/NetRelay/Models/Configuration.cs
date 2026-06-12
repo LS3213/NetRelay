@@ -18,6 +18,9 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("doNotRemindClose")]
     public bool DoNotRemindClose { get; set; } = false;
+
+    [JsonPropertyName("autoStart")]
+    public bool AutoStart { get; set; } = false;
 }
 
 public sealed class ConnectivityProbePolicy

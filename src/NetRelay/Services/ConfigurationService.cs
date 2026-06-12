@@ -157,7 +157,8 @@ public sealed class ConfigurationService
         {
             SchemaVersion = 1,
             ProbePolicy = new ConnectivityProbePolicy(),
-            Rules = []
+            Rules = [],
+            AutoStart = false
         };
     }
 

@@ -21,6 +21,8 @@
 - 应用清单声明 `requireAdministrator`。
 - Windows 11 使用 DWM Mica 和原生圆角；Windows 10 使用 WPF 半透明降级。
 - 已验证生成原生 `NetRelay.exe`，且启动期间不会创建 WebView2 进程。
+- 程序设置界面增加了开机自启复选框，通过 Windows 任务计划程序创建当前用户登录时以最高权限运行的固定启动任务。
+- 主程序在通过 `--startup` 命令行参数自启动时，会直接启动并隐藏至系统托盘运行。
 
 本机开发环境检查结果：
 

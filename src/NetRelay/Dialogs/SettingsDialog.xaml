@@ -1,7 +1,7 @@
 <Window x:Class="NetRelay.Dialogs.SettingsDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="程序设置" Width="430" Height="320"
+        Title="程序设置" Width="430" Height="370"
         WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False">
     <Window.Resources>
@@ -85,6 +85,12 @@
 
                 <TextBlock Text="* 您也可以在托盘图标右键菜单中随时选择退出程序。" 
                            Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="4,0,0,0"/>
+
+                <TextBlock Text="系统选项" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,14,0,8"/>
+
+                <CheckBox x:Name="AutoStartCheckBox" Content="开机自动启动 NetRelay"
+                          Margin="4,0,0,4" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"
+                          VerticalContentAlignment="Center"/>
             </StackPanel>
 
             <!-- Buttons -->
