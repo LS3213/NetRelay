@@ -67,62 +67,69 @@ public sealed class RuleEngine
         // 2. Backup network check for RuleAction.Disable
         if (rule.Action == RuleAction.Disable && rule.RequireUsableBackup)
         {
-            var currentInterfaces = NetworkInterface.GetAllNetworkInterfaces();
-            var backupInterfaces = currentInterfaces
-                .Where(ni => !string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase) &&
-                             ni.OperationalStatus == OperationalStatus.Up)
-                .ToList();
+            var targetNi = NetworkInterface.GetAllNetworkInterfaces()
+                .FirstOrDefault(ni => string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase));
 
-            var physicalBackups = backupInterfaces
-                .Where(ni => !IsVirtualHeuristic(ni))
-                .ToList();
-
-            if (physicalBackups.Count == 0)
+            // 如果目标网卡本身就是虚拟网卡，禁用它不会切断真实外网，因此无需强制要求有备份网络
+            if (targetNi == null || !IsVirtualHeuristic(targetNi))
             {
-                var record = new ExecutionRecord(
-                    recordId,
-                    rule.Id,
-                    source,
-                    rule.TargetAdapterId,
-                    rule.Action,
-                    startedAt,
-                    DateTimeOffset.Now,
-                    Outcome: "SKIPPED",
-                    ReasonCode: "BACKUP_NETWORK_UNAVAILABLE",
-                    WindowsErrorCode: null
-                );
-                await WriteExecutionRecordAsync(record);
-                return record;
-            }
+                var currentInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+                var backupInterfaces = currentInterfaces
+                    .Where(ni => !string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase) &&
+                                 ni.OperationalStatus == OperationalStatus.Up)
+                    .ToList();
 
-            bool anyBackupOnline = false;
-            var policy = _configService.Current.ProbePolicy;
-            foreach (var backup in physicalBackups)
-            {
-                var result = await _connectivityService.ProbeAdapterAsync(backup.Id, policy);
-                if (result.Online)
+                var physicalBackups = backupInterfaces
+                    .Where(ni => !IsVirtualHeuristic(ni))
+                    .ToList();
+
+                if (physicalBackups.Count == 0)
                 {
-                    anyBackupOnline = true;
-                    break;
+                    var record = new ExecutionRecord(
+                        recordId,
+                        rule.Id,
+                        source,
+                        rule.TargetAdapterId,
+                        rule.Action,
+                        startedAt,
+                        DateTimeOffset.Now,
+                        Outcome: "SKIPPED",
+                        ReasonCode: "BACKUP_NETWORK_UNAVAILABLE",
+                        WindowsErrorCode: null
+                    );
+                    await WriteExecutionRecordAsync(record);
+                    return record;
                 }
-            }
 
-            if (!anyBackupOnline)
-            {
-                var record = new ExecutionRecord(
-                    recordId,
-                    rule.Id,
-                    source,
-                    rule.TargetAdapterId,
-                    rule.Action,
-                    startedAt,
-                    DateTimeOffset.Now,
-                    Outcome: "SKIPPED",
-                    ReasonCode: "BACKUP_NETWORK_UNAVAILABLE",
-                    WindowsErrorCode: null
-                );
-                await WriteExecutionRecordAsync(record);
-                return record;
+                bool anyBackupOnline = false;
+                var policy = _configService.Current.ProbePolicy;
+                foreach (var backup in physicalBackups)
+                {
+                    var result = await _connectivityService.ProbeAdapterAsync(backup.Id, policy);
+                    if (result.Online)
+                    {
+                        anyBackupOnline = true;
+                        break;
+                    }
+                }
+
+                if (!anyBackupOnline)
+                {
+                    var record = new ExecutionRecord(
+                        recordId,
+                        rule.Id,
+                        source,
+                        rule.TargetAdapterId,
+                        rule.Action,
+                        startedAt,
+                        DateTimeOffset.Now,
+                        Outcome: "SKIPPED",
+                        ReasonCode: "BACKUP_NETWORK_UNAVAILABLE",
+                        WindowsErrorCode: null
+                    );
+                    await WriteExecutionRecordAsync(record);
+                    return record;
+                }
             }
         }
 

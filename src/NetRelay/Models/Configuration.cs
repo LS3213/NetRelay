@@ -25,8 +25,8 @@ public sealed class ConnectivityProbePolicy
     [JsonPropertyName("endpoints")]
     public List<ProbeEndpoint> Endpoints { get; set; } =
     [
-        new() { Url = "https://www.msftconnecttest.com/connecttest.txt", ExpectedContent = "Microsoft Connect Test" },
-        new() { Url = "https://www.cloudflare.com/cdn-cgi/trace", ExpectedContent = null }
+        new() { Url = "http://www.msftconnecttest.com/connecttest.txt", ExpectedContent = "Microsoft Connect Test" },
+        new() { Url = "https://www.baidu.com", ExpectedContent = null }
     ];
 
     [JsonPropertyName("timeoutSeconds")]

@@ -55,8 +55,8 @@ NLM/NCSI 可能受缓存、组策略、校园网登录页或 Windows 设置影�
 
 | 端点 | 校验 | 说明 |
 | --- | --- | --- |
-| `https://www.msftconnecttest.com/connecttest.txt` | 200 且包含 `Microsoft Connect Test` | 与 Windows 联网检测生态接近 |
-| `https://www.cloudflare.com/cdn-cgi/trace` | 200 | 独立备用端点 |
+| `http://www.msftconnecttest.com/connecttest.txt` | 200 且包含 `Microsoft Connect Test` | 与 Windows 联网检测生态接近（修正：仅支持 HTTP 协议） |
+| `https://www.baidu.com` | 200 | 国内直连高可用端点（替换原高延迟的 Cloudflare） |
 
 默认端点在正式发布前必须验证。某些校园网、地区网络、代理或防火墙可能屏蔽其中一个，因此允许用户配置端点，并允许企业通过策略禁用主动探测。
 
@@ -124,6 +124,7 @@ flowchart TD
 3. 对候选网卡执行相同 HTTP/HTTPS 联网探测。
 4. 至少一个候选网卡通过后，才允许自动禁用。
 5. 执行后再次探测当前互联网；失败则尝试立即重新启用目标网卡并通知。
+6. **虚拟网卡特例过滤**：如果被禁用的目标网卡本身就是虚拟网卡（例如由 VMware、VirtualBox 等虚拟化软件或 VPN 客户端创建的网卡），程序在执行禁用操作时将自动忽略备用网络保护的在线约束。因为禁用虚拟网卡并不存在切断真实物理外网的风险，此项例外设计可大幅提升局域网与自动化测试场景下的规则执行顺畅度。
 
 用户可将特定网卡标记为“允许作为备用”，避免把 VPN、虚拟交换机或容器网卡误当作热点。
 

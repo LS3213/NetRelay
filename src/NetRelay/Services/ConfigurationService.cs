@@ -76,6 +76,31 @@ public sealed class ConfigurationService
                 return CreateDefaultConfiguration();
             }
 
+            // 自动迁移与修正已知失效或高延迟的默认探测端点
+            bool configUpdated = false;
+            if (config.ProbePolicy?.Endpoints != null)
+            {
+                for (int i = 0; i < config.ProbePolicy.Endpoints.Count; i++)
+                {
+                    var ep = config.ProbePolicy.Endpoints[i];
+                    if (string.Equals(ep.Url, "https://www.msftconnecttest.com/connecttest.txt", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ep.Url = "http://www.msftconnecttest.com/connecttest.txt";
+                        configUpdated = true;
+                    }
+                    if (string.Equals(ep.Url, "https://www.cloudflare.com/cdn-cgi/trace", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ep.Url = "https://www.baidu.com";
+                        configUpdated = true;
+                    }
+                }
+            }
+
+            if (configUpdated)
+            {
+                SaveInternal(config);
+            }
+
             return config;
         }
         catch (Exception exception)
