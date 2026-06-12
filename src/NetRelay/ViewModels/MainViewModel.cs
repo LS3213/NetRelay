@@ -133,7 +133,7 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _selectedAdapter, value))
             {
                 RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
-                TriggerSelectedAdapterProbe(force: true);
+                TriggerAllAdaptersProbe(force: true);
             }
         }
     }
@@ -499,7 +499,7 @@ public sealed class MainViewModel : ObservableObject
             RaisePropertyChanged(nameof(ConnectedDescription));
 
             SortAdapters();
-            TriggerSelectedAdapterProbe(force: true);
+            TriggerAllAdaptersProbe(force: true);
         }
         catch (Exception exception)
         {
@@ -522,7 +522,7 @@ public sealed class MainViewModel : ObservableObject
             if (_probeTickCount >= 5)
             {
                 _probeTickCount = 0;
-                TriggerSelectedAdapterProbe(force: false);
+                TriggerAllAdaptersProbe(force: false);
             }
         }
         catch
@@ -530,7 +530,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private async void TriggerSelectedAdapterProbe(bool force = false)
+    private async void TriggerAllAdaptersProbe(bool force = false)
     {
         if (_isProbing && !force)
         {
@@ -542,8 +542,8 @@ public sealed class MainViewModel : ObservableObject
         _probeCts = cts;
         _isProbing = true;
 
-        var adapter = SelectedAdapter;
-        if (adapter is null || !adapter.IsEnabled)
+        var targetAdapters = Adapters.ToList();
+        if (targetAdapters.Count == 0)
         {
             _isProbing = false;
             return;
@@ -553,14 +553,53 @@ public sealed class MainViewModel : ObservableObject
         {
             await Task.Delay(250, cts.Token);
 
-            var result = await _connectivityService.ProbeAdapterAsync(adapter.Id, _configService.Current.ProbePolicy);
+            var policy = _configService.Current.ProbePolicy;
 
-            if (!cts.IsCancellationRequested && SelectedAdapter == adapter)
+            var tasks = targetAdapters.Select(async adapter =>
             {
-                adapter.IsInternetOnline = result.Online;
-                adapter.LastProbeTime = result.CheckedAt;
-                adapter.ProbeReasonCode = result.ReasonCode;
-                SortAdapters();
+                try
+                {
+                    var result = await _connectivityService.ProbeAdapterAsync(adapter.Id, policy);
+
+                    if (!cts.IsCancellationRequested)
+                    {
+                        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                        if (dispatcher != null)
+                        {
+                            dispatcher.Invoke(() =>
+                            {
+                                adapter.IsInternetOnline = result.Online;
+                                adapter.LastProbeTime = result.CheckedAt;
+                                adapter.ProbeReasonCode = result.ReasonCode;
+                            });
+                        }
+                        else
+                        {
+                            adapter.IsInternetOnline = result.Online;
+                            adapter.LastProbeTime = result.CheckedAt;
+                            adapter.ProbeReasonCode = result.ReasonCode;
+                        }
+                    }
+                }
+                catch
+                {
+                    // 忽略单个网卡探测的异常，避免影响其他网卡
+                }
+            });
+
+            await Task.WhenAll(tasks);
+
+            if (!cts.IsCancellationRequested)
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null)
+                {
+                    dispatcher.Invoke(() => SortAdapters());
+                }
+                else
+                {
+                    SortAdapters();
+                }
             }
         }
         catch (OperationCanceledException)
