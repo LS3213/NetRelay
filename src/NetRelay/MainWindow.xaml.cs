@@ -342,6 +342,12 @@ public partial class MainWindow : Window
         _ = _viewModel.LoadLogsAsync();
     }
 
+    private void TabAboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.CurrentTabIndex = 3;
+        UpdateTabSelection(3);
+    }
+
     private void UpdateTabSelection(int tabIndex)
     {
         // Specular glass background gradient (refined high-contrast frosted glass)
@@ -415,6 +421,15 @@ public partial class MainWindow : Window
             TabLogsBtn.BorderThickness = uniformBorderThickness;
             TabLogsBtn.Foreground = tabIndex == 2 ? activeText : inactiveText;
             TabLogsBtn.Effect = tabIndex == 2 ? activeShadow : null;
+        }
+
+        if (TabAboutBtn != null)
+        {
+            TabAboutBtn.Background = tabIndex == 3 ? activeBrush : inactiveBrush;
+            TabAboutBtn.BorderBrush = tabIndex == 3 ? activeBorder : inactiveBorder;
+            TabAboutBtn.BorderThickness = uniformBorderThickness;
+            TabAboutBtn.Foreground = tabIndex == 3 ? activeText : inactiveText;
+            TabAboutBtn.Effect = tabIndex == 3 ? activeShadow : null;
         }
     }
 

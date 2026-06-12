@@ -90,6 +90,22 @@ public sealed class MainViewModel : ObservableObject
         DelayPendingCommand = new RelayCommand(DelayPending);
         CancelPendingCommand = new RelayCommand(CancelPending);
 
+        CheckUpdatesCommand = new RelayCommand(async () =>
+        {
+            OperationMessage = "正在检查更新...";
+            await Task.Delay(1500);
+            OperationMessage = "当前已是最新版本 (v1.2.0)";
+            await Task.Delay(2000);
+            OperationMessage = null;
+        });
+
+        FeedbackCommand = new RelayCommand(async () =>
+        {
+            OperationMessage = "反馈通道待后续开放";
+            await Task.Delay(2000);
+            OperationMessage = null;
+        });
+
         // Bind Scheduler Events
         if (_ruleScheduler != null)
         {
@@ -122,6 +138,8 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ExecutePendingNowCommand { get; }
     public RelayCommand DelayPendingCommand { get; }
     public RelayCommand CancelPendingCommand { get; }
+    public RelayCommand CheckUpdatesCommand { get; }
+    public RelayCommand FeedbackCommand { get; }
 
     public ConfigurationService ConfigService => _configService;
 

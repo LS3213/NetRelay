@@ -250,6 +250,7 @@
                         <Button x:Name="TabOverviewBtn" Style="{StaticResource TabButtonStyle}" Click="TabOverviewButton_Click" Content="网络概览"/>
                         <Button x:Name="TabRulesBtn" Style="{StaticResource TabButtonStyle}" Click="TabRulesButton_Click" Content="自动化规则"/>
                         <Button x:Name="TabLogsBtn" Style="{StaticResource TabButtonStyle}" Click="TabLogsButton_Click" Content="执行历史"/>
+                        <Button x:Name="TabAboutBtn" Style="{StaticResource TabButtonStyle}" Click="TabAboutButton_Click" Content="关于"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
@@ -658,6 +659,55 @@
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- TAB 4: About -->
+                <TabItem>
+                    <Grid Margin="0,10,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header Area -->
+                        <Grid Grid.Row="0" Margin="25,10,25,20">
+                            <StackPanel>
+                                <TextBlock Text="关于应用" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
+                                <TextBlock Text="关于 NetRelay" FontWeight="Bold" FontSize="40" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Content Area -->
+                        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="30" Margin="0,0,0,10">
+                            <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-20,0,0">
+                                    <!-- Glowing Logo Border -->
+                                    <Border Width="90" Height="90" CornerRadius="32" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1.5" HorizontalAlignment="Center">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="25" ShadowDepth="0" Opacity="0.15" Color="#536EF2"/>
+                                        </Border.Effect>
+                                        <TextBlock Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2"
+                                                   FontSize="48" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <!-- Application Info -->
+                                    <TextBlock Text="NetRelay" FontWeight="Bold" FontSize="30" Margin="0,20,0,0" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="原生网络自动切换与安全保护助手" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="版本：v1.2.0" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="作者：lansi" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+
+                                    <!-- Subtle Separator -->
+                                    <Border Height="1" Background="#18000000" Margin="0,30,0,30" Width="220" HorizontalAlignment="Center"/>
+
+                                    <!-- Action Buttons -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="检查更新" Command="{Binding CheckUpdatesCommand}" Margin="0,0,16,0" Padding="24,11"/>
+                                        <Button Style="{StaticResource SoftButtonStyle}" Content="建议与反馈" Command="{Binding FeedbackCommand}" Padding="24,11"/>
+                                    </StackPanel>
+                                </StackPanel>
                             </Grid>
                         </Border>
                     </Grid>
