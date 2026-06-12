@@ -58,14 +58,14 @@ dotnet build NetRelay.sln --no-restore
 当前项目不使用第三方 NuGet 包，不需要 Node.js、Rust、Cargo 或 WebView2。
 根目录 `NuGet.Config` 清空远程包源，使当前无第三方依赖的解决方案可以离线还原和构建。
 
-`NetRelay.RegressionTests` 是不依赖第三方测试框架的回归测试可执行项目，不操作真实网卡。当前覆盖探测策略边界、恢复冷却语义、定时重启去重和单实例唤醒信号。
+`NetRelay.RegressionTests` 是不依赖第三方测试框架的回归测试可执行项目，不启用或禁用真实网卡。当前覆盖探测策略边界、恢复冷却语义、定时重启去重、禁用网卡清单保留、只读诊断报告和单实例唤醒信号。
 
 ## 4. 构建与发布
 
 - Debug 输出：`src/NetRelay/bin/Debug/net8.0-windows/win-x64/NetRelay.exe`
 - Release 发布输出：`src/NetRelay/bin/Release/net8.0-windows/win-x64/publish/NetRelay.exe`
 - 发布模式为 framework-dependent，目标电脑需要 .NET 8 Desktop Runtime。
-- 使用 `app.manifest` 声明管理员权限、Per-Monitor DPI 和 Windows 10/11 兼容性。
+- 使用 `app.manifest` 声明管理员权限与 Windows 10/11 兼容性；Per-Monitor V2 DPI 通过 `ApplicationHighDpiMode` 项目属性配置。
 - 正式发布前应增加代码签名和安装包。
 
 ## 5. UI 与 Windows 集成
@@ -84,8 +84,18 @@ dotnet build NetRelay.sln --no-restore
 | `%APPDATA%\NetRelay\config.json` | 设置、规则和探测策略 |
 | `%LOCALAPPDATA%\NetRelay\logs\execution-YYYY-MM-DD.jsonl` | 结构化执行历史 |
 | `%LOCALAPPDATA%\NetRelay\logs\app-YYYY-MM-DD.log` | 计划中的应用诊断日志，当前未实现 |
+| `%LOCALAPPDATA%\NetRelay\diagnostics\adapter-diagnostic-*.json` | 主动执行只读网卡诊断时生成 |
 
 日志不得包含认证凭据、完整 HTTP 响应正文或用户可执行命令。
+
+只读实机诊断命令：
+
+```powershell
+NetRelay.exe --diagnose-adapters
+NetRelay.exe --diagnose-adapters .\adapter-diagnostic.json --quiet
+```
+
+诊断报告包含网卡 GUID、名称、设备描述、状态、原生 COM 实际观察数量、缓存返回数量和枚举异常，可能属于设备识别信息；报告仅保存在本机，分享前应由用户检查。
 
 ## 7. 部署与维护
 

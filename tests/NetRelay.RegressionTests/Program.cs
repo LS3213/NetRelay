@@ -12,6 +12,11 @@ var tests = new (string Name, Action Test)[]
     ("Offline transition requires an online baseline", OfflineTransitionRequiresAnOnlineBaseline),
     ("Post-switch validation requires a verified backup", PostSwitchValidationRequiresAVerifiedBackup),
     ("Manual records do not suppress scheduled rules", ManualRecordsDoNotSuppressScheduledRules),
+    ("Disabled native status is not reported as enabled", DisabledNativeStatusIsNotReportedAsEnabled),
+    ("Native inventory retains transiently missing adapters", NativeInventoryRetainsTransientlyMissingAdapters),
+    ("Native inventory remembers expected disabled state", NativeInventoryRemembersExpectedDisabledState),
+    ("Adapter identity ignores GUID formatting", AdapterIdentityIgnoresGuidFormatting),
+    ("Read-only adapter diagnostic report is created", ReadOnlyAdapterDiagnosticReportIsCreated),
     ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance)
 };
 
@@ -116,6 +121,73 @@ static void ManualRecordsDoNotSuppressScheduledRules()
 
     record = CreateRecord(ruleId, RuleSource.Schedule);
     Assert(RuleSchedulerPolicy.ShouldRestoreTimeRuleOccurrence(record, new HashSet<Guid> { ruleId }));
+}
+
+static void DisabledNativeStatusIsNotReportedAsEnabled()
+{
+    var connection = new NativeConnectionInfo(
+        Guid.NewGuid(),
+        "Ethernet",
+        "Adapter",
+        NativeConnectionStatus.HardwareDisabled);
+    Assert(!connection.IsEnabled);
+    Assert(connection with { Status = NativeConnectionStatus.Disconnected } is { IsEnabled: true });
+}
+
+static void NativeInventoryRetainsTransientlyMissingAdapters()
+{
+    var connection = new NativeConnectionInfo(
+        Guid.NewGuid(),
+        "Ethernet",
+        "Adapter",
+        NativeConnectionStatus.HardwareDisabled);
+    var inventory = new NativeConnectionInventory(missingRefreshLimit: 2);
+
+    Assert(inventory.MergeObserved([connection]).Count == 1);
+    Assert(inventory.MergeObserved([]).Count == 1);
+    Assert(inventory.MergeObserved([]).Count == 1);
+    Assert(inventory.MergeObserved([]).Count == 0);
+}
+
+static void NativeInventoryRemembersExpectedDisabledState()
+{
+    var id = Guid.NewGuid();
+    var inventory = new NativeConnectionInventory();
+    inventory.RememberExpectedState(id, "Ethernet", "Adapter", enabled: false);
+
+    var connection = inventory.MergeObserved([]).Single();
+    Assert(connection.Id == id);
+    Assert(!connection.IsEnabled);
+}
+
+static void AdapterIdentityIgnoresGuidFormatting()
+{
+    var id = Guid.NewGuid();
+    Assert(AdapterIdentity.AreEqual(id.ToString("D"), id.ToString("B")));
+    Assert(!AdapterIdentity.AreEqual(id.ToString("D"), Guid.NewGuid().ToString("B")));
+}
+
+static void ReadOnlyAdapterDiagnosticReportIsCreated()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Diagnostic-{Guid.NewGuid():N}");
+    var reportPath = Path.Combine(directory, "adapters.json");
+    try
+    {
+        Assert(AdapterDiagnosticService.WriteReport(reportPath) == reportPath);
+        Assert(File.Exists(reportPath));
+        var report = File.ReadAllText(reportPath);
+        Assert(report.Contains("\"NativeConnections\"", StringComparison.Ordinal));
+        Assert(report.Contains("\"LastObservedConnectionCount\"", StringComparison.Ordinal));
+        Assert(report.Contains("\"LastEnumerationError\"", StringComparison.Ordinal));
+        Assert(report.Contains("\"DotNetAdapters\"", StringComparison.Ordinal));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }
 
 static void SingleInstanceServiceSignalsPrimaryInstance()

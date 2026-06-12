@@ -21,13 +21,17 @@
 
 ## 2. CLI
 
-当前同一个原生 EXE 仅识别：
+当前同一个原生 EXE 识别：
 
 ```text
 NetRelay.exe --startup
+NetRelay.exe --diagnose-adapters [输出路径] [--quiet]
 ```
 
 - **`--startup`**：以开机自启模式运行应用。主窗口会直接隐藏到系统托盘，不显示任务栏图标，不发生任何窗口显示闪烁。
+- **`--diagnose-adapters`**：只读枚举网卡并写入 JSON 诊断报告，不启动主窗口、不执行任何网卡切换；省略输出路径时写入 `%LOCALAPPDATA%\NetRelay\diagnostics\`。
+- **`--quiet`**：诊断完成后不显示结果路径对话框，便于脚本化验收。
+- 诊断成功时进程退出码为 `0`，生成失败时为 `1`。
 - 开机自启使用固定名称 `NetRelay AutoStart` 的 Windows 登录任务，动作仅允许为当前 NetRelay 可执行文件与 `--startup` 参数。
 `--execute-rule`、`--notify-rule` 与 `--restore-adapter` 尚未实现。当前程序也尚未实现完整 CLI 错误码与未知参数拒绝机制。
 

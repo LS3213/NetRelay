@@ -481,10 +481,9 @@ public sealed class MainViewModel : ObservableObject
             var selectedId = SelectedAdapter?.Id;
             var newAdapters = _adapterService.GetAdapters();
 
-            var newIds = newAdapters.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             for (int i = Adapters.Count - 1; i >= 0; i--)
             {
-                if (!newIds.Contains(Adapters[i].Id))
+                if (!newAdapters.Any(adapter => AdapterIdentity.AreEqual(adapter.Id, Adapters[i].Id)))
                 {
                     Adapters.RemoveAt(i);
                 }
@@ -492,7 +491,7 @@ public sealed class MainViewModel : ObservableObject
 
             foreach (var newAdapter in newAdapters)
             {
-                var existing = Adapters.FirstOrDefault(a => string.Equals(a.Id, newAdapter.Id, StringComparison.OrdinalIgnoreCase));
+                var existing = Adapters.FirstOrDefault(adapter => AdapterIdentity.AreEqual(adapter.Id, newAdapter.Id));
                 if (existing is null)
                 {
                     Adapters.Add(newAdapter);
@@ -675,13 +674,6 @@ public sealed class MainViewModel : ObservableObject
 
     private static bool AdapterIdsEqual(string adapterId, string? selectedId)
     {
-        if (selectedId is null)
-        {
-            return false;
-        }
-
-        return Guid.TryParse(adapterId, out var adapterGuid) && Guid.TryParse(selectedId, out var selectedGuid)
-            ? adapterGuid == selectedGuid
-            : string.Equals(adapterId, selectedId, StringComparison.OrdinalIgnoreCase);
+        return AdapterIdentity.AreEqual(adapterId, selectedId);
     }
 }

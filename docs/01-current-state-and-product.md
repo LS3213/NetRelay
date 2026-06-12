@@ -17,7 +17,8 @@
 - 根据接口类型和名称/描述关键词显示“物理候选”“疑似虚拟”“系统环回”或“隧道 / VPN”启发式标签。
 - 通过 Windows Network Connections COM 接口按 GUID 启用或禁用网卡，不调用 PowerShell 或 `netsh`。
 - 禁用前显示原生确认对话框，操作期间防止重复点击，完成后刷新状态并展示结果或 Windows HRESULT。
-- 禁用后即使 `.NET NetworkInterface` 不再返回该接口，也会从 Windows Network Connections 原生枚举补回列表，保持当前选择并允许重新启用。
+- 禁用后即使 `.NET NetworkInterface` 不再返回该接口，也会从 Windows Network Connections 原生枚举补回列表；原生枚举短暂漏项时会保留最近状态，避免列表项立即消失并允许重新启用。
+- 支持 `--diagnose-adapters` 只读诊断模式，生成包含 .NET 与 Windows Network Connections 两套枚举结果的本地 JSON 报告，不启用或禁用任何网卡。
 - 应用清单声明 `requireAdministrator`。
 - Windows 11 使用 DWM Mica 和原生圆角；Windows 10 使用 WPF 半透明降级。
 - 已验证生成原生 `NetRelay.exe`，且启动期间不会创建 WebView2 进程。

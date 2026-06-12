@@ -72,6 +72,7 @@ public sealed class NetworkAdapterService
         NetworkInterface adapter,
         IReadOnlyDictionary<Guid, NativeConnectionInfo> nativeConnections)
     {
+        var hasAdapterGuid = Guid.TryParse(adapter.Id, out var adapterGuid);
         IReadOnlyList<string> addresses;
         try
         {
@@ -92,13 +93,15 @@ public sealed class NetworkAdapterService
             Description = adapter.Description,
             InterfaceType = adapter.NetworkInterfaceType,
             OperationalStatus = adapter.OperationalStatus,
-            IsEnabled = adapter.OperationalStatus is not OperationalStatus.NotPresent,
+            IsEnabled = !hasAdapterGuid || !nativeConnections.TryGetValue(adapterGuid, out var nativeConnection)
+                ? adapter.OperationalStatus is not OperationalStatus.NotPresent
+                : nativeConnection.IsEnabled,
             Speed = adapter.Speed,
             MacAddress = FormatMacAddress(adapter.GetPhysicalAddress()),
             IpAddresses = addresses,
             IsLikelyVirtual = IsLikelyVirtual(adapter),
             ClassificationLabel = GetClassificationLabel(adapter),
-            CanToggle = Guid.TryParse(adapter.Id, out var adapterGuid) && nativeConnections.ContainsKey(adapterGuid)
+            CanToggle = hasAdapterGuid && nativeConnections.ContainsKey(adapterGuid)
         };
     }
 
@@ -113,9 +116,9 @@ public sealed class NetworkAdapterService
             Description = connection.DeviceName,
             InterfaceType = NetworkInterfaceType.Unknown,
             OperationalStatus = OperationalStatus.Down,
-            IsEnabled = false,
+            IsEnabled = connection.IsEnabled,
             Speed = 0,
-            MacAddress = "网卡已禁用",
+            MacAddress = connection.IsEnabled ? "暂未由 .NET 枚举" : "网卡已禁用",
             IpAddresses = Array.Empty<string>(),
             IsLikelyVirtual = likelyVirtual,
             ClassificationLabel = likelyVirtual ? "疑似虚拟" : "物理候选",

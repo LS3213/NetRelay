@@ -121,6 +121,7 @@ sequenceDiagram
 | `%APPDATA%\NetRelay\config.json` | 设置、网卡引用、规则、探测策略和模式版本 |
 | `%LOCALAPPDATA%\NetRelay\logs\execution-YYYY-MM-DD.jsonl` | 结构化执行历史 |
 | `%LOCALAPPDATA%\NetRelay\logs\app-YYYY-MM-DD.log` | 计划中的应用诊断日志，当前未实现 |
+| `%LOCALAPPDATA%\NetRelay\diagnostics\adapter-diagnostic-*.json` | 用户主动执行 `--diagnose-adapters` 时生成的只读网卡清单 |
 
 配置采用临时文件写入、刷新后原子替换，避免崩溃导致半写文件。执行日志按天写入；自动滚动清理尚未实现。
 
@@ -130,3 +131,4 @@ sequenceDiagram
 - Rule Engine 依赖抽象的 Adapter 与 Connectivity 接口，便于测试替身。
 - Windows 错误必须转换为稳定的应用错误码，同时保留原始错误码供诊断。
 - 探测端点失败、配置损坏或任务同步失败不能导致应用崩溃；应进入可恢复错误状态并通知用户。
+- `NativeNetworkConnectionService` 缓存最近成功枚举及成功切换后的预期原生状态。原生 COM 枚举短暂漏项时，最多保留 12 次查询，避免禁用网卡从 UI 立即消失；持续缺失后自动移除陈旧项。UI 刷新合并按 GUID 语义比较，不受带花括号或无花括号的字符串格式影响。

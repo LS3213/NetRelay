@@ -8,6 +8,11 @@ public sealed class NativeNetworkConnectionService
 {
     private static readonly Guid ConnectionManagerClassId = new("BA126AD1-2166-11D1-B1D0-00805FC1270E");
     private readonly ConcurrentDictionary<Guid, object> _adapterLocks = new();
+    private readonly NativeConnectionInventory _inventory = new();
+
+    public string? LastEnumerationError { get; private set; }
+    public int LastObservedConnectionCount { get; private set; }
+    public int LastReturnedConnectionCount { get; private set; }
 
     public IReadOnlySet<Guid> GetControllableConnectionIds()
     {
@@ -16,6 +21,7 @@ public sealed class NativeNetworkConnectionService
 
     public IReadOnlyList<NativeConnectionInfo> GetConnections()
     {
+        LastEnumerationError = null;
         var connectionsResult = new List<NativeConnectionInfo>();
         INetConnectionManager? manager = null;
         IEnumNetConnection? connections = null;
@@ -39,9 +45,10 @@ public sealed class NativeNetworkConnectionService
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
-            return connectionsResult;
+            // Preserve recently observed connections when COM enumeration is temporarily unavailable.
+            LastEnumerationError = exception.Message;
         }
         finally
         {
@@ -55,7 +62,10 @@ public sealed class NativeNetworkConnectionService
             }
         }
 
-        return connectionsResult;
+        LastObservedConnectionCount = connectionsResult.Count;
+        var mergedConnections = _inventory.MergeObserved(connectionsResult);
+        LastReturnedConnectionCount = mergedConnections.Count;
+        return mergedConnections;
     }
 
     public AdapterActionResult SetEnabled(string adapterId, string adapterName, bool enabled)
@@ -68,7 +78,13 @@ public sealed class NativeNetworkConnectionService
         var adapterLock = _adapterLocks.GetOrAdd(adapterGuid, _ => new object());
         lock (adapterLock)
         {
-            return SetEnabledCore(adapterGuid, adapterName, enabled);
+            var result = SetEnabledCore(adapterGuid, adapterName, enabled);
+            if (result.Success)
+            {
+                _inventory.RememberExpectedState(adapterGuid, adapterName, adapterName, enabled);
+            }
+
+            return result;
         }
     }
 
@@ -148,7 +164,11 @@ public sealed class NativeNetworkConnectionService
 
     private static bool TryGetConnectionInfo(INetConnection connection, out NativeConnectionInfo connectionInfo)
     {
-        connectionInfo = new NativeConnectionInfo(Guid.Empty, string.Empty, string.Empty, 0);
+        connectionInfo = new NativeConnectionInfo(
+            Guid.Empty,
+            string.Empty,
+            string.Empty,
+            NativeConnectionStatus.Disconnected);
         var result = connection.GetProperties(out var propertiesPointer);
         if (result != 0 || propertiesPointer == IntPtr.Zero)
         {
@@ -162,7 +182,7 @@ public sealed class NativeNetworkConnectionService
                 properties.Id,
                 Marshal.PtrToStringUni(properties.Name) ?? string.Empty,
                 Marshal.PtrToStringUni(properties.DeviceName) ?? string.Empty,
-                properties.Status);
+                (NativeConnectionStatus)properties.Status);
             return true;
         }
         finally
