@@ -70,6 +70,8 @@ tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.Regre
 
 ## 4. 构建与发布
 
+项目内统一发布目录为 `artifacts/publish/win-x64/`。供用户手动验收和交付的 `NetRelay.exe` 必须放在该目录，不再发布到系统临时目录或创建多个阶段性预览目录。`bin/` 与 `obj/` 仅为编译中间产物，不作为交付位置。
+
 - Debug 输出：`src/NetRelay/bin/Debug/net8.0-windows/win-x64/NetRelay.exe`
 - Release 发布输出：`src/NetRelay/bin/Release/net8.0-windows/win-x64/publish/NetRelay.exe`
 - 发布模式为 framework-dependent，目标电脑需要 .NET 8 Desktop Runtime。

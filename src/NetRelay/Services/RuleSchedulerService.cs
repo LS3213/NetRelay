@@ -154,7 +154,7 @@ public sealed class RuleSchedulerService : IDisposable
         }
     }
 
-    public void Reload()
+    public void Reload(Guid? resetRuleId = null)
     {
         lock (_lock)
         {
@@ -178,14 +178,43 @@ public sealed class RuleSchedulerService : IDisposable
             var debouncersToRemove = _networkChangeDebouncers.Keys.Where(id => !ruleIds.Contains(id)).ToList();
             foreach (var key in debouncersToRemove)
             {
-                if (_networkChangeDebouncers.Remove(key, out var cts))
-                {
-                    cts.Cancel();
-                    cts.Dispose();
-                }
+                RemoveDebouncer(key);
+            }
+
+            if (resetRuleId.HasValue && ruleIds.Contains(resetRuleId.Value))
+            {
+                ResetRuntimeState(resetRuleId.Value);
+                _lastAdapterStatuses.Clear();
+                _lastAdapterInternetStates.Clear();
             }
 
             UpdateAdapterStatuses();
+        }
+    }
+
+    private void ResetRuntimeState(Guid ruleId)
+    {
+        _timeTriggerLastRan.Remove(ruleId);
+        _onceTriggerRan.Remove(ruleId);
+        _tempRuleDelays.Remove(ruleId);
+
+        foreach (var key in _preNotificationLastTriggeredDate.Keys
+                     .Where(key => key.RuleId == ruleId)
+                     .ToArray())
+        {
+            _preNotificationLastTriggeredDate.Remove(key);
+        }
+
+        _oncePreNotificationsTriggered.RemoveWhere(key => key.RuleId == ruleId);
+        RemoveDebouncer(ruleId);
+    }
+
+    private void RemoveDebouncer(Guid ruleId)
+    {
+        if (_networkChangeDebouncers.Remove(ruleId, out var cts))
+        {
+            cts.Cancel();
+            cts.Dispose();
         }
     }
 

@@ -34,6 +34,11 @@ public sealed class RuleEngine
         _configService = configService;
     }
 
+    public void ResetRuleRuntimeState(Guid ruleId)
+    {
+        _lastExecutionTimes.TryRemove(ruleId, out _);
+    }
+
     public async Task<ExecutionRecord> ExecuteRuleAsync(AutomationRule rule, RuleSource source)
     {
         var ruleLock = _ruleLocks.GetOrAdd(rule.Id, _ => new SemaphoreSlim(1, 1));
@@ -201,7 +206,7 @@ public sealed class RuleEngine
         // 3. Perform actual action
         bool targetEnabled = rule.Action == RuleAction.Enable;
         string adapterName = "";
-        
+
         var niTarget = NetworkInterface.GetAllNetworkInterfaces()
             .FirstOrDefault(ni => string.Equals(ni.Id, rule.TargetAdapterId, StringComparison.OrdinalIgnoreCase));
 
@@ -402,7 +407,7 @@ public sealed class RuleEngine
             var logDir = Path.Combine(appData, "NetRelay", "logs");
             Directory.CreateDirectory(logDir);
             var logPath = Path.Combine(logDir, $"execution-{DateTime.Today:yyyy-MM-dd}.jsonl");
-            
+
             var line = JsonSerializer.Serialize(record) + Environment.NewLine;
             await File.AppendAllTextAsync(logPath, line);
         }

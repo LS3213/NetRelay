@@ -1,5 +1,6 @@
 using NetRelay.Models;
 using NetRelay.Services;
+using System.Reflection;
 
 if (args.FirstOrDefault() == "--acceptance-toggle-vmnet1")
 {
@@ -25,6 +26,8 @@ var tests = new (string Name, Action Test)[]
     ("Read-only adapter diagnostic report is created", ReadOnlyAdapterDiagnosticReportIsCreated),
     ("Auto-start task must target current executable", AutoStartTaskMustTargetCurrentExecutable),
     ("Scheduler execution gate rejects re-entry", SchedulerExecutionGateRejectsReentry),
+    ("Editing a rule resets scheduler runtime state", EditingRuleResetsSchedulerRuntimeState),
+    ("Editing a rule resets engine cooldown state", EditingRuleResetsEngineCooldownState),
     ("Single instance service signals primary instance", SingleInstanceServiceSignalsPrimaryInstance)
 };
 
@@ -243,6 +246,114 @@ static void SchedulerExecutionGateRejectsReentry()
     gate.Exit();
 }
 
+static void EditingRuleResetsSchedulerRuntimeState()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Scheduler-Reload-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(directory);
+        var ruleId = Guid.NewGuid();
+        configService.Current.Rules.Add(new AutomationRule(
+            ruleId,
+            "Edited rule",
+            Enabled: true,
+            Guid.NewGuid().ToString("B"),
+            RuleAction.Disable,
+            new RuleTrigger.Daily(new TimeOnly(23, 59)),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: null,
+            RequireUsableBackup: false,
+            CooldownSeconds: 0));
+
+        using var scheduler = new RuleSchedulerService(
+            new RuleEngine(new NativeNetworkConnectionService(), new ConnectivityService(), configService),
+            configService,
+            new ConnectivityService());
+        var lastRan = GetPrivateField<Dictionary<Guid, DateTime>>(scheduler, "_timeTriggerLastRan");
+        var onceRan = GetPrivateField<HashSet<Guid>>(scheduler, "_onceTriggerRan");
+        var preNotifications = GetPrivateField<Dictionary<(Guid RuleId, int MinutesBefore), DateTime>>(
+            scheduler,
+            "_preNotificationLastTriggeredDate");
+        var oncePreNotifications = GetPrivateField<HashSet<(Guid RuleId, int MinutesBefore)>>(
+            scheduler,
+            "_oncePreNotificationsTriggered");
+
+        lastRan[ruleId] = DateTime.Today;
+        onceRan.Add(ruleId);
+        preNotifications[(ruleId, 5)] = DateTime.Today;
+        oncePreNotifications.Add((ruleId, 5));
+        var adapterStatuses = GetPrivateField<Dictionary<string, System.Net.NetworkInformation.OperationalStatus>>(
+            scheduler,
+            "_lastAdapterStatuses");
+        var adapterInternetStates = GetPrivateField<Dictionary<string, bool>>(
+            scheduler,
+            "_lastAdapterInternetStates");
+        adapterStatuses["adapter"] = System.Net.NetworkInformation.OperationalStatus.Up;
+        adapterInternetStates["adapter"] = true;
+        scheduler.DelayRule(ruleId, TimeSpan.FromMinutes(10));
+
+        scheduler.Reload(ruleId);
+
+        Assert(!lastRan.ContainsKey(ruleId));
+        Assert(!onceRan.Contains(ruleId));
+        Assert(!preNotifications.Keys.Any(key => key.RuleId == ruleId));
+        Assert(!oncePreNotifications.Any(key => key.RuleId == ruleId));
+        var delays = GetPrivateField<Dictionary<Guid, TimeSpan>>(scheduler, "_tempRuleDelays");
+        Assert(!delays.ContainsKey(ruleId));
+        Assert(!adapterStatuses.ContainsKey("adapter"));
+        Assert(!adapterInternetStates.ContainsKey("adapter"));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void EditingRuleResetsEngineCooldownState()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Engine-Reload-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(directory);
+        var engine = new RuleEngine(
+            new NativeNetworkConnectionService(),
+            new ConnectivityService(),
+            configService);
+        var rule = new AutomationRule(
+            Guid.NewGuid(),
+            "Edited cooldown rule",
+            Enabled: true,
+            Guid.NewGuid().ToString("B"),
+            RuleAction.Disable,
+            new RuleTrigger.Once(DateTimeOffset.Now),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: null,
+            RequireUsableBackup: false,
+            CooldownSeconds: 300);
+
+        var first = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
+        var second = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
+        engine.ResetRuleRuntimeState(rule.Id);
+        var afterEdit = engine.ExecuteRuleAsync(rule, RuleSource.Schedule).GetAwaiter().GetResult();
+
+        Assert(first.ReasonCode == "ADAPTER_NOT_FOUND");
+        Assert(second.ReasonCode == "RULE_COOLDOWN_ACTIVE");
+        Assert(afterEdit.ReasonCode == "ADAPTER_NOT_FOUND");
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
 static void SingleInstanceServiceSignalsPrimaryInstance()
 {
     var scopeName = $"NetRelay-Regression-{Guid.NewGuid():N}";
@@ -286,6 +397,13 @@ static void Assert(bool condition)
     {
         throw new InvalidOperationException("Assertion failed.");
     }
+}
+
+static T GetPrivateField<T>(object instance, string fieldName)
+{
+    return (T)(instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+        ?.GetValue(instance)
+        ?? throw new InvalidOperationException($"Missing private field: {fieldName}"));
 }
 
 static int RunVmnet1AcceptanceTest(string? reportPath)

@@ -1,6 +1,4 @@
-using System.Net.NetworkInformation;
 using NetRelay.Models;
-using NetRelay.Services;
 
 namespace NetRelay.ViewModels;
 
@@ -8,9 +6,9 @@ public sealed class ExecutionRecordViewModel
 {
     public ExecutionRecord Record { get; }
     public string TargetAdapterName { get; }
-    
+
     public string TimeLabel => Record.StartedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
-    
+
     public string OutcomeLabel => Record.Outcome switch
     {
         "SUCCESS" => "执行成功",
@@ -56,27 +54,16 @@ public sealed class ExecutionRecordViewModel
         _ => Record.Source.ToString()
     };
 
-    public ExecutionRecordViewModel(ExecutionRecord record, NativeNetworkConnectionService connectionService)
+    public ExecutionRecordViewModel(ExecutionRecord record, string? targetAdapterName = null)
     {
         Record = record;
-        TargetAdapterName = ResolveAdapterName(record.TargetAdapterId, connectionService);
+        TargetAdapterName = string.IsNullOrWhiteSpace(targetAdapterName)
+            ? FormatUnknownAdapterName(record.TargetAdapterId)
+            : targetAdapterName;
     }
 
-    private static string ResolveAdapterName(string adapterId, NativeNetworkConnectionService connectionService)
+    private static string FormatUnknownAdapterName(string adapterId)
     {
-        try
-        {
-            var ni = NetworkInterface.GetAllNetworkInterfaces()
-                .FirstOrDefault(n => string.Equals(n.Id, adapterId, StringComparison.OrdinalIgnoreCase));
-            if (ni != null) return ni.Name;
-
-            var conn = connectionService.GetConnections()
-                .FirstOrDefault(c => string.Equals(c.Id.ToString("B"), adapterId, StringComparison.OrdinalIgnoreCase) ||
-                                     string.Equals(c.Id.ToString(), adapterId, StringComparison.OrdinalIgnoreCase));
-            if (conn != null) return conn.Name;
-        }
-        catch { }
-
         if (Guid.TryParse(adapterId, out var g))
         {
             var s = g.ToString().ToUpper();

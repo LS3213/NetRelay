@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject
     private string? _errorMessage;
     private bool _isLoading;
     private bool _isOperating;
+    private bool _isLoadingLogs;
     private string? _operationMessage;
     private readonly DispatcherTimer _trafficTimer;
     private readonly DispatcherTimer _countdownTimer;
@@ -55,7 +56,7 @@ public sealed class MainViewModel : ObservableObject
         _configService = configService;
         _connectivityService = connectivityService;
         _ruleScheduler = ruleScheduler;
-        
+
         _ruleEngine = ruleEngine;
 
         RefreshCommand = new RelayCommand(RefreshAdapters, () => !IsLoading);
@@ -77,9 +78,9 @@ public sealed class MainViewModel : ObservableObject
         _countdownTimer.Tick += CountdownTick;
 
         // Commands
-        RefreshLogsCommand = new RelayCommand(async () => await LoadLogsAsync());
-        ClearLogsCommand = new RelayCommand(async () => await ClearLogsAsync());
-        
+        RefreshLogsCommand = new RelayCommand(() => _ = LoadLogsAsync(), () => !IsLoadingLogs);
+        ClearLogsCommand = new RelayCommand(() => _ = ClearLogsAsync(), () => !IsLoadingLogs);
+
         AddRuleCommand = new RelayCommand(() => RequestEditRule?.Invoke(null));
         EditRuleCommand = new RelayCommand<AutomationRuleViewModel>(vm => { if (vm != null) RequestEditRule?.Invoke(vm.Rule); });
         DeleteRuleCommand = new RelayCommand<AutomationRuleViewModel>(vm => { if (vm != null) DeleteRule(vm.Rule.Id); });
@@ -103,7 +104,12 @@ public sealed class MainViewModel : ObservableObject
     // Collections
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
     public ObservableCollection<AutomationRuleViewModel> Rules { get; } = [];
-    public ObservableCollection<ExecutionRecordViewModel> Logs { get; } = [];
+    private ObservableCollection<ExecutionRecordViewModel> _logs = [];
+    public ObservableCollection<ExecutionRecordViewModel> Logs
+    {
+        get => _logs;
+        private set => SetProperty(ref _logs, value);
+    }
 
     // Commands
     public RelayCommand RefreshCommand { get; }
@@ -220,8 +226,32 @@ public sealed class MainViewModel : ObservableObject
     {
         _ruleScheduler?.Reload();
     }
+
+    public void ReloadEditedRule(Guid ruleId)
+    {
+        _ruleEngine.ResetRuleRuntimeState(ruleId);
+        _ruleScheduler?.Reload(ruleId);
+        if (_pendingRule?.Id == ruleId)
+        {
+            _pendingRule = null;
+            _pendingNotification = null;
+            IsPendingOverlayVisible = false;
+        }
+    }
     public bool HasNoRules => Rules.Count == 0;
     public bool HasNoLogs => Logs.Count == 0;
+    public bool IsLoadingLogs
+    {
+        get => _isLoadingLogs;
+        private set
+        {
+            if (SetProperty(ref _isLoadingLogs, value))
+            {
+                RefreshLogsCommand.RaiseCanExecuteChanged();
+                ClearLogsCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     public void LoadRules()
     {
@@ -235,27 +265,64 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task LoadLogsAsync()
     {
+        if (IsLoadingLogs)
+        {
+            return;
+        }
+
+        IsLoadingLogs = true;
         try
         {
-            var records = await _logService.LoadLogsAsync();
-            Logs.Clear();
-            foreach (var r in records)
+            var adapterNames = Adapters
+                .GroupBy(adapter => NormalizeAdapterId(adapter.Id), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().Name, StringComparer.OrdinalIgnoreCase);
+            var logs = await Task.Run(async () =>
             {
-                Logs.Add(new ExecutionRecordViewModel(r, _adapterService.ConnectionService));
-            }
+                var records = await _logService.LoadLogsAsync().ConfigureAwait(false);
+                return new ObservableCollection<ExecutionRecordViewModel>(
+                    records.Select(record => new ExecutionRecordViewModel(
+                        record,
+                        adapterNames.GetValueOrDefault(NormalizeAdapterId(record.TargetAdapterId)))));
+            });
+
+            Logs = logs;
             RaisePropertyChanged(nameof(HasNoLogs));
         }
         catch
         {
             // Ignore UI exceptions
         }
+        finally
+        {
+            IsLoadingLogs = false;
+        }
     }
 
     private async Task ClearLogsAsync()
     {
-        await _logService.ClearAllLogsAsync();
-        Logs.Clear();
-        RaisePropertyChanged(nameof(HasNoLogs));
+        if (IsLoadingLogs)
+        {
+            return;
+        }
+
+        IsLoadingLogs = true;
+        try
+        {
+            await _logService.ClearAllLogsAsync();
+            Logs = [];
+            RaisePropertyChanged(nameof(HasNoLogs));
+        }
+        finally
+        {
+            IsLoadingLogs = false;
+        }
+    }
+
+    private static string NormalizeAdapterId(string adapterId)
+    {
+        return Guid.TryParse(adapterId, out var adapterGuid)
+            ? adapterGuid.ToString("D")
+            : adapterId;
     }
     private void DeleteRule(Guid ruleId)
     {
@@ -336,7 +403,7 @@ public sealed class MainViewModel : ObservableObject
         _pendingCountdownSeconds = (int)Math.Max(0, (e.TargetTime - DateTimeOffset.Now).TotalSeconds);
         PendingCountdownLabel = $"将在 {_pendingCountdownSeconds} 秒后执行";
         IsPendingOverlayVisible = true;
-        
+
         RaisePropertyChanged(nameof(PendingRuleName));
         RaisePropertyChanged(nameof(PendingDelayMinutes));
         RaisePropertyChanged(nameof(PendingDelayLabel));
@@ -364,7 +431,7 @@ public sealed class MainViewModel : ObservableObject
     private async Task ExecutePendingNowAsync()
     {
         if (_pendingRule == null) return;
-        
+
         _countdownTimer.Stop();
         IsPendingOverlayVisible = false;
 
@@ -431,7 +498,7 @@ public sealed class MainViewModel : ObservableObject
         {
             var result = await Task.Run(() => connectionService.SetEnabled(adapter.Id, adapter.Name, enabled));
             OperationMessage = result.Message;
-            
+
             // Record manual execution
             var record = new ExecutionRecord(
                 Guid.NewGuid(),

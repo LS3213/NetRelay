@@ -312,7 +312,14 @@ public partial class MainWindow : Window
 
             _viewModel.ConfigService.Save();
             _viewModel.LoadRules();
-            _viewModel.ReloadRules();
+            if (rule is null)
+            {
+                _viewModel.ReloadRules();
+            }
+            else
+            {
+                _viewModel.ReloadEditedRule(rule.Id);
+            }
         }
     }
 
