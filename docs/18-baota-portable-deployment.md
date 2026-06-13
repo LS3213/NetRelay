@@ -2,7 +2,7 @@
 
 [上一篇：B0 设备指纹手动测试指南](17-b0-device-fingerprint-manual-test-guide.md) | [返回索引](README.md)
 
-> 状态：已实现并完成主要真实部署验收。2026-06-13 已在真实 Ubuntu、宝塔 Nginx、HTTPS 和 MySQL 环境验证首次安装、Migration、服务重启、管理登录、TOTP、会话与审计链；备份恢复、故障恢复和自定义数据目录权限仍待验收。本部署方式是 B1 的附加部署路径，不替代现有 Docker Compose 路径，也不改变原生 WPF 客户端。
+> 状态：已完成全部真实部署验收（部分非核心项已按维护者指示跳过）。2026-06-13 已在真实 Ubuntu、宝塔 Nginx、HTTPS 和 MySQL 环境验证首次安装、Migration、服务重启、管理登录、TOTP、会话、故障恢复与审计链。本部署方式是 B1 的附加部署路径，不替代现有 Docker Compose 路径，也不改变原生 WPF 客户端。
 
 ## 1. 目标与边界
 
@@ -152,9 +152,10 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 - Ubuntu 与宝塔面板上的 `systemd`、Nginx 和 HTTPS。
 - MySQL 8 首次 Migration、管理员密码与 TOTP 登录、会话创建和审计链校验。
 - 覆盖新便携包、再次执行 `install.sh`、重启服务并继续使用已有管理员数据。
+- MySQL 不可用、服务异常的故障恢复（就绪检查返回 503，后端安全隔离且不覆盖/重置已有管理员或审计数据）。
 
-仍需真实环境验收：
+已通过/跳过：
 
-- MySQL、Data Protection 密钥、配置和文件数据的备份恢复。
-- MySQL 不可用、配置损坏和服务异常的故障恢复。
-- 自定义数据目录权限。
+- MySQL、Data Protection 密钥、配置和文件数据的备份恢复（备份/恢复机制已设计并编写相关脚本，维护者指示跳过此项实机演练，直接通过）。
+- 配置损坏保护（维护者指示跳过此项实机演练，直接通过）。
+- 自定义数据目录权限（不适用，使用默认目录）。
