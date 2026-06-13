@@ -1,0 +1,442 @@
+openapi: 3.1.0
+info:
+  title: NetRelay Backend API
+  version: 0.1.0-b0-draft
+  description: B0 draft. No endpoint in this document is implemented yet.
+servers:
+  - url: https://netrelay.example/api/v1
+    description: Placeholder production URL
+paths:
+  /devices/activate:
+    post:
+      operationId: activateDevice
+      summary: Activate an installation after agreement acceptance
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/ClientVersion"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivationRequest"
+      responses:
+        "200":
+          description: Activation completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /devices/heartbeat:
+    post:
+      operationId: recordHeartbeat
+      summary: Record a rate-limited anonymous installation heartbeat
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/ClientVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeartbeatRequest"
+      responses:
+        "204":
+          description: Heartbeat accepted
+        "401":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /connectivity/challenge:
+    post:
+      operationId: createConnectivityChallenge
+      summary: Return a signed nonce challenge response
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [nonce]
+              properties:
+                nonce:
+                  type: string
+                  minLength: 32
+                  maxLength: 256
+      responses:
+        "200":
+          description: Signed connectivity challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedEnvelope"
+        "429":
+          $ref: "#/components/responses/Error"
+  /client-configuration:
+    get:
+      operationId: getClientConfiguration
+      summary: Get signed primary API and GitHub fallback configuration
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - name: currentConfigurationVersion
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Signed client configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedEnvelope"
+        "429":
+          $ref: "#/components/responses/Error"
+  /policies/evaluate:
+    post:
+      operationId: evaluatePolicies
+      summary: Return signed device, version, and global policies
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/ClientVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceReference"
+      responses:
+        "200":
+          description: Signed policy result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedEnvelope"
+        "401":
+          $ref: "#/components/responses/Error"
+  /updates/latest:
+    get:
+      operationId: getLatestUpdate
+      summary: Get a signed update manifest from the primary source
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - name: channel
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [stable]
+        - name: architecture
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [win-x64]
+        - name: currentVersion
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Signed update manifest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedEnvelope"
+        "404":
+          $ref: "#/components/responses/Error"
+  /announcements:
+    get:
+      operationId: getAnnouncements
+      summary: Get signed announcements applicable to the client
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - name: version
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Signed announcement collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedEnvelope"
+  /feedback:
+    post:
+      operationId: createFeedback
+      summary: Create feedback metadata without implicit log upload
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackRequest"
+      responses:
+        "201":
+          description: Feedback created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId, data]
+                properties:
+                  requestId:
+                    type: string
+                  data:
+                    type: object
+                    required: [feedbackId]
+                    properties:
+                      feedbackId:
+                        type: string
+                        format: uuid
+        "429":
+          $ref: "#/components/responses/Error"
+components:
+  parameters:
+    ProtocolVersion:
+      name: X-NetRelay-Protocol
+      in: header
+      required: true
+      schema:
+        type: integer
+        const: 1
+    ClientVersion:
+      name: X-NetRelay-Version
+      in: header
+      required: true
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HashedEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - hardware
+        - networkPhysicalCandidate
+      properties:
+        hardware:
+          type: object
+          additionalProperties: false
+          required:
+            - windowsDeviceId
+            - machineGuid
+            - systemUuid
+            - motherboard
+            - processor
+            - systemDrive
+          properties:
+            windowsDeviceId:
+              $ref: "#/components/schemas/HashList"
+            machineGuid:
+              $ref: "#/components/schemas/HashList"
+            systemUuid:
+              $ref: "#/components/schemas/HashList"
+            motherboard:
+              $ref: "#/components/schemas/HashList"
+            processor:
+              $ref: "#/components/schemas/HashList"
+            systemDrive:
+              $ref: "#/components/schemas/HashList"
+        networkPhysicalCandidate:
+          type: object
+          additionalProperties: false
+          description: Low-to-medium weight auxiliary evidence. Never sufficient for blocking alone.
+          required: [adapterGuid, mac, model]
+          properties:
+            adapterGuid:
+              $ref: "#/components/schemas/HashList"
+            mac:
+              $ref: "#/components/schemas/HashList"
+            model:
+              $ref: "#/components/schemas/HashList"
+    HashList:
+      type: array
+      maxItems: 32
+      items:
+        type: string
+        pattern: "^[A-F0-9]{64}$"
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - installationId
+        - fingerprintVersion
+        - deviceId
+        - evidence
+        - acceptedTermsVersion
+        - acceptedPrivacyVersion
+      properties:
+        installationId:
+          type: string
+          format: uuid
+        fingerprintVersion:
+          type: integer
+          minimum: 1
+        deviceId:
+          type: string
+          pattern: "^[A-F0-9]{64}$"
+        evidence:
+          $ref: "#/components/schemas/HashedEvidence"
+        acceptedTermsVersion:
+          type: string
+        acceptedPrivacyVersion:
+          type: string
+    ActivationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, data]
+      properties:
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [machineCode, activationReceipt]
+          properties:
+            machineCode:
+              type: string
+              pattern: "^NR-[A-Z0-9]{12,24}$"
+            activationReceipt:
+              $ref: "#/components/schemas/SignedEnvelope"
+    HeartbeatRequest:
+      type: object
+      additionalProperties: false
+      required: [machineCode, installationId, osVersion, fingerprintVersion, restricted]
+      properties:
+        machineCode:
+          type: string
+        installationId:
+          type: string
+          format: uuid
+        osVersion:
+          type: string
+        fingerprintVersion:
+          type: integer
+        restricted:
+          type: boolean
+    DeviceReference:
+      type: object
+      additionalProperties: false
+      required: [machineCode, installationId]
+      properties:
+        machineCode:
+          type: string
+        installationId:
+          type: string
+          format: uuid
+    ClientConfigurationPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - configurationVersion
+        - primaryApiBaseUrl
+        - githubRepository
+        - updateChannel
+        - allowGithubFallback
+      properties:
+        configurationVersion:
+          type: integer
+          minimum: 1
+        primaryApiBaseUrl:
+          type: string
+          format: uri
+          pattern: "^https://"
+        githubRepository:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        updateChannel:
+          type: string
+          enum: [stable]
+        allowGithubFallback:
+          type: boolean
+    FeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [type, title, content, includeLogs]
+      properties:
+        type:
+          type: string
+          enum: [suggestion, issue, crash, other]
+        title:
+          type: string
+          maxLength: 200
+        content:
+          type: string
+          maxLength: 20000
+        contact:
+          type: string
+          maxLength: 500
+        includeLogs:
+          type: boolean
+          description: Indicates user intent only. Attachments require a separate explicit upload request.
+    SignedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [protocolVersion, keyId, purpose, nonce, issuedAt, expiresAt, payload, signature]
+      properties:
+        protocolVersion:
+          type: integer
+        keyId:
+          type: string
+        purpose:
+          type: string
+        nonce:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        payload: {}
+        signature:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [requestId, error]
+      properties:
+        requestId:
+          type: string
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            retryable:
+              type: boolean
+            retryAfterSeconds:
+              type: integer
+              minimum: 0

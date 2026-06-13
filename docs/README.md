@@ -28,6 +28,11 @@
 9. [未来开发阶段与里程碑规划](09-future-stages-and-milestones.md)
 10. [后端平台总体实施规范](10-backend-platform-master-plan.md)
 11. [后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md)
+12. [后端 API 与共享契约规范](12-backend-api-and-contracts.md)
+13. [后端数据库与存储规范](13-backend-database-and-storage.md)
+14. [后端安全、签名与隐私规范](14-backend-security-signing-and-privacy.md)
+15. [后端部署与运维规范](15-backend-deployment-and-operations.md)
+16. [B0 设备指纹与安全原型报告](16-b0-device-fingerprint-and-security-prototype-report.md)
 
 ## 目录结构
 
