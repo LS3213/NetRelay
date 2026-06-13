@@ -7,3 +7,6 @@ obj/
 *.log
 artifacts/
 *_wpftmp.csproj
+deploy/.env
+deploy/backups/
+deploy/certs/

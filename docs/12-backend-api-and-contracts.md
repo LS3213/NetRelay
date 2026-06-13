@@ -2,9 +2,18 @@
 
 [上一篇：后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md) | [返回索引](README.md)
 
-> 状态：B0 设计基线，尚未实现。后续 API 与 `NetRelay.Contracts` 必须遵循本文；实现变化需同步更新本文和 OpenAPI。
+> 状态：B1 实现中。`NetRelay.Contracts` 与后端基础正在按本文建立；实现变化需同步更新本文和 OpenAPI。
 
 OpenAPI 初稿见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件当前只定义公开客户端核心接口；管理 API 将在 B1 认证边界稳定后补全。
+
+当前 B1 已实现：
+
+- `NetRelay.Contracts` 中的协议头、错误码、统一响应和管理认证 DTO。
+- 请求 ID 生成与回传、`X-NetRelay-Protocol: 1` 校验、统一异常响应。
+- `/health/live` 与包含 MySQL 连通性的 `/health/ready`。
+- `/api/v1/admin/auth/login`、`totp`、`me`、`reauthenticate` 和 `logout`。
+
+尚未实现的公开客户端接口与其他管理业务接口仍以本文和 OpenAPI 作为设计，不得视为可调用接口。
 
 ## 1. 设计目标
 
@@ -182,6 +191,15 @@ OpenAPI 初稿见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该�
 | 审计 | `GET /audit-logs` |
 
 发布全局封锁、签名更新和轮换密钥属于敏感操作，要求短时重新认证和二次确认。
+
+B1 当前认证实现边界：
+
+- 密码验证成功只签发短时、受 Data Protection 保护且数据库一次性消费的 TOTP 挑战。
+- TOTP 成功后签发 `Secure`、`HttpOnly`、`SameSite=Strict` 的管理会话 Cookie。
+- CSRF Token 只在会话创建响应中返回，状态变更端点要求 `X-NetRelay-Csrf`。
+- 会话令牌和 CSRF Token 在数据库中只保存 SHA-256 哈希。
+- `reauthenticate` 更新短时重新认证窗口；`logout` 持久化撤销会话。
+- 当前未启用 CORS，因此浏览器跨域请求默认不被授权；管理后台部署后仍保持同源。
 
 ## 7. 初始错误码
 

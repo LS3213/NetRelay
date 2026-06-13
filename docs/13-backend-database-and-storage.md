@@ -2,7 +2,18 @@
 
 [上一篇：后端 API 与共享契约规范](12-backend-api-and-contracts.md) | [返回索引](README.md)
 
-> 状态：B0 设计基线，尚未创建数据库或 Migration。数据库以 MySQL 8.0、EF Core 与 Pomelo 为确定方案。
+> 状态：B1 实现中。数据库以 MySQL 8.0、EF Core 与 Pomelo 为确定方案；实体、上下文和初始 Migration 正在建立。
+
+当前已实现的初始 Migration 位于 `server/NetRelay.Server/Data/Migrations/`，只创建 B1 管理认证基础表：
+
+| 已实现表 | 当前职责 |
+| --- | --- |
+| `admin_accounts` | 唯一管理员、密码哈希、受 Data Protection 保护的 TOTP Secret、失败次数与锁定 |
+| `admin_login_challenges` | 短时一次性 TOTP 登录挑战，消费后不可复用 |
+| `admin_sessions` | 会话与 CSRF Token 哈希、过期、重新认证窗口和撤销 |
+| `audit_logs` | 管理认证审计与哈希链字段，不提供后台删除 API |
+
+上述 UUID 字段通过显式大端转换保存为 `binary(16)`。其余本文所列业务表属于后续阶段设计，尚未创建。
 
 ## 1. 数据原则
 
@@ -68,7 +79,8 @@ erDiagram
 | --- | --- | --- |
 | `feedback` | 类型、标题、正文、可选联系方式、设备/安装引用、状态、创建时间 | 状态与创建时间索引 |
 | `feedback_attachments` | 反馈 ID、私有路径、文件名、大小、SHA256、内容类型、删除时间 | `feedback_id` 索引 |
-| `admin_account` | 唯一管理员、密码哈希、TOTP 密文、失败次数、锁定与更新时间 | 首版强制最多一条有效账号 |
+| `admin_accounts` | 唯一管理员、密码哈希、TOTP 密文、失败次数、锁定与更新时间 | 首版强制最多一条有效账号 |
+| `admin_login_challenges` | 管理员、创建、过期与消费时间 | 挑战 UUID 主键；过期索引 |
 | `admin_sessions` | 会话哈希、创建、过期、撤销、最近活动 | 会话哈希唯一；过期索引 |
 | `audit_logs` | 操作、目标、结果、请求 ID、脱敏详情、发生时间、链式完整性字段 | 时间、操作和目标索引 |
 | `idempotency_records` | 作用域、键、请求哈希、响应引用、过期时间 | `scope,key` 唯一 |

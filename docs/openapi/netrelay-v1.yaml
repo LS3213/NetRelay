@@ -1,12 +1,93 @@
 openapi: 3.1.0
 info:
   title: NetRelay Backend API
-  version: 0.1.0-b0-draft
-  description: B0 draft. No endpoint in this document is implemented yet.
+  version: 0.2.0-b1-in-progress
+  description: B1 in progress. Admin authentication endpoints are implemented; public client endpoints remain design contracts.
 servers:
   - url: https://netrelay.example/api/v1
     description: Placeholder production URL
 paths:
+  /admin/auth/login:
+    post:
+      operationId: adminLogin
+      summary: Verify the administrator password and create a short-lived TOTP challenge
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: Password verified and one-time TOTP challenge created
+        "401":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /admin/auth/totp:
+    post:
+      operationId: completeAdminTotp
+      summary: Consume a TOTP challenge and create an administrator session
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTotpRequest"
+      responses:
+        "200":
+          description: Session cookie and CSRF token issued
+        "401":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /admin/auth/me:
+    get:
+      operationId: getAdminIdentity
+      summary: Return the current administrator session identity
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      responses:
+        "200":
+          description: Current administrator identity
+        "401":
+          $ref: "#/components/responses/Error"
+  /admin/auth/reauthenticate:
+    post:
+      operationId: reauthenticateAdmin
+      summary: Refresh the sensitive-operation reauthentication window
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReauthenticateRequest"
+      responses:
+        "204":
+          description: Reauthentication window refreshed
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /admin/auth/logout:
+    post:
+      operationId: adminLogout
+      summary: Revoke the current administrator session
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Session revoked or already absent
+        "403":
+          $ref: "#/components/responses/Error"
   /devices/activate:
     post:
       operationId: activateDevice
@@ -229,6 +310,13 @@ components:
         type: string
         minLength: 16
         maxLength: 128
+    CsrfToken:
+      name: X-NetRelay-Csrf
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 40
   responses:
     Error:
       description: Request failed
@@ -237,6 +325,36 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    AdminLoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 100
+        password:
+          type: string
+          maxLength: 1024
+    AdminTotpRequest:
+      type: object
+      additionalProperties: false
+      required: [challengeToken, code]
+      properties:
+        challengeToken:
+          type: string
+          maxLength: 4096
+        code:
+          type: string
+          pattern: "^[0-9]{6}$"
+    AdminReauthenticateRequest:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password:
+          type: string
+          maxLength: 1024
     HashedEvidence:
       type: object
       additionalProperties: false

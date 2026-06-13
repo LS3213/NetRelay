@@ -1,10 +1,20 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.0.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay", "src\NetRelay\NetRelay.csproj", "{BEB92DAA-9C3B-4D6A-8C80-A3C6E196BFF4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.RegressionTests", "tests\NetRelay.RegressionTests\NetRelay.RegressionTests.csproj", "{D718D865-5B8D-49DD-8243-83ABDB5F87B8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B1D10C3B-6C49-414B-BA66-6C0447F12B33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.Contracts", "src\NetRelay.Contracts\NetRelay.Contracts.csproj", "{FFB5B4FE-895C-405D-A6C1-17AEDC99914B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "server", "server", "{AC0B3739-9939-4556-8853-288AD61E08E2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.Server", "server\NetRelay.Server\NetRelay.Server.csproj", "{79533D38-1DA6-44D3-9A32-7487EF58FEAC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.Server.Tests", "server\NetRelay.Server.Tests\NetRelay.Server.Tests.csproj", "{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,5 +30,22 @@ Global
 		{D718D865-5B8D-49DD-8243-83ABDB5F87B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D718D865-5B8D-49DD-8243-83ABDB5F87B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D718D865-5B8D-49DD-8243-83ABDB5F87B8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFB5B4FE-895C-405D-A6C1-17AEDC99914B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFB5B4FE-895C-405D-A6C1-17AEDC99914B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFB5B4FE-895C-405D-A6C1-17AEDC99914B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFB5B4FE-895C-405D-A6C1-17AEDC99914B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79533D38-1DA6-44D3-9A32-7487EF58FEAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79533D38-1DA6-44D3-9A32-7487EF58FEAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79533D38-1DA6-44D3-9A32-7487EF58FEAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79533D38-1DA6-44D3-9A32-7487EF58FEAC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FFB5B4FE-895C-405D-A6C1-17AEDC99914B} = {B1D10C3B-6C49-414B-BA66-6C0447F12B33}
+		{79533D38-1DA6-44D3-9A32-7487EF58FEAC} = {AC0B3739-9939-4556-8853-288AD61E08E2}
+		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7} = {AC0B3739-9939-4556-8853-288AD61E08E2}
 	EndGlobalSection
 EndGlobal

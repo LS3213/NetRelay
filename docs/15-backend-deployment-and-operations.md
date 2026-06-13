@@ -2,7 +2,7 @@
 
 [上一篇：后端安全、签名与隐私规范](14-backend-security-signing-and-privacy.md) | [返回索引](README.md)
 
-> 状态：B0 设计基线。目标平台为用户自有 Ubuntu 服务器；当前本机未安装 Docker，真实部署、备份与恢复验收属于 B1。
+> 状态：B1 实现中。目标平台为用户自有 Ubuntu 服务器；Dockerfile、Compose、Nginx 与运维脚本已创建，当前本机未安装 Docker，真实部署、备份与恢复仍待验收。
 
 ## 1. 已确定拓扑
 
@@ -66,7 +66,20 @@ Ubuntu：
 | `mysql` | MySQL 8.0 | 否 |
 | `nginx` | HTTPS、官网、后台和 API 反向代理 | 仅 80/443 |
 
-Nginx 可先运行于宿主机；正式部署时选择宿主机或容器均可，但必须在 B1 固定一种并更新本文。
+B1 当前固定采用容器化 Nginx。`deploy/docker-compose.yml` 只将 Nginx 的 80/443 暴露到宿主机；MySQL 与 API 只在内部网络通信。
+
+当前实现文件：
+
+- `server/NetRelay.Server/Dockerfile`
+- `deploy/docker-compose.yml`
+- `deploy/.env.example`
+- `deploy/nginx/netrelay.conf`
+- `deploy/scripts/deploy.sh`
+- `deploy/scripts/migrate.sh`
+- `deploy/scripts/backup.sh`
+- `deploy/scripts/restore.sh`
+
+这些文件尚未在 Docker/Ubuntu 环境运行，不得视为部署验收通过。
 
 ## 4. 域名和路由
 
@@ -135,7 +148,7 @@ GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供�
 2. 执行测试、格式和依赖检查。
 3. 备份数据库和必要文件。
 4. 上传新镜像或产物。
-5. 运行兼容 Migration。
+5. 通过一次性 `--migrate` 进程运行兼容 Migration；常驻 API 默认关闭自动迁移。
 6. 滚动启动 API 并检查健康端点。
 7. 发布静态官网和管理后台。
 8. 执行公开 API、管理登录和下载冒烟测试。
