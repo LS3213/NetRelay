@@ -124,7 +124,13 @@ dotnet test server/NetRelay.Server.Tests/NetRelay.Server.Tests.csproj -c Release
 docker compose -f deploy/docker-compose.yml config
 ```
 
-涉及管理后台时，还必须执行其格式、静态检查、测试和生产构建命令。具体命令在确定管理后台技术栈后补入本文。
+涉及管理后台时，还必须执行生产构建和依赖审计：
+
+```powershell
+npm --prefix website/admin ci
+npm --prefix website/admin run build
+npm --prefix website/admin audit --audit-level=moderate
+```
 
 ### 4.3 安全回归
 
@@ -230,7 +236,7 @@ docker compose -f deploy/docker-compose.yml config
 | 开始日期 | 2026-06-13 |
 | 开发完成日期 | 未填写 |
 | 验收日期 | 未填写 |
-| 相关 Commit | 未填写 |
+| 相关 Commit | `86cabe4`（B1 基础实现）；第二批增强待提交 |
 | 阻塞项 | 本机未安装 Docker，Ubuntu Compose 部署与 MySQL 实机验收需后续环境 |
 
 ### 6.2 目标
@@ -244,13 +250,13 @@ docker compose -f deploy/docker-compose.yml config
 - [x] 创建 `src/NetRelay.Contracts/`。
 - [x] 创建 `server/NetRelay.Server/` 和 `server/NetRelay.Server.Tests/`。
 - [x] 建立统一 DTO、错误码、请求 ID、协议版本和 JSON 规则。
-- [ ] 配置 OpenAPI、健康检查、结构化日志和全局异常处理；健康检查、请求 ID、统一错误和全局异常已实现，运行时 OpenAPI 与日志落盘待补。
+- [x] 配置运行时 OpenAPI、健康检查、JSON 结构化日志和全局异常处理。
 
 #### B1.2 数据库与文件存储
 
 - [x] 接入 MySQL 8.0、Pomelo EF Core 和连接池。
 - [x] 创建初始 Migration、索引和约束。
-- [ ] 建立服务器发布文件与私有反馈附件的抽象和隔离目录。
+- [x] 建立服务器发布文件、私有反馈附件、暂存区和隔离区的抽象及互不嵌套目录。
 - [ ] 实现数据库迁移、备份和恢复脚本；脚本已创建，待 Docker/Ubuntu 实机验证。
 
 #### B1.3 单管理员认证
@@ -267,17 +273,18 @@ docker compose -f deploy/docker-compose.yml config
 - [x] 创建 `deploy/docker-compose.yml`。
 - [x] 创建 Nginx HTTPS 和反向代理配置。
 - [x] 建立 Secret、环境变量和配置校验。
+- [x] 创建 React + TypeScript 管理后台认证与安全概览页，并由 Nginx 同源托管在 `/admin/`。
 - [ ] 建立测试环境部署、备份、恢复和升级脚本；部署、迁移、备份和恢复脚本已创建，待 Ubuntu 验证。
 
 ### 6.4 强制验收
 
 | 验收项 | 通过标准 | 证据 | 状态 |
 | --- | --- | --- | --- |
-| Release 构建与测试 | 后端、契约和现有客户端构建测试通过 | 未填写 | 未开始 |
-| 数据库迁移 | 空库可升级，已有库重复执行安全，失败可恢复 | 未填写 | 未开始 |
-| 管理认证 | 密码、TOTP、过期、撤销和速率限制符合规范 | 未填写 | 未开始 |
-| 权限隔离 | 未认证用户和普通公开 API 无法访问管理资源 | 未填写 | 未开始 |
-| 审计完整性 | 登录和管理操作写入审计，后台无法删除审计记录 | 未填写 | 未开始 |
+| Release 构建与测试 | 后端、契约和现有客户端构建测试通过 | 解决方案 Release 构建 0 警告 0 错误；16 项 B1 后端测试与 37 项客户端回归通过 | 已通过 |
+| 数据库迁移 | 空库可升级，已有库重复执行安全，失败可恢复 | 初始 Migration 与幂等 SQL 已生成；真实 MySQL 空库、重复执行和失败恢复待验收 | 验收中 |
+| 管理认证 | 密码、TOTP、过期、撤销和速率限制符合规范 | 服务层与真实 HTTP 管道验证密码、一次性 TOTP、Cookie 会话、CSRF、重新认证、退出与统一失败行为 | 验收中 |
+| 权限隔离 | 未认证用户和普通公开 API 无法访问管理资源 | HTTP 集成测试验证未认证访问被拒绝、CSRF 缺失被拒绝、撤销会话不可复用 | 已通过 |
+| 审计完整性 | 登录和管理操作写入审计，后台无法删除审计记录 | 审计使用微秒规范化哈希链；自动测试验证有效链通过、篡改被识别；管理 API 无删除端点 | 已通过 |
 | Ubuntu 测试部署 | HTTPS、API、MySQL、迁移和健康检查正常 | 未填写 | 未开始 |
 | 备份恢复 | 从备份恢复到新环境后数据和管理员登录正常 | 未填写 | 未开始 |
 
@@ -293,6 +300,8 @@ docker compose -f deploy/docker-compose.yml config
 | 日期 | 类型 | 范围 | 结果 | 证据或 Commit | 未完成事项 |
 | --- | --- | --- | --- | --- | --- |
 | 2026-06-13 | 开发/自动验收 | B1.1-B1.4 基础实现 | 进行中 | `NetRelay.Contracts`、`NetRelay.Server`、初始 Migration、9 项后端基础测试；幂等 Migration SQL 成功生成；API 存活、协议拒绝与 MySQL 不可用就绪状态冒烟通过；解决方案构建 0 警告 0 错误 | MySQL/Docker/Ubuntu 实机、运行时 OpenAPI、日志落盘、文件存储抽象与管理后台 |
+| 2026-06-13 | 开发/自动验收 | B1 第二批安全与运行基础 | 进行中 | 运行时 OpenAPI、JSON 日志、隔离存储、可信单跳代理、并发安全 TOTP 挑战、微秒审计哈希链及完整 HTTP 认证流程已验证；16 项 B1 测试通过 | 真实 MySQL/Docker/Ubuntu、HTTPS 与备份恢复 |
+| 2026-06-13 | 开发/自动验收 | B1 管理后台基础 | 进行中 | `website/admin` 已实现密码、TOTP、会话恢复、CSRF 轮换、重新认证、审计链校验和退出；Vite 生产构建与 npm 依赖审计通过 | HTTPS 下浏览器实测、真实 MySQL/Docker/Ubuntu、备份恢复 |
 
 ## 7. B2：设备激活、心跳与后端探测
 

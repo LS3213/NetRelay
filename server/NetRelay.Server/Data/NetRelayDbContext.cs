@@ -55,6 +55,7 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.HasKey(item => item.Id);
             entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
             entity.Property(item => item.AdminAccountId).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.ConsumedAt).IsConcurrencyToken();
             entity.HasIndex(item => item.ExpiresAt);
             entity.HasOne<AdminAccount>()
                 .WithMany()

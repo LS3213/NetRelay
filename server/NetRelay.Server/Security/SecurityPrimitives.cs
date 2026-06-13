@@ -9,11 +9,19 @@ public sealed class AdminPasswordService
 {
     private readonly PasswordHasher<object> _hasher = new();
     private readonly object _subject = new();
+    private readonly string _dummyHash;
+
+    public AdminPasswordService()
+    {
+        _dummyHash = _hasher.HashPassword(_subject, TokenService.CreateToken());
+    }
 
     public string Hash(string password) => _hasher.HashPassword(_subject, password);
 
     public bool Verify(string hash, string password) =>
         _hasher.VerifyHashedPassword(_subject, hash, password) != PasswordVerificationResult.Failed;
+
+    public void VerifyDummy(string password) => _hasher.VerifyHashedPassword(_subject, _dummyHash, password);
 }
 
 public static class TokenService
@@ -61,6 +69,10 @@ public static class TotpService
 
         return false;
     }
+
+    public static string GenerateCode(string base32Secret, DateTimeOffset now) =>
+        Generate(DecodeBase32(base32Secret), now.ToUnixTimeSeconds() / PeriodSeconds)
+            .ToString("D6", CultureInfo.InvariantCulture);
 
     public static bool IsValidSecret(string base32Secret)
     {

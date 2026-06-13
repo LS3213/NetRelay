@@ -28,6 +28,8 @@ flowchart TB
 
 管理后台确定采用 React + TypeScript + Vite，构建后作为 `website/admin/` 静态资源由 Nginx 托管。该选择只用于浏览器管理后台，不改变 WPF 客户端原生技术栈。
 
+当前 `deploy/scripts/deploy.sh` 会在 Compose 部署前执行 `npm ci` 和管理后台生产构建，因此执行部署脚本的受控 Ubuntu 主机需要安装 Node.js 22.12 或更高版本及对应 npm。构建产物不提交 Git，由 Nginx 只读挂载到 `/usr/share/nginx/html/admin`。
+
 ## 2. 计划目录
 
 仓库：
@@ -68,6 +70,10 @@ Ubuntu：
 
 B1 当前固定采用容器化 Nginx。`deploy/docker-compose.yml` 只将 Nginx 的 80/443 暴露到宿主机；MySQL 与 API 只在内部网络通信。
 
+API 按单跳反向代理处理 `X-Forwarded-For` 与 `X-Forwarded-Proto`，用于正确识别登录限流来源和 HTTPS。该信任模型依赖 API 不直接暴露公网；若改变网络拓扑，必须同步收紧可信代理配置。
+
+API 日志使用 JSON Console 输出，包含 UTC 时间、类别、级别、请求路径、请求 ID 和 Trace ID，由 Docker/宿主日志系统负责采集与保留。请求正文、密码、TOTP、会话令牌和原始硬件标识不得写入日志。
+
 当前实现文件：
 
 - `server/NetRelay.Server/Dockerfile`
@@ -78,6 +84,7 @@ B1 当前固定采用容器化 Nginx。`deploy/docker-compose.yml` 只将 Nginx 
 - `deploy/scripts/migrate.sh`
 - `deploy/scripts/backup.sh`
 - `deploy/scripts/restore.sh`
+- `website/admin/`
 
 这些文件尚未在 Docker/Ubuntu 环境运行，不得视为部署验收通过。
 
@@ -119,8 +126,13 @@ GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供�
 | `NETRELAY_PUBLIC_BASE_URL` | 官网与 API 的公开 HTTPS 基础地址 | 否 |
 | `NETRELAY_GITHUB_REPOSITORY` | GitHub 完整备用源仓库 `owner/repository` | 否 |
 | `NETRELAY_UPDATE_CHANNEL` | 初始更新通道 | 否 |
-| `NETRELAY_RELEASES_ROOT` | 主源更新文件目录 | 否 |
-| `NETRELAY_FEEDBACK_ROOT` | 私有反馈附件目录 | 否 |
+| `NetRelay__ReleasesRoot` | 主源更新文件目录；Compose 当前固定为 `/var/lib/netrelay/releases` | 否 |
+| `NetRelay__FeedbackRoot` | 私有反馈附件目录；Compose 当前固定为 `/var/lib/netrelay/feedback-attachments` | 否 |
+| `NetRelay__StagingRoot` | 上传暂存目录 | 否 |
+| `NetRelay__QuarantineRoot` | 拒绝或待检查附件隔离目录 | 否 |
+| `DataProtection__KeysPath` | 管理会话与 TOTP Secret 保护密钥的持久化绝对目录 | 是，目录内容属于 Secret |
+
+当前 B1 将 Data Protection 密钥持久化到受控 Docker Volume，但尚未配置证书或外部密钥管理系统对密钥文件二次加密。部署时必须限制卷权限和备份访问；生产上线前需决定是否接入证书或 Secret/KMS 保护器。
 
 管理后台修改公开客户端配置时，后端必须生成可审计的签名 `client-configuration`，而不是直接修改客户端本地配置。
 
@@ -153,6 +165,16 @@ GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供�
 7. 发布静态官网和管理后台。
 8. 执行公开 API、管理登录和下载冒烟测试。
 9. 记录 Commit、镜像摘要、Migration 和发布时间。
+
+管理后台生产构建命令：
+
+```bash
+npm --prefix website/admin ci
+npm --prefix website/admin run build
+npm --prefix website/admin audit --audit-level=moderate
+```
+
+Nginx 将 `/admin` 重定向到 `/admin/`，管理后台使用同源 `/api/v1`。管理页面响应设置 CSP、禁止嵌入、禁止 MIME 嗅探和 `no-store`；完整登录流程必须通过 HTTPS 验证，因为管理会话 Cookie 强制标记为 `Secure`。
 
 客户端 Release 发布额外执行：
 

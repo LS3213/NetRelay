@@ -56,6 +56,17 @@ paths:
           description: Current administrator identity
         "401":
           $ref: "#/components/responses/Error"
+  /admin/auth/csrf:
+    get:
+      operationId: rotateAdminCsrf
+      summary: Rotate and return the CSRF token for the current administrator session
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      responses:
+        "200":
+          description: Rotated CSRF token
+        "401":
+          $ref: "#/components/responses/Error"
   /admin/auth/reauthenticate:
     post:
       operationId: reauthenticateAdmin
@@ -87,6 +98,17 @@ paths:
         "204":
           description: Session revoked or already absent
         "403":
+          $ref: "#/components/responses/Error"
+  /admin/audit/verify:
+    get:
+      operationId: verifyAdminAuditChain
+      summary: Verify the append-only administrator audit hash chain
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      responses:
+        "200":
+          description: Audit chain verification result
+        "401":
           $ref: "#/components/responses/Error"
   /devices/activate:
     post:

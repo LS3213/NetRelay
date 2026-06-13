@@ -11,7 +11,9 @@ OpenAPI 初稿见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该�
 - `NetRelay.Contracts` 中的协议头、错误码、统一响应和管理认证 DTO。
 - 请求 ID 生成与回传、`X-NetRelay-Protocol: 1` 校验、统一异常响应。
 - `/health/live` 与包含 MySQL 连通性的 `/health/ready`。
-- `/api/v1/admin/auth/login`、`totp`、`me`、`reauthenticate` 和 `logout`。
+- `/openapi/v1.yaml` 直接提供与仓库共同维护的运行时 OpenAPI。
+- `/api/v1/admin/auth/login`、`totp`、`me`、`csrf`、`reauthenticate` 和 `logout`。
+- `/api/v1/admin/audit/verify` 验证当前审计哈希链。
 
 尚未实现的公开客户端接口与其他管理业务接口仍以本文和 OpenAPI 作为设计，不得视为可调用接口。
 
@@ -180,7 +182,7 @@ OpenAPI 初稿见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该�
 
 | 分组 | 初步端点 |
 | --- | --- |
-| 认证 | `POST /auth/login`、`POST /auth/totp`、`POST /auth/logout`、`POST /auth/reauthenticate` |
+| 认证 | `POST /auth/login`、`POST /auth/totp`、`GET /auth/me`、`GET /auth/csrf`、`POST /auth/logout`、`POST /auth/reauthenticate` |
 | 设备 | `GET /devices`、`GET /devices/{id}` |
 | 封锁 | `POST /device-blocks`、`POST /device-blocks/{id}/revoke` |
 | 全局策略 | `GET /policies`、`POST /policies`、`POST /policies/{id}/revoke` |
@@ -196,10 +198,12 @@ B1 当前认证实现边界：
 
 - 密码验证成功只签发短时、受 Data Protection 保护且数据库一次性消费的 TOTP 挑战。
 - TOTP 成功后签发 `Secure`、`HttpOnly`、`SameSite=Strict` 的管理会话 Cookie。
-- CSRF Token 只在会话创建响应中返回，状态变更端点要求 `X-NetRelay-Csrf`。
+- CSRF Token 在会话创建响应中返回；已认证的同源管理端可通过 `GET /auth/csrf` 轮换并获取新 Token，旧 Token 立即失效；状态变更端点要求 `X-NetRelay-Csrf`。
 - 会话令牌和 CSRF Token 在数据库中只保存 SHA-256 哈希。
 - `reauthenticate` 更新短时重新认证窗口；`logout` 持久化撤销会话。
+- 未知用户名、错误密码和锁定账号对外统一返回认证失败；未知用户名仍执行虚拟密码哈希以降低时序泄露。
 - 当前未启用 CORS，因此浏览器跨域请求默认不被授权；管理后台部署后仍保持同源。
+- B1 管理后台当前只调用认证、重新认证和审计链校验接口；设备、更新、公告、反馈与封锁页面尚未实现。
 
 ## 7. 初始错误码
 

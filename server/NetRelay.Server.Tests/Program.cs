@@ -1,20 +1,40 @@
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using NetRelay.Contracts;
+using NetRelay.Server;
 using NetRelay.Server.Configuration;
 using NetRelay.Server.Data;
 using NetRelay.Server.Infrastructure;
 using NetRelay.Server.Security;
+using NetRelay.Server.Services;
 
-var tests = new (string Name, Action Run)[]
+var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Server options accept valid production-shaped configuration", TestValidOptions),
-    ("Server options reject insecure public URL", TestInvalidOptions),
-    ("Server options reject placeholder deployment values", TestPlaceholderOptions),
-    ("Password hashing verifies only the original password", TestPasswordHashing),
-    ("TOTP validates an RFC 6238-compatible code", TestTotp),
-    ("TOTP rejects invalid bootstrap secrets", TestInvalidTotpSecret),
-    ("Tokens hash deterministically without storing plaintext", TestTokens),
-    ("UUID v7 contains version, variant, and sortable timestamp", TestUuid7),
-    ("EF model enforces the B1 single-admin foundations", TestEfModel)
+    ("Server options accept valid production-shaped configuration", () => RunSync(TestValidOptions)),
+    ("Server options reject insecure public URL", () => RunSync(TestInvalidOptions)),
+    ("Server options reject placeholder deployment values", () => RunSync(TestPlaceholderOptions)),
+    ("Server options reject nested storage roots", () => RunSync(TestNestedStorageOptions)),
+    ("Password hashing verifies only the original password", () => RunSync(TestPasswordHashing)),
+    ("Unknown-user password verification follows the protected path", () => RunSync(TestDummyPasswordVerification)),
+    ("TOTP validates an RFC 6238-compatible code", () => RunSync(TestTotp)),
+    ("TOTP rejects invalid bootstrap secrets", () => RunSync(TestInvalidTotpSecret)),
+    ("Tokens hash deterministically without storing plaintext", () => RunSync(TestTokens)),
+    ("UUID v7 contains version, variant, and sortable timestamp", () => RunSync(TestUuid7)),
+    ("EF model enforces the B1 single-admin foundations", () => RunSync(TestEfModel)),
+    ("Managed storage rejects traversal and moves staged files", TestManagedStorageAsync),
+    ("Admin authentication consumes TOTP challenges once", TestAdminAuthenticationAsync),
+    ("Audit records form a verifiable hash chain", TestAuditHashChainAsync),
+    ("Runtime OpenAPI contract is included in server output", () => RunSync(TestRuntimeOpenApi)),
+    ("Admin HTTP authentication workflow enforces session and CSRF boundaries", TestAdminHttpWorkflowAsync)
 };
 
 var failed = 0;
@@ -22,7 +42,7 @@ foreach (var test in tests)
 {
     try
     {
-        test.Run();
+        await test.Run();
         Console.WriteLine($"PASS: {test.Name}");
     }
     catch (Exception exception)
@@ -43,17 +63,13 @@ Console.WriteLine($"{tests.Length} B1 server foundation tests passed.");
 
 static void TestValidOptions()
 {
-    var options = new ServerOptions
-    {
-        PublicBaseUrl = "https://netrelay.cn",
-        GithubRepository = "netrelay/netrelay"
-    };
+    var options = CreateOptions();
     Assert(ServerOptionsValidator.Validate(options) is null, "Valid options were rejected.");
 }
 
 static void TestInvalidOptions()
 {
-    var options = new ServerOptions
+    var options = CreateOptions() with
     {
         PublicBaseUrl = "http://netrelay.example",
         GithubRepository = "../repository"
@@ -63,12 +79,22 @@ static void TestInvalidOptions()
 
 static void TestPlaceholderOptions()
 {
-    var options = new ServerOptions
+    var options = CreateOptions() with
     {
         PublicBaseUrl = "https://localhost",
         GithubRepository = "owner/repository"
     };
     Assert(ServerOptionsValidator.Validate(options) is not null, "Placeholder deployment options were accepted.");
+}
+
+static void TestNestedStorageOptions()
+{
+    var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "netrelay-nested-options"));
+    var options = CreateOptions(root) with
+    {
+        FeedbackRoot = Path.Combine(root, "releases", "feedback")
+    };
+    Assert(ServerOptionsValidator.Validate(options) is not null, "Nested storage roots were accepted.");
 }
 
 static void TestPasswordHashing()
@@ -80,10 +106,17 @@ static void TestPasswordHashing()
     Assert(!service.Verify(hash, "incorrect"), "Incorrect password was accepted.");
 }
 
+static void TestDummyPasswordVerification()
+{
+    var service = new AdminPasswordService();
+    service.VerifyDummy("attacker-controlled-password");
+}
+
 static void TestTotp()
 {
     const string rfcSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
     var timestamp = DateTimeOffset.FromUnixTimeSeconds(59);
+    Assert(TotpService.GenerateCode(rfcSecret, timestamp) == "287082", "Known TOTP vector was not generated.");
     Assert(TotpService.Verify(rfcSecret, "287082", timestamp), "Known TOTP vector was rejected.");
     Assert(!TotpService.Verify(rfcSecret, "287083", timestamp), "Incorrect TOTP was accepted.");
 }
@@ -151,6 +184,357 @@ static void TestEfModel()
     Assert(session.GetIndexes().Any(index => index.IsUnique), "Session token must have a unique index.");
     Assert(audit.GetTableName() == "audit_logs", "Audit table name is invalid.");
     Assert(challenge.GetTableName() == "admin_login_challenges", "Login challenge table name is invalid.");
+    Assert(challenge.FindProperty(nameof(AdminLoginChallengeRecord.ConsumedAt))?.IsConcurrencyToken == true,
+        "Login challenge consumption must be concurrency protected.");
+}
+
+static async Task TestManagedStorageAsync()
+{
+    var root = CreateTemporaryDirectory();
+    try
+    {
+        var options = CreateOptions(root);
+        var storage = new ManagedFileStorage(Options.Create(options));
+        storage.EnsureDirectories();
+        var stagingPath = storage.Resolve(StorageArea.Staging, "upload.tmp");
+        await File.WriteAllTextAsync(stagingPath, "payload");
+        await storage.MoveFromStagingAsync("upload.tmp", StorageArea.Releases, Path.Combine("1.0.0", "asset.bin"));
+        Assert(File.Exists(storage.Resolve(StorageArea.Releases, "1.0.0", "asset.bin")), "Staged file was not moved.");
+        AssertThrows<InvalidOperationException>(() => storage.Resolve(StorageArea.Feedback, "..", "escape.txt"));
+        AssertThrows<InvalidOperationException>(() => storage.Resolve(StorageArea.Releases, Path.GetFullPath("escape")));
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestAdminAuthenticationAsync()
+{
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    try
+    {
+        await using var provider = CreateServiceProvider(root, "auth-" + Guid.NewGuid());
+        await using var scope = provider.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<NetRelayDbContext>();
+        var auth = scope.ServiceProvider.GetRequiredService<AdminAuthService>();
+        var password = scope.ServiceProvider.GetRequiredService<AdminPasswordService>();
+        var now = DateTimeOffset.UtcNow;
+        var account = new AdminAccount
+        {
+            Id = Uuid7.Create(now),
+            Username = "admin",
+            PasswordHash = password.Hash("correct horse battery staple"),
+            ProtectedTotpSecret = auth.ProtectTotpSecret(secret),
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        dbContext.AdminAccounts.Add(account);
+        await dbContext.SaveChangesAsync();
+
+        var wrong = await auth.LoginAsync("admin", "wrong", now, CancellationToken.None);
+        Assert(!wrong.Success, "Wrong password was accepted.");
+        var login = await auth.LoginAsync("admin", "correct horse battery staple", now, CancellationToken.None);
+        Assert(login.Success && login.Challenge is not null, "Correct password did not create a challenge.");
+        var code = TotpService.GenerateCode(secret, now);
+        var session = await auth.CompleteTotpAsync(login.Challenge!.ChallengeToken, code, now, CancellationToken.None);
+        Assert(session.Success && session.SessionToken is not null && session.CsrfToken is not null,
+            "TOTP did not create a session.");
+        var replay = await auth.CompleteTotpAsync(login.Challenge.ChallengeToken, code, now, CancellationToken.None);
+        Assert(!replay.Success, "Consumed TOTP challenge was accepted again.");
+        var resolved = await auth.ResolveSessionAsync(session.SessionToken, now, CancellationToken.None);
+        Assert(resolved is not null, "Created session could not be resolved.");
+        Assert(auth.VerifyCsrf(resolved!, session.CsrfToken), "Valid CSRF token was rejected.");
+        Assert(!auth.VerifyCsrf(resolved!, session.CsrfToken + "x"), "Invalid CSRF token was accepted.");
+        var expired = await auth.ResolveSessionAsync(session.SessionToken, now.AddDays(1), CancellationToken.None);
+        Assert(expired is null, "Expired session remained usable.");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestAuditHashChainAsync()
+{
+    var root = CreateTemporaryDirectory();
+    try
+    {
+        await using var provider = CreateServiceProvider(root, "audit-" + Guid.NewGuid());
+        await using var scope = provider.CreateAsyncScope();
+        var audit = scope.ServiceProvider.GetRequiredService<AuditService>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<NetRelayDbContext>();
+        await audit.WriteAsync("test.first", "success", "request-1");
+        await audit.WriteAsync("test.second", "failure", "request-2");
+        var records = await dbContext.AuditLogs.OrderBy(item => item.Id).ToListAsync();
+        Assert(records.Count == 2, "Audit records were not written.");
+        Assert(records[0].PreviousHash is null, "First audit record must start the chain.");
+        Assert(records[1].PreviousHash == records[0].EntryHash, "Audit hash chain is broken.");
+        Assert(records.All(item => item.EntryHash.Length == 64), "Audit entry hash is invalid.");
+        var valid = await audit.VerifyChainAsync();
+        Assert(valid.Valid && valid.VerifiedRecords == 2, "Valid audit chain was rejected.");
+        records[0].Result = "tampered";
+        await dbContext.SaveChangesAsync();
+        var invalid = await audit.VerifyChainAsync();
+        Assert(!invalid.Valid && invalid.InvalidRecordId == records[0].Id, "Tampered audit chain was accepted.");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void TestRuntimeOpenApi()
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "OpenApi", "netrelay-v1.yaml");
+    Assert(File.Exists(path), "Runtime OpenAPI contract was not copied to output.");
+    Assert(File.ReadAllText(path).Contains("/admin/auth/login:", StringComparison.Ordinal),
+        "Runtime OpenAPI contract does not contain implemented authentication endpoints.");
+}
+
+static async Task TestAdminHttpWorkflowAsync()
+{
+    const string password = "correct horse battery staple";
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    var environment = ApplyTestEnvironment(root, password, secret);
+    try
+    {
+        await using var factory = new TestServerFactory(root, password, secret);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        ApiResponse<AdminLoginChallenge>? login = null;
+        for (var attempt = 0; attempt < 20 && login is null; attempt++)
+        {
+            var response = await SendJsonAsync(
+                client,
+                HttpMethod.Post,
+                "/api/v1/admin/auth/login",
+                new AdminLoginRequest("admin", password));
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                login = await response.Content.ReadFromJsonAsync<ApiResponse<AdminLoginChallenge>>();
+                break;
+            }
+
+            await Task.Delay(50);
+        }
+
+        Assert(login is not null, "Administrator bootstrap or password login did not complete.");
+        var totp = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new AdminTotpRequest(login!.Data.ChallengeToken, TotpService.GenerateCode(secret, DateTimeOffset.UtcNow)));
+        Assert(totp.StatusCode == HttpStatusCode.OK, "TOTP endpoint rejected a valid code.");
+        var session = await totp.Content.ReadFromJsonAsync<ApiResponse<AdminSessionResponse>>() ??
+            throw new InvalidOperationException("Session response was missing.");
+
+        var replay = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new AdminTotpRequest(login.Data.ChallengeToken, TotpService.GenerateCode(secret, DateTimeOffset.UtcNow)));
+        Assert(replay.StatusCode == HttpStatusCode.Unauthorized, "TOTP challenge replay was accepted.");
+
+        var malformedTotp = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new { challengeToken = login.Data.ChallengeToken });
+        Assert(malformedTotp.StatusCode == HttpStatusCode.BadRequest, "Malformed TOTP request did not return 400.");
+
+        var identity = await SendAsync(client, HttpMethod.Get, "/api/v1/admin/auth/me");
+        Assert(identity.StatusCode == HttpStatusCode.OK, "Authenticated session was rejected.");
+        var csrfResponse = await SendAsync(client, HttpMethod.Get, "/api/v1/admin/auth/csrf");
+        Assert(csrfResponse.StatusCode == HttpStatusCode.OK, "Authenticated CSRF rotation was rejected.");
+        var rotatedCsrf = await csrfResponse.Content.ReadFromJsonAsync<ApiResponse<AdminCsrfResponse>>() ??
+            throw new InvalidOperationException("CSRF rotation response was missing.");
+
+        var missingCsrf = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password));
+        Assert(missingCsrf.StatusCode == HttpStatusCode.Forbidden, "Reauthentication without CSRF was accepted.");
+        var oldCsrf = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            session.Data.CsrfToken);
+        Assert(oldCsrf.StatusCode == HttpStatusCode.Forbidden, "Rotated-out CSRF token remained valid.");
+
+        var reauthenticated = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            rotatedCsrf.Data.CsrfToken);
+        Assert(reauthenticated.StatusCode == HttpStatusCode.NoContent, "Valid reauthentication was rejected.");
+
+        var audit = await SendAsync(client, HttpMethod.Get, "/api/v1/admin/audit/verify");
+        Assert(audit.StatusCode == HttpStatusCode.OK, "Authenticated audit verification was rejected.");
+        var auditResult = await audit.Content.ReadFromJsonAsync<ApiResponse<AuditChainVerificationResult>>() ??
+            throw new InvalidOperationException("Audit verification response was missing.");
+        Assert(auditResult.Data.Valid, "HTTP workflow produced an invalid audit chain.");
+
+        var logout = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/logout",
+            new { },
+            rotatedCsrf.Data.CsrfToken);
+        Assert(logout.StatusCode == HttpStatusCode.NoContent, "Valid logout was rejected.");
+        var afterLogout = await SendAsync(client, HttpMethod.Get, "/api/v1/admin/auth/me");
+        Assert(afterLogout.StatusCode == HttpStatusCode.Unauthorized, "Revoked session remained usable.");
+
+        var rateLimited = false;
+        for (var attempt = 0; attempt < 15; attempt++)
+        {
+            var response = await SendJsonAsync(
+                client,
+                HttpMethod.Post,
+                "/api/v1/admin/auth/login",
+                new AdminLoginRequest("unknown", "invalid"));
+            rateLimited |= response.StatusCode == HttpStatusCode.TooManyRequests;
+        }
+        Assert(rateLimited, "Administrator login rate limiting did not return 429.");
+    }
+    finally
+    {
+        RestoreEnvironment(environment);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static Task<HttpResponseMessage> SendAsync(HttpClient client, HttpMethod method, string path, string? csrf = null)
+{
+    var request = new HttpRequestMessage(method, path);
+    request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+    if (csrf is not null)
+    {
+        request.Headers.Add(Protocol.CsrfHeader, csrf);
+    }
+
+    return client.SendAsync(request);
+}
+
+static Task<HttpResponseMessage> SendJsonAsync<T>(
+    HttpClient client,
+    HttpMethod method,
+    string path,
+    T body,
+    string? csrf = null)
+{
+    var request = new HttpRequestMessage(method, path)
+    {
+        Content = JsonContent.Create(body, options: new JsonSerializerOptions(JsonSerializerDefaults.Web))
+    };
+    request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+    if (csrf is not null)
+    {
+        request.Headers.Add(Protocol.CsrfHeader, csrf);
+    }
+
+    return client.SendAsync(request);
+}
+
+static ServiceProvider CreateServiceProvider(string root, string databaseName)
+{
+    var services = new ServiceCollection();
+    services.AddLogging();
+    services.AddDbContext<NetRelayDbContext>(options => options.UseInMemoryDatabase(databaseName));
+    services.AddDataProtection()
+        .SetApplicationName("NetRelay.Server.Tests")
+        .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "keys")));
+    services.AddSingleton<AdminPasswordService>();
+    services.AddScoped<AdminAuthService>();
+    services.AddScoped<AuditService>();
+    services.AddSingleton<IOptions<ServerOptions>>(Options.Create(CreateOptions(root)));
+    return services.BuildServiceProvider();
+}
+
+static ServerOptions CreateOptions(string? root = null)
+{
+    root ??= Path.GetFullPath(Path.Combine(Path.GetTempPath(), "netrelay-options"));
+    return new ServerOptions
+    {
+        PublicBaseUrl = "https://netrelay.cn",
+        GithubRepository = "netrelay/netrelay",
+        ReleasesRoot = Path.Combine(root, "releases"),
+        FeedbackRoot = Path.Combine(root, "feedback"),
+        StagingRoot = Path.Combine(root, "staging"),
+        QuarantineRoot = Path.Combine(root, "quarantine")
+    };
+}
+
+static string CreateTemporaryDirectory()
+{
+    var path = Path.Combine(Path.GetTempPath(), "NetRelay.Server.Tests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(path);
+    return path;
+}
+
+static Dictionary<string, string?> ApplyTestEnvironment(string root, string password, string secret)
+{
+    var values = new Dictionary<string, string?>
+    {
+        ["ConnectionStrings__NetRelay"] = "Server=unused;Database=unused;User=unused;Password=unused",
+        ["NetRelay__PublicBaseUrl"] = "https://netrelay.cn",
+        ["NetRelay__GithubRepository"] = "netrelay/netrelay",
+        ["NetRelay__ReleasesRoot"] = Path.Combine(root, "releases"),
+        ["NetRelay__FeedbackRoot"] = Path.Combine(root, "feedback"),
+        ["NetRelay__StagingRoot"] = Path.Combine(root, "staging"),
+        ["NetRelay__QuarantineRoot"] = Path.Combine(root, "quarantine"),
+        ["NetRelay__AutoMigrate"] = "false",
+        ["BootstrapAdmin__Username"] = "admin",
+        ["BootstrapAdmin__Password"] = password,
+        ["BootstrapAdmin__TotpSecret"] = secret,
+        ["DataProtection__KeysPath"] = Path.Combine(root, "keys")
+    };
+    var previous = values.Keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);
+    foreach (var value in values)
+    {
+        Environment.SetEnvironmentVariable(value.Key, value.Value);
+    }
+
+    return previous;
+}
+
+static void RestoreEnvironment(IReadOnlyDictionary<string, string?> previous)
+{
+    foreach (var value in previous)
+    {
+        Environment.SetEnvironmentVariable(value.Key, value.Value);
+    }
+}
+
+static Task RunSync(Action action)
+{
+    action();
+    return Task.CompletedTask;
+}
+
+static void AssertThrows<TException>(Action action)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected {typeof(TException).Name} was not thrown.");
 }
 
 static void Assert(bool condition, string message)
@@ -158,5 +542,57 @@ static void Assert(bool condition, string message)
     if (!condition)
     {
         throw new InvalidOperationException(message);
+    }
+}
+
+sealed class TestServerFactory(string root, string password, string secret) : WebApplicationFactory<ServerApplication>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseContentRoot(FindServerContentRoot());
+        builder.UseEnvironment("Testing");
+        builder.ConfigureAppConfiguration((_, configuration) =>
+        {
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:NetRelay"] = "Server=unused;Database=unused;User=unused;Password=unused",
+                ["NetRelay:PublicBaseUrl"] = "https://netrelay.cn",
+                ["NetRelay:GithubRepository"] = "netrelay/netrelay",
+                ["NetRelay:ReleasesRoot"] = Path.Combine(root, "releases"),
+                ["NetRelay:FeedbackRoot"] = Path.Combine(root, "feedback"),
+                ["NetRelay:StagingRoot"] = Path.Combine(root, "staging"),
+                ["NetRelay:QuarantineRoot"] = Path.Combine(root, "quarantine"),
+                ["NetRelay:AutoMigrate"] = "false",
+                ["BootstrapAdmin:Username"] = "admin",
+                ["BootstrapAdmin:Password"] = password,
+                ["BootstrapAdmin:TotpSecret"] = secret,
+                ["DataProtection:KeysPath"] = Path.Combine(root, "keys")
+            });
+        });
+        builder.ConfigureServices(services =>
+        {
+            var databaseName = "http-" + Guid.NewGuid();
+            services.RemoveAll<DbContextOptions<NetRelayDbContext>>();
+            services.RemoveAll<NetRelayDbContext>();
+            services.AddDbContext<NetRelayDbContext>(
+                options => options.UseInMemoryDatabase(databaseName));
+        });
+    }
+
+    private static string FindServerContentRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "server", "NetRelay.Server", "NetRelay.Server.csproj");
+            if (File.Exists(candidate))
+            {
+                return Path.GetDirectoryName(candidate)!;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("NetRelay.Server project directory was not found.");
     }
 }

@@ -15,7 +15,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 RUN addgroup --system netrelay \
     && adduser --system --ingroup netrelay netrelay \
-    && mkdir -p /var/lib/netrelay/data-protection /var/lib/netrelay/releases /var/lib/netrelay/feedback-attachments \
+    && mkdir -p /var/lib/netrelay/data-protection /var/lib/netrelay/releases /var/lib/netrelay/feedback-attachments /var/lib/netrelay/staging /var/lib/netrelay/quarantine \
     && chown -R netrelay:netrelay /var/lib/netrelay
 COPY --from=build /app/publish .
 USER netrelay

@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace NetRelay.Server.Configuration;
 
-public sealed class ServerOptions
+public sealed record class ServerOptions
 {
     public const string SectionName = "NetRelay";
 
@@ -11,6 +11,18 @@ public sealed class ServerOptions
 
     [Required]
     public string GithubRepository { get; init; } = string.Empty;
+
+    [Required]
+    public string ReleasesRoot { get; init; } = string.Empty;
+
+    [Required]
+    public string FeedbackRoot { get; init; } = string.Empty;
+
+    [Required]
+    public string StagingRoot { get; init; } = string.Empty;
+
+    [Required]
+    public string QuarantineRoot { get; init; } = string.Empty;
 
     public bool AutoMigrate { get; init; }
 
@@ -50,6 +62,45 @@ public static class ServerOptionsValidator
             return "NetRelay:GithubRepository must use owner/repository format.";
         }
 
+        string[] storageRoots;
+        try
+        {
+            storageRoots =
+            [
+                NormalizeRoot(options.ReleasesRoot),
+                NormalizeRoot(options.FeedbackRoot),
+                NormalizeRoot(options.StagingRoot),
+                NormalizeRoot(options.QuarantineRoot)
+            ];
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            return "All NetRelay storage roots must be valid absolute paths.";
+        }
+
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        for (var left = 0; left < storageRoots.Length; left++)
+        {
+            for (var right = left + 1; right < storageRoots.Length; right++)
+            {
+                if (storageRoots[left].StartsWith(storageRoots[right], comparison) ||
+                    storageRoots[right].StartsWith(storageRoots[left], comparison))
+                {
+                    return "NetRelay storage roots must be distinct and must not contain one another.";
+                }
+            }
+        }
+
         return null;
+    }
+
+    private static string NormalizeRoot(string path)
+    {
+        if (!Path.IsPathFullyQualified(path))
+        {
+            throw new ArgumentException("Storage root must be absolute.", nameof(path));
+        }
+
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar;
     }
 }

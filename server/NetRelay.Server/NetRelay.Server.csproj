@@ -20,4 +20,11 @@
     <ProjectReference Include="..\..\src\NetRelay.Contracts\NetRelay.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\docs\openapi\netrelay-v1.yaml" Link="OpenApi\netrelay-v1.yaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

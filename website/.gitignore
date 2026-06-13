@@ -1,2 +1,8 @@
 downloads/*
 !downloads/.gitkeep
+admin/node_modules/
+admin/dist/
+admin/.npm-cache/
+admin/*.tsbuildinfo
+admin/vite.config.js
+admin/vite.config.d.ts

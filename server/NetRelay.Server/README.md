@@ -10,6 +10,10 @@ ASP.NET Core 8 后端。B1 当前实现管理认证基础、MySQL EF Core 模型
 $env:ConnectionStrings__NetRelay = "Server=localhost;Port=3306;Database=netrelay;User=netrelay;Password=..."
 $env:NetRelay__PublicBaseUrl = "https://netrelay.example"
 $env:NetRelay__GithubRepository = "owner/repository"
+$env:NetRelay__ReleasesRoot = "D:\netrelay-data\releases"
+$env:NetRelay__FeedbackRoot = "D:\netrelay-data\feedback"
+$env:NetRelay__StagingRoot = "D:\netrelay-data\staging"
+$env:NetRelay__QuarantineRoot = "D:\netrelay-data\quarantine"
 $env:NetRelay__AutoMigrate = "false"
 $env:BootstrapAdmin__Username = "admin"
 $env:BootstrapAdmin__Password = "..."
@@ -29,4 +33,4 @@ dotnet tool run dotnet-ef migrations add <Name> --project server/NetRelay.Server
 dotnet run --project server/NetRelay.Server -- --migrate
 ```
 
-`/health/live` 不访问数据库；`/health/ready` 检查 MySQL 连通性。
+`/health/live` 不访问数据库；`/health/ready` 检查 MySQL 连通性；`/openapi/v1.yaml` 提供运行时契约。

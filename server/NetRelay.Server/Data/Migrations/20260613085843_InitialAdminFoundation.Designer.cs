@@ -12,7 +12,7 @@ using NetRelay.Server.Data;
 namespace NetRelay.Server.Data.Migrations
 {
     [DbContext(typeof(NetRelayDbContext))]
-    [Migration("20260613082750_InitialAdminFoundation")]
+    [Migration("20260613085843_InitialAdminFoundation")]
     partial class InitialAdminFoundation
     {
         /// <inheritdoc />
@@ -97,6 +97,7 @@ namespace NetRelay.Server.Data.Migrations
                         .HasColumnName("admin_account_id");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetime(6)")
                         .HasColumnName("consumed_at");
 

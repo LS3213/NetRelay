@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NetRelay.Contracts;
@@ -11,6 +12,13 @@ using NetRelay.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 1024 * 1024);
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(options =>
+{
+    options.IncludeScopes = true;
+    options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+    options.UseUtcTimestamp = true;
+});
 
 builder.Services.AddOptions<ServerOptions>()
     .Bind(builder.Configuration.GetSection(ServerOptions.SectionName))
@@ -36,6 +44,13 @@ var dataProtection = builder.Services.AddDataProtection().SetApplicationName("Ne
 dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath));
 
 builder.Services.AddHealthChecks().AddCheck<MySqlHealthCheck>("mysql");
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -62,9 +77,12 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton<AdminPasswordService>();
 builder.Services.AddScoped<AdminAuthService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddSingleton<ManagedFileStorage>();
+builder.Services.AddHostedService<StorageInitializationService>();
 builder.Services.AddHostedService<AdminBootstrapService>();
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseMiddleware<RequestIdentityMiddleware>();
 app.UseRateLimiter();
@@ -75,13 +93,22 @@ app.MapHealthChecks("/health/live", new()
     Predicate = _ => false
 });
 app.MapHealthChecks("/health/ready");
+app.MapGet("/openapi/v1.yaml", async (CancellationToken cancellationToken) =>
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "OpenApi", "netrelay-v1.yaml");
+    return Results.File(
+        await File.ReadAllBytesAsync(path, cancellationToken),
+        "application/yaml; charset=utf-8");
+});
 
 var adminAuth = app.MapGroup("/api/v1/admin/auth");
 adminAuth.MapPost("/login", LoginAsync).RequireRateLimiting("admin-login");
 adminAuth.MapPost("/totp", CompleteTotpAsync).RequireRateLimiting("admin-login");
 adminAuth.MapGet("/me", GetIdentityAsync);
+adminAuth.MapGet("/csrf", RotateCsrfAsync);
 adminAuth.MapPost("/reauthenticate", ReauthenticateAsync).RequireRateLimiting("admin-login");
 adminAuth.MapPost("/logout", LogoutAsync);
+app.MapGet("/api/v1/admin/audit/verify", VerifyAuditAsync);
 
 if (args.Contains("--migrate", StringComparer.Ordinal))
 {
@@ -142,6 +169,7 @@ static async Task<IResult> CompleteTotpAsync(
 {
     if (string.IsNullOrWhiteSpace(request.ChallengeToken) ||
         request.ChallengeToken.Length > 4096 ||
+        string.IsNullOrWhiteSpace(request.Code) ||
         request.Code.Length != 6 ||
         !request.Code.All(char.IsAsciiDigit))
     {
@@ -263,6 +291,28 @@ static async Task<IResult> ReauthenticateAsync(
     return Results.NoContent();
 }
 
+static async Task<IResult> RotateCsrfAsync(
+    HttpContext context,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(
+            context,
+            StatusCodes.Status401Unauthorized,
+            ErrorCodes.AdminAuthenticationRequired,
+            "需要管理员认证。");
+    }
+
+    var token = await authService.RotateCsrfAsync(session, cancellationToken);
+    return Results.Ok(
+        new ApiResponse<AdminCsrfResponse>(
+            ApiInfrastructure.GetRequestId(context),
+            new AdminCsrfResponse(token)));
+}
+
 static async Task<IResult> LogoutAsync(
     HttpContext context,
     AdminAuthService authService,
@@ -295,6 +345,26 @@ static async Task<IResult> LogoutAsync(
         session.AdminAccountId,
         cancellationToken: cancellationToken);
     return Results.NoContent();
+}
+
+static async Task<IResult> VerifyAuditAsync(
+    HttpContext context,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(
+            context,
+            StatusCodes.Status401Unauthorized,
+            ErrorCodes.AdminAuthenticationRequired,
+            "需要管理员认证。");
+    }
+
+    var result = await auditService.VerifyChainAsync(cancellationToken);
+    return Results.Ok(new ApiResponse<AuditChainVerificationResult>(ApiInfrastructure.GetRequestId(context), result));
 }
 
 static async Task<AdminSession?> ResolveRequiredSessionAsync(

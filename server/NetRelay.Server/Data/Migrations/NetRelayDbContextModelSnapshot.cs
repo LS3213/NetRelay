@@ -94,6 +94,7 @@ namespace NetRelay.Server.Data.Migrations
                         .HasColumnName("admin_account_id");
 
                     b.Property<DateTimeOffset?>("ConsumedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetime(6)")
                         .HasColumnName("consumed_at");
 

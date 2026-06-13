@@ -53,12 +53,14 @@ public sealed class AdminAuthService
             cancellationToken);
         if (account is null)
         {
+            _passwordService.VerifyDummy(password);
             return new LoginResult(false, ErrorCodes.AdminAuthenticationRequired, null);
         }
 
         if (account.LockedUntil > now)
         {
-            return new LoginResult(false, ErrorCodes.AdminAccountLocked, null);
+            _passwordService.VerifyDummy(password);
+            return new LoginResult(false, ErrorCodes.AdminAuthenticationRequired, null);
         }
 
         if (!_passwordService.Verify(account.PasswordHash, password))
@@ -146,7 +148,15 @@ public sealed class AdminAuthService
         };
         session.AdminAccount = account;
         _dbContext.AdminSessions.Add(session);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return new SessionCreationResult(false, ErrorCodes.AdminTotpRequired, null, null, null);
+        }
+
         return new SessionCreationResult(true, null, session, sessionToken, csrfToken);
     }
 
@@ -179,6 +189,14 @@ public sealed class AdminAuthService
 
     public bool VerifyPassword(AdminSession session, string password) =>
         session.AdminAccount is not null && _passwordService.Verify(session.AdminAccount.PasswordHash, password);
+
+    public async Task<string> RotateCsrfAsync(AdminSession session, CancellationToken cancellationToken)
+    {
+        var token = TokenService.CreateToken();
+        session.CsrfTokenHash = TokenService.Hash(token);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return token;
+    }
 
     public string ProtectTotpSecret(string base32Secret) => _totpProtector.Protect(base32Secret);
 

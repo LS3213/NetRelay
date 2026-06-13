@@ -18,3 +18,5 @@ public sealed record AdminIdentityResponse(
     string Username,
     DateTimeOffset ExpiresAt,
     DateTimeOffset ReauthenticationExpiresAt);
+
+public sealed record AdminCsrfResponse(string CsrfToken);
