@@ -2,7 +2,7 @@
 
 [上一篇：后端安全、签名与隐私规范](14-backend-security-signing-and-privacy.md) | [返回索引](README.md)
 
-> 状态：B1 实现中。目标平台为用户自有 Ubuntu 服务器；Dockerfile、Compose、Nginx 与运维脚本已创建，当前本机未安装 Docker，真实部署、备份与恢复仍待验收。
+> 状态：B1 验收中。目标平台为用户自有 Ubuntu 服务器；宝塔便携路径已完成真实 Ubuntu、Nginx、HTTPS、MySQL 首次安装与管理登录验证，Docker Compose、备份与恢复仍待验收。
 
 ## 1. 已确定拓扑
 
@@ -85,8 +85,29 @@ API 日志使用 JSON Console 输出，包含 UTC 时间、类别、级别、请
 - `deploy/scripts/backup.sh`
 - `deploy/scripts/restore.sh`
 - `website/admin/`
+- `deploy/baota/`
 
 这些文件尚未在 Docker/Ubuntu 环境运行，不得视为部署验收通过。
+
+### 3.1 宝塔便携部署路径
+
+宝塔便携路径用于不希望在服务器安装 Docker、Node.js 或 .NET Runtime 的场景。Windows 构建机预先生成 Linux x64 自包含后端和管理后台静态文件，服务器只需 Nginx、MySQL 8、systemd 和 OpenSSL。
+
+```text
+/www/wwwroot/netrelay/          # 便携包和唯一公开的 public/
+/www/server/netrelay/config/    # 运行配置、安装锁和 Data Protection 密钥
+/www/server/netrelay/data/      # 发布、附件、暂存和隔离文件
+```
+
+首次访问 `/install/` 时，安装 API 使用一次性令牌验证操作者，测试既有 MySQL 数据库、执行 Migration、创建唯一管理员并写入安装锁。安装完成后令牌被删除，安装 API 不再注册；安装锁存在但配置损坏时服务失败关闭，不重新开放安装器。
+
+构建命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
+```
+
+详细流程、安全边界和验收状态见 [宝塔便携部署与首次安装向导](18-baota-portable-deployment.md)。
 
 ## 4. 域名和路由
 

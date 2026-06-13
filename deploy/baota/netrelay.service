@@ -1,0 +1,22 @@
+[Unit]
+Description=NetRelay backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__PACKAGE_ROOT__/app
+Environment=ASPNETCORE_URLS=http://127.0.0.1:18080
+Environment=NETRELAY_CONFIG_DIR=__CONFIG_ROOT__
+Environment=NETRELAY_INSTALL_MODE=true
+ExecStart=__PACKAGE_ROOT__/app/NetRelay.Server
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -14,6 +14,7 @@ using NetRelay.Server;
 using NetRelay.Server.Configuration;
 using NetRelay.Server.Data;
 using NetRelay.Server.Infrastructure;
+using NetRelay.Server.Installation;
 using NetRelay.Server.Security;
 using NetRelay.Server.Services;
 
@@ -34,6 +35,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Admin authentication consumes TOTP challenges once", TestAdminAuthenticationAsync),
     ("Audit records form a verifiable hash chain", TestAuditHashChainAsync),
     ("Runtime OpenAPI contract is included in server output", () => RunSync(TestRuntimeOpenApi)),
+    ("Installation state requires a protected token and permanent lock", () => RunSync(TestInstallationState)),
+    ("Installation mode exposes only the protected installer", TestInstallationHttpBoundaryAsync),
     ("Admin HTTP authentication workflow enforces session and CSRF boundaries", TestAdminHttpWorkflowAsync)
 };
 
@@ -237,6 +240,10 @@ static async Task TestAdminAuthenticationAsync()
         Assert(!wrong.Success, "Wrong password was accepted.");
         var login = await auth.LoginAsync("admin", "correct horse battery staple", now, CancellationToken.None);
         Assert(login.Success && login.Challenge is not null, "Correct password did not create a challenge.");
+        var challengeRecord = await dbContext.AdminLoginChallenges.SingleAsync();
+        Assert(
+            challengeRecord.ExpiresAt.UtcTicks % 10 == 0,
+            "Login challenge expiration must fit MySQL datetime(6) precision.");
         var code = TotpService.GenerateCode(secret, now);
         var session = await auth.CompleteTotpAsync(login.Challenge!.ChallengeToken, code, now, CancellationToken.None);
         Assert(session.Success && session.SessionToken is not null && session.CsrfToken is not null,
@@ -291,6 +298,116 @@ static void TestRuntimeOpenApi()
     Assert(File.Exists(path), "Runtime OpenAPI contract was not copied to output.");
     Assert(File.ReadAllText(path).Contains("/admin/auth/login:", StringComparison.Ordinal),
         "Runtime OpenAPI contract does not contain implemented authentication endpoints.");
+}
+
+static void TestInstallationState()
+{
+    var root = CreateTemporaryDirectory();
+    var previous = new Dictionary<string, string?>
+    {
+        [InstallationState.ConfigDirectoryEnvironment] =
+            Environment.GetEnvironmentVariable(InstallationState.ConfigDirectoryEnvironment),
+        [InstallationState.InstallModeEnvironment] =
+            Environment.GetEnvironmentVariable(InstallationState.InstallModeEnvironment),
+        [InstallationState.InstallTokenEnvironment] =
+            Environment.GetEnvironmentVariable(InstallationState.InstallTokenEnvironment)
+    };
+    try
+    {
+        Environment.SetEnvironmentVariable(InstallationState.ConfigDirectoryEnvironment, root);
+        Environment.SetEnvironmentVariable(InstallationState.InstallModeEnvironment, "true");
+        Environment.SetEnvironmentVariable(InstallationState.InstallTokenEnvironment, null);
+        File.WriteAllText(Path.Combine(root, "install.token"), new string('a', 64));
+        var state = new InstallationState();
+        Assert(state.IsInstallMode && !state.IsInstalled, "Fresh portable deployment did not enter install mode.");
+        Assert(state.VerifyInstallToken(new string('a', 64)), "Valid install token was rejected.");
+        Assert(!state.VerifyInstallToken("short"), "Invalid-length install token was accepted.");
+        File.WriteAllText(state.InstallLockPath, "{}");
+        var lockedWithoutConfig = new InstallationState();
+        Assert(
+            !lockedWithoutConfig.IsInstalled && !lockedWithoutConfig.IsInstallMode,
+            "An install lock without runtime configuration reopened the installer.");
+        File.WriteAllText(state.RuntimeConfigPath, "{}");
+        var installed = new InstallationState();
+        Assert(installed.IsInstalled && !installed.IsInstallMode, "Install lock did not permanently disable install mode.");
+    }
+    finally
+    {
+        RestoreEnvironment(previous);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestInstallationHttpBoundaryAsync()
+{
+    var root = CreateTemporaryDirectory();
+    var previous = new Dictionary<string, string?>
+    {
+        [InstallationState.ConfigDirectoryEnvironment] =
+            Environment.GetEnvironmentVariable(InstallationState.ConfigDirectoryEnvironment),
+        [InstallationState.InstallModeEnvironment] =
+            Environment.GetEnvironmentVariable(InstallationState.InstallModeEnvironment),
+        [InstallationState.InstallTokenEnvironment] =
+            Environment.GetEnvironmentVariable(InstallationState.InstallTokenEnvironment)
+    };
+    try
+    {
+        Environment.SetEnvironmentVariable(InstallationState.ConfigDirectoryEnvironment, root);
+        Environment.SetEnvironmentVariable(InstallationState.InstallModeEnvironment, "true");
+        Environment.SetEnvironmentVariable(InstallationState.InstallTokenEnvironment, new string('b', 64));
+        await using var factory = new InstallServerFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            AllowAutoRedirect = false
+        });
+
+        var installer = await client.GetAsync("/install/");
+        Assert(installer.StatusCode == HttpStatusCode.OK, "Install page was not available in install mode.");
+        var ordinaryApi = await client.GetAsync("/api/v1/admin/auth/me");
+        Assert(ordinaryApi.StatusCode == HttpStatusCode.Redirect, "Ordinary API was exposed in install mode.");
+        var missingToken = await client.PostAsJsonAsync(
+            "/install/api/test-database",
+            new DatabaseInstallationRequest("127.0.0.1", 3306, "netrelay", "netrelay", "password"));
+        Assert(missingToken.StatusCode == HttpStatusCode.Forbidden, "Installer API accepted a missing install token.");
+        using var wrongTokenRequest = new HttpRequestMessage(HttpMethod.Post, "/install/api/test-database")
+        {
+            Content = JsonContent.Create(
+                new DatabaseInstallationRequest("127.0.0.1", 3306, "netrelay", "netrelay", "password"))
+        };
+        wrongTokenRequest.Headers.Add(InstallationEndpoints.InstallTokenHeader, "short");
+        var wrongToken = await client.SendAsync(wrongTokenRequest);
+        Assert(wrongToken.StatusCode == HttpStatusCode.Forbidden, "Installer API accepted an invalid install token.");
+
+        using var totpRequest = new HttpRequestMessage(HttpMethod.Post, "/install/api/totp-setup")
+        {
+            Content = JsonContent.Create(new TotpSetupRequest("admin"))
+        };
+        totpRequest.Headers.Add(InstallationEndpoints.InstallTokenHeader, new string('b', 64));
+        var totpResponse = await client.SendAsync(totpRequest);
+        Assert(totpResponse.StatusCode == HttpStatusCode.OK, "Protected TOTP setup endpoint was unavailable.");
+        var totpSetup = await totpResponse.Content.ReadFromJsonAsync<TotpSetupResponse>() ??
+            throw new InvalidOperationException("TOTP setup response was missing.");
+        Assert(TotpService.IsValidSecret(totpSetup.Secret), "Generated TOTP secret was invalid.");
+        Assert(
+            totpSetup.QrCodeDataUri.StartsWith("data:image/svg+xml;base64,", StringComparison.Ordinal),
+            "TOTP setup did not return an inline SVG QR code.");
+        using var verifyTotpRequest = new HttpRequestMessage(HttpMethod.Post, "/install/api/totp-verify")
+        {
+            Content = JsonContent.Create(
+                new TotpVerificationRequest(
+                    totpSetup.Secret,
+                    TotpService.GenerateCode(totpSetup.Secret, DateTimeOffset.UtcNow)))
+        };
+        verifyTotpRequest.Headers.Add(InstallationEndpoints.InstallTokenHeader, new string('b', 64));
+        var verifyTotpResponse = await client.SendAsync(verifyTotpRequest);
+        Assert(verifyTotpResponse.StatusCode == HttpStatusCode.OK, "Generated TOTP setup could not be verified.");
+    }
+    finally
+    {
+        RestoreEnvironment(previous);
+        Directory.Delete(root, recursive: true);
+    }
 }
 
 static async Task TestAdminHttpWorkflowAsync()
@@ -577,6 +694,32 @@ sealed class TestServerFactory(string root, string password, string secret) : We
             services.AddDbContext<NetRelayDbContext>(
                 options => options.UseInMemoryDatabase(databaseName));
         });
+    }
+
+    private static string FindServerContentRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "server", "NetRelay.Server", "NetRelay.Server.csproj");
+            if (File.Exists(candidate))
+            {
+                return Path.GetDirectoryName(candidate)!;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("NetRelay.Server project directory was not found.");
+    }
+}
+
+sealed class InstallServerFactory : WebApplicationFactory<ServerApplication>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseContentRoot(FindServerContentRoot());
+        builder.UseEnvironment("Testing");
     }
 
     private static string FindServerContentRoot()

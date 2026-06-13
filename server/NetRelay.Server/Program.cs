@@ -7,10 +7,16 @@ using NetRelay.Contracts;
 using NetRelay.Server.Configuration;
 using NetRelay.Server.Data;
 using NetRelay.Server.Infrastructure;
+using NetRelay.Server.Installation;
 using NetRelay.Server.Security;
 using NetRelay.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+var installationState = new InstallationState();
+if (installationState.IsInstalled)
+{
+    builder.Configuration.AddJsonFile(installationState.RuntimeConfigPath, optional: false, reloadOnChange: false);
+}
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 1024 * 1024);
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole(options =>
@@ -19,6 +25,17 @@ builder.Logging.AddJsonConsole(options =>
     options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
     options.UseUtcTimestamp = true;
 });
+
+if (installationState.IsInstallMode)
+{
+    _ = installationState.ReadInstallToken();
+    builder.Services.AddSingleton(installationState);
+    builder.Services.AddSingleton<InstallationService>();
+    var installApp = builder.Build();
+    installApp.MapInstallationEndpoints();
+    await installApp.RunAsync();
+    return;
+}
 
 builder.Services.AddOptions<ServerOptions>()
     .Bind(builder.Configuration.GetSection(ServerOptions.SectionName))

@@ -236,7 +236,7 @@ npm --prefix website/admin audit --audit-level=moderate
 | 开始日期 | 2026-06-13 |
 | 开发完成日期 | 未填写 |
 | 验收日期 | 未填写 |
-| 相关 Commit | `86cabe4`（B1 基础实现）；第二批增强待提交 |
+| 相关 Commit | `86cabe4`（B1 基础实现）；`b6e202e`（B1 安全、管理后台与运行基础）；宝塔便携部署待提交 |
 | 阻塞项 | 本机未安装 Docker，Ubuntu Compose 部署与 MySQL 实机验收需后续环境 |
 
 ### 6.2 目标
@@ -274,6 +274,8 @@ npm --prefix website/admin audit --audit-level=moderate
 - [x] 创建 Nginx HTTPS 和反向代理配置。
 - [x] 建立 Secret、环境变量和配置校验。
 - [x] 创建 React + TypeScript 管理后台认证与安全概览页，并由 Nginx 同源托管在 `/admin/`。
+- [x] 创建无需服务器安装 Docker、Node.js 或 .NET Runtime 的宝塔便携发布包与首次安装向导。
+- [x] 通过一次性安装令牌、安装锁和失败关闭策略保护首次安装入口。
 - [ ] 建立测试环境部署、备份、恢复和升级脚本；部署、迁移、备份和恢复脚本已创建，待 Ubuntu 验证。
 
 ### 6.4 强制验收
@@ -282,10 +284,10 @@ npm --prefix website/admin audit --audit-level=moderate
 | --- | --- | --- | --- |
 | Release 构建与测试 | 后端、契约和现有客户端构建测试通过 | 解决方案 Release 构建 0 警告 0 错误；16 项 B1 后端测试与 37 项客户端回归通过 | 已通过 |
 | 数据库迁移 | 空库可升级，已有库重复执行安全，失败可恢复 | 初始 Migration 与幂等 SQL 已生成；真实 MySQL 空库、重复执行和失败恢复待验收 | 验收中 |
-| 管理认证 | 密码、TOTP、过期、撤销和速率限制符合规范 | 服务层与真实 HTTP 管道验证密码、一次性 TOTP、Cookie 会话、CSRF、重新认证、退出与统一失败行为 | 验收中 |
+| 管理认证 | 密码、TOTP、过期、撤销和速率限制符合规范 | 服务层与真实 HTTP 管道验证密码、一次性 TOTP、Cookie 会话、CSRF、重新认证、退出与统一失败行为；真实宝塔 HTTPS/MySQL 环境已验证密码与 TOTP 登录、会话创建和审计链校验 | 已通过 |
 | 权限隔离 | 未认证用户和普通公开 API 无法访问管理资源 | HTTP 集成测试验证未认证访问被拒绝、CSRF 缺失被拒绝、撤销会话不可复用 | 已通过 |
 | 审计完整性 | 登录和管理操作写入审计，后台无法删除审计记录 | 审计使用微秒规范化哈希链；自动测试验证有效链通过、篡改被识别；管理 API 无删除端点 | 已通过 |
-| Ubuntu 测试部署 | HTTPS、API、MySQL、迁移和健康检查正常 | 未填写 | 未开始 |
+| Ubuntu 测试部署 | HTTPS、API、MySQL、迁移和健康检查正常 | 2026-06-13 在真实 Ubuntu、宝塔 Nginx、HTTPS 与 MySQL 环境完成首次安装、Migration、服务重启、管理登录和审计链校验；升级覆盖后管理登录正常 | 已通过 |
 | 备份恢复 | 从备份恢复到新环境后数据和管理员登录正常 | 未填写 | 未开始 |
 
 ### 6.5 完成门槛
@@ -302,6 +304,8 @@ npm --prefix website/admin audit --audit-level=moderate
 | 2026-06-13 | 开发/自动验收 | B1.1-B1.4 基础实现 | 进行中 | `NetRelay.Contracts`、`NetRelay.Server`、初始 Migration、9 项后端基础测试；幂等 Migration SQL 成功生成；API 存活、协议拒绝与 MySQL 不可用就绪状态冒烟通过；解决方案构建 0 警告 0 错误 | MySQL/Docker/Ubuntu 实机、运行时 OpenAPI、日志落盘、文件存储抽象与管理后台 |
 | 2026-06-13 | 开发/自动验收 | B1 第二批安全与运行基础 | 进行中 | 运行时 OpenAPI、JSON 日志、隔离存储、可信单跳代理、并发安全 TOTP 挑战、微秒审计哈希链及完整 HTTP 认证流程已验证；16 项 B1 测试通过 | 真实 MySQL/Docker/Ubuntu、HTTPS 与备份恢复 |
 | 2026-06-13 | 开发/自动验收 | B1 管理后台基础 | 进行中 | `website/admin` 已实现密码、TOTP、会话恢复、CSRF 轮换、重新认证、审计链校验和退出；Vite 生产构建与 npm 依赖审计通过 | HTTPS 下浏览器实测、真实 MySQL/Docker/Ubuntu、备份恢复 |
+| 2026-06-13 | 开发/自动验收 | B1 宝塔便携部署 | 进行中 | Linux x64 自包含后端、静态官网和管理后台、systemd、Nginx 片段、一次性令牌安装向导及安装锁边界已实现；18 项 B1 后端测试通过 | 真实 Ubuntu/宝塔/MySQL、HTTPS、备份恢复与升级验证 |
+| 2026-06-13 | 真实部署验收 | B1 宝塔便携部署与管理认证 | 验收中 | 真实 Ubuntu、宝塔 Nginx、HTTPS、MySQL 首次安装和 Migration 通过；修复 MySQL `datetime(6)` 精度导致登录挑战误判后，密码、TOTP、会话创建和审计链校验通过；覆盖升级并重启服务后登录正常 | 备份恢复、故障恢复与自定义数据目录权限仍待验收 |
 
 ## 7. B2：设备激活、心跳与后端探测
 
@@ -635,6 +639,7 @@ npm --prefix website/admin audit --audit-level=moderate
 | `13-backend-database-and-storage.md` | 数据模型、迁移、索引、文件与保留策略 | 数据库或存储变化 |
 | `14-backend-security-signing-and-privacy.md` | 威胁模型、签名、密钥、隐私、封锁安全 | 安全、身份、隐私行为变化 |
 | `15-backend-deployment-and-operations.md` | Ubuntu 部署、配置、备份、恢复和监控 | 部署或运维方式变化 |
+| `18-baota-portable-deployment.md` | 宝塔便携包、首次安装向导和无 Docker 部署边界 | 宝塔部署、安装接口或目录边界变化 |
 
 `12` 至 `15` 文档将在 B0 创建；创建前不得在索引中标记为已存在。
 

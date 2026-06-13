@@ -81,7 +81,9 @@ public sealed class AdminAuthService
         account.LockedUntil = null;
         account.UpdatedAt = now;
         var challengeId = Uuid7.Create();
-        var expiresAt = now.AddMinutes(_options.LoginChallengeMinutes);
+        // MySQL datetime(6) stores microseconds. Normalize before protecting the
+        // payload so its timestamp remains identical after the database round trip.
+        var expiresAt = NormalizeMySqlTimestamp(now.AddMinutes(_options.LoginChallengeMinutes));
         _dbContext.AdminLoginChallenges.Add(new AdminLoginChallengeRecord
         {
             Id = challengeId,
@@ -199,6 +201,9 @@ public sealed class AdminAuthService
     }
 
     public string ProtectTotpSecret(string base32Secret) => _totpProtector.Protect(base32Secret);
+
+    private static DateTimeOffset NormalizeMySqlTimestamp(DateTimeOffset value) =>
+        new(value.UtcTicks - (value.UtcTicks % 10), TimeSpan.Zero);
 
     private sealed record LoginChallengePayload(Guid Id, Guid AdminAccountId, DateTimeOffset ExpiresAt);
 }

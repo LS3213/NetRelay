@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#edf2ff">
+  <title>NetRelay 首次安装</title>
+  <link rel="stylesheet" href="/install/install.css?v=3">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">N</span>
+      <div><strong>NetRelay</strong><small>服务端部署向导</small></div>
+    </div>
+    <div class="topbar-state"><i></i> 安全安装模式</div>
+  </header>
+
+  <main class="shell">
+    <aside class="sidebar glass">
+      <div class="sidebar-heading">
+        <span class="eyebrow">PORTABLE SETUP</span>
+        <h1>完成服务端<br>首次配置</h1>
+        <p>连接数据库、设置站点，并创建唯一管理员。完成后安装入口将永久关闭。</p>
+      </div>
+
+      <ol class="steps" aria-label="安装步骤">
+        <li class="active"><span>01</span><div><strong>安装授权</strong><small>验证一次性安装令牌</small></div></li>
+        <li><span>02</span><div><strong>连接数据库</strong><small>验证宝塔 MySQL 配置</small></div></li>
+        <li><span>03</span><div><strong>站点与存储</strong><small>配置公开地址和数据目录</small></div></li>
+        <li><span>04</span><div><strong>创建管理员</strong><small>启用密码与 TOTP 认证</small></div></li>
+      </ol>
+
+      <div class="security-note">
+        <span class="note-icon" aria-hidden="true">✓</span>
+        <div><strong>安装完成后自动锁定</strong><small>一次性令牌将被删除，安装接口不再开放。</small></div>
+      </div>
+    </aside>
+
+    <section class="workspace glass">
+      <div class="workspace-heading">
+        <div>
+          <span class="eyebrow">首次安装</span>
+          <h2>配置 NetRelay 服务</h2>
+        </div>
+        <span class="progress-pill">4 项配置</span>
+      </div>
+
+      <form id="installForm">
+        <section class="form-section">
+          <div class="section-title"><span>01</span><div><h3>安装授权</h3><p>输入 SSH 安装脚本输出的一次性令牌。</p></div></div>
+          <label class="field full">
+            <span>一次性安装令牌</span>
+            <span class="password-control">
+              <input id="installToken" type="password" required autocomplete="off" placeholder="粘贴 install.sh 输出的令牌">
+              <button type="button" class="password-toggle" data-password-target="installToken" aria-label="显示一次性安装令牌">显示</button>
+            </span>
+          </label>
+        </section>
+
+        <section class="form-section">
+          <div class="section-title"><span>02</span><div><h3>MySQL 数据库</h3><p>数据库和专用账号需要提前在宝塔中创建。</p></div></div>
+          <div class="fields four">
+            <label class="field"><span>数据库地址</span><input id="dbHost" value="127.0.0.1" required></label>
+            <label class="field small-field"><span>端口</span><input id="dbPort" type="number" value="3306" min="1" max="65535" required></label>
+            <label class="field"><span>数据库名</span><input id="dbName" value="netrelay" required></label>
+            <label class="field"><span>用户名</span><input id="dbUser" value="netrelay" required></label>
+          </div>
+          <label class="field full"><span>数据库密码</span><span class="password-control"><input id="dbPassword" type="password" required autocomplete="new-password" placeholder="输入数据库专用账号密码"><button type="button" class="password-toggle" data-password-target="dbPassword" aria-label="显示数据库密码">显示</button></span></label>
+          <div class="action-row">
+            <button id="testButton" type="button" class="button secondary"><span aria-hidden="true">↗</span>测试数据库连接</button>
+            <span id="dbTestMessage" class="inline-message" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-title"><span>03</span><div><h3>站点与存储</h3><p>设置正式访问地址、备用更新源和私有数据目录。</p></div></div>
+          <div class="fields two">
+            <label class="field"><span>公开 HTTPS 地址</span><input id="publicBaseUrl" placeholder="https://netrelay.example.com" required></label>
+            <label class="field"><span>GitHub 备用仓库</span><input id="githubRepository" placeholder="owner/repository" required></label>
+          </div>
+          <label class="field full"><span>数据目录</span><input id="dataRoot" value="/www/server/netrelay/data" required></label>
+        </section>
+
+        <section class="form-section">
+          <div class="section-title"><span>04</span><div><h3>唯一管理员</h3><p>创建管理后台账号并启用双因素认证。</p></div></div>
+          <div class="fields two">
+            <label class="field"><span>管理员用户名</span><input id="adminUsername" value="admin" required autocomplete="username"></label>
+            <label class="field"><span>管理员密码</span><span class="password-control"><input id="adminPassword" type="password" minlength="8" required autocomplete="new-password" placeholder="至少 8 个字符"><button type="button" class="password-toggle" data-password-target="adminPassword" aria-label="显示管理员密码">显示</button></span></label>
+            <label class="field"><span>确认管理员密码</span><span class="password-control"><input id="adminPasswordAgain" type="password" minlength="8" required autocomplete="new-password" placeholder="再次输入密码"><button type="button" class="password-toggle" data-password-target="adminPasswordAgain" aria-label="显示确认密码">显示</button></span></label>
+          </div>
+          <div class="totp-setup">
+            <div class="totp-copy">
+              <strong>双因素认证</strong>
+              <p>生成后使用 Microsoft Authenticator、Google Authenticator 等验证器扫描二维码。</p>
+              <button id="generateTotpButton" type="button" class="button secondary">生成 TOTP 二维码</button>
+              <span id="totpMessage" class="inline-message prominent" role="status" aria-live="assertive"></span>
+            </div>
+            <div id="totpQrPanel" class="totp-qr-panel" hidden>
+              <img id="totpQrCode" alt="NetRelay TOTP 二维码">
+              <label class="field"><span>TOTP Base32 Secret</span><input id="totpSecret" required readonly autocomplete="off"></label>
+              <label class="field"><span>验证当前动态码</span><span class="totp-code-control"><input id="totpCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" placeholder="输入验证器中的 6 位数字"><button id="verifyTotpButton" type="button" class="password-toggle verify-code">验证</button></span></label>
+              <small>二维码无法扫描时，可在验证器中手动输入该 Secret。</small>
+            </div>
+          </div>
+        </section>
+
+        <div class="install-footer">
+          <div>
+            <strong>准备完成安装</strong>
+            <small>将迁移数据库、创建管理员并锁定安装入口。</small>
+          </div>
+          <button id="installButton" type="submit" class="button primary">验证并完成安装 <span aria-hidden="true">→</span></button>
+        </div>
+        <p id="message" class="message" hidden role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+  <script src="/install/install.js?v=3"></script>
+</body>
+</html>

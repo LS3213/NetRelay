@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-截至 2026-06-13，原生 WPF 客户端已完成第七阶段代码实现和既定修复验收；后端平台 B0 已通过，B1 后端基础与管理认证正在开发。本文档集同时承担：
+截至 2026-06-13，原生 WPF 客户端已完成第七阶段代码实现和既定修复验收；后端平台 B0 已通过，B1 后端基础、管理认证与宝塔便携部署路径正在验收。本文档集同时承担：
 
 - **现状审计**：准确记录当前不存在的实现。
 - **实施设计**：定义后续开发 NetRelay 时应遵循的产品、架构和接口基线。
@@ -34,6 +34,7 @@
 15. [后端部署与运维规范](15-backend-deployment-and-operations.md)
 16. [B0 设备指纹与安全原型报告](16-b0-device-fingerprint-and-security-prototype-report.md)
 17. [B0 设备指纹手动测试指南](17-b0-device-fingerprint-manual-test-guide.md)
+18. [宝塔便携部署与首次安装向导](18-baota-portable-deployment.md)
 
 ## 目录结构
 
@@ -63,6 +64,7 @@ NetRelay/
 - 首版使用 JSON 配置与按日 JSONL 执行日志，不使用数据库；日志按设置页的可配置保留天数自动清理。
 - 产品官网位于 `website/`，使用原生 HTML、CSS 和少量 JavaScript，可独立部署到任意静态文件服务器，不影响桌面程序的原生技术栈。
 - 后端平台 B1 已建立共享契约、ASP.NET Core 服务、MySQL/Pomelo 初始 Migration 和单管理员认证基础；尚未完成 MySQL/Docker/Ubuntu 实机验收。双源更新、设备激活、反馈、公告与封锁仍未实现。
+- B1 现提供 Docker Compose 和宝塔便携包两条部署路径；宝塔路径无需服务器安装 Docker、Node.js 或 .NET Runtime，并包含受一次性令牌保护的首次安装向导，但仍需真实 Ubuntu/宝塔/MySQL 验收。
 - 后端平台 B0-B6 的开发任务、当前状态、验收证据和文档维护要求统一记录在 [后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md)；未在该文档记录并通过验收的阶段不得视为完成。
 
 ## 源码引用说明
