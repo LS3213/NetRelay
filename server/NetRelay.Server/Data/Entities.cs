@@ -50,3 +50,51 @@ public sealed class AuditLog
     public required string EntryHash { get; set; }
     public DateTimeOffset OccurredAt { get; set; }
 }
+
+public sealed class Device
+{
+    public Guid Id { get; set; }
+    public required string MachineCode { get; set; }
+    public required string DeviceIdHash { get; set; }
+    public int FingerprintVersion { get; set; }
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset LastSeenAt { get; set; }
+}
+
+public sealed class DeviceInstallation
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public Guid InstallationId { get; set; }
+    public required string ClientVersion { get; set; }
+    public required string OsVersion { get; set; }
+    public int ProtocolVersion { get; set; }
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset LastSeenAt { get; set; }
+
+    public Device? Device { get; set; }
+}
+
+public sealed class DeviceEvidence
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public required string Category { get; set; }
+    public required string EvidenceHash { get; set; }
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset LastSeenAt { get; set; }
+
+    public Device? Device { get; set; }
+}
+
+public sealed class ActivationReceipt
+{
+    public Guid Id { get; set; }
+    public Guid InstallationId { get; set; }
+    public Guid ReceiptId { get; set; }
+    public DateTimeOffset IssuedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public required string KeyId { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+}
+

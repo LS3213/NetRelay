@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using NetRelay.Contracts.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -37,7 +39,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Runtime OpenAPI contract is included in server output", () => RunSync(TestRuntimeOpenApi)),
     ("Installation state requires a protected token and permanent lock", () => RunSync(TestInstallationState)),
     ("Installation mode exposes only the protected installer", TestInstallationHttpBoundaryAsync),
-    ("Admin HTTP authentication workflow enforces session and CSRF boundaries", TestAdminHttpWorkflowAsync)
+    ("Admin HTTP authentication workflow enforces session and CSRF boundaries", TestAdminHttpWorkflowAsync),
+    ("SignedEnvelope and OperationalKeyCertificate verification work correctly", () => RunSync(TestSignedEnvelopeAndCertificate)),
+    ("Device fingerprint activation matching logic behaves correctly", TestDeviceFingerprintActivationMatchingAsync),
+    ("Device activation and connectivity challenge endpoints work correctly", TestDeviceActivationAndChallengeApiAsync)
 };
 
 var failed = 0;
@@ -574,6 +579,8 @@ static ServiceProvider CreateServiceProvider(string root, string databaseName)
     services.AddSingleton<AdminPasswordService>();
     services.AddScoped<AdminAuthService>();
     services.AddScoped<AuditService>();
+    services.AddSingleton<KeyManagementService>();
+    services.AddScoped<DeviceActivationService>();
     services.AddSingleton<IOptions<ServerOptions>>(Options.Create(CreateOptions(root)));
     return services.BuildServiceProvider();
 }
@@ -588,7 +595,8 @@ static ServerOptions CreateOptions(string? root = null)
         ReleasesRoot = Path.Combine(root, "releases"),
         FeedbackRoot = Path.Combine(root, "feedback"),
         StagingRoot = Path.Combine(root, "staging"),
-        QuarantineRoot = Path.Combine(root, "quarantine")
+        QuarantineRoot = Path.Combine(root, "quarantine"),
+        KeysRoot = Path.Combine(root, "keys_root")
     };
 }
 
@@ -610,6 +618,7 @@ static Dictionary<string, string?> ApplyTestEnvironment(string root, string pass
         ["NetRelay__FeedbackRoot"] = Path.Combine(root, "feedback"),
         ["NetRelay__StagingRoot"] = Path.Combine(root, "staging"),
         ["NetRelay__QuarantineRoot"] = Path.Combine(root, "quarantine"),
+        ["NetRelay__KeysRoot"] = Path.Combine(root, "keys_root"),
         ["NetRelay__AutoMigrate"] = "false",
         ["BootstrapAdmin__Username"] = "admin",
         ["BootstrapAdmin__Password"] = password,
@@ -662,6 +671,234 @@ static void Assert(bool condition, string message)
     }
 }
 
+static void TestSignedEnvelopeAndCertificate()
+{
+    using var rootKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    using var operationKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    
+    var now = DateTimeOffset.UtcNow;
+    var notBefore = now.AddMinutes(-5);
+    var notAfter = now.AddDays(30);
+    
+    // Create operational key certificate
+    var cert = OperationalKeyCertificate.Create(
+        "key-1",
+        operationKey.ExportSubjectPublicKeyInfo(),
+        new[] { "device-activation", "connectivity-challenge" },
+        notBefore,
+        notAfter,
+        rootKey);
+        
+    Assert(cert.KeyId == "key-1", "Certificate KeyId mismatch.");
+    Assert(cert.Verify(now, rootKey, "device-activation"), "Valid certificate was rejected.");
+    Assert(!cert.Verify(now, rootKey, "unauthorized-purpose"), "Certificate was verified for unauthorized purpose.");
+    Assert(!cert.Verify(now.AddDays(31), rootKey, "device-activation"), "Expired certificate was verified.");
+    
+    // Test SignedEnvelope
+    var payload = new Dictionary<string, object?> { ["test"] = "value" };
+    var envelope = SignedEnvelope.Create("device-activation", "nonce-123", now, now.AddMinutes(5), payload, operationKey);
+    
+    Assert(envelope.Verify("device-activation", "nonce-123", now, operationKey), "Valid envelope was rejected.");
+    Assert(!envelope.Verify("device-activation", "nonce-123", now.AddMinutes(6), operationKey), "Expired envelope was verified.");
+    Assert(!envelope.Verify("device-activation", "wrong-nonce", now, operationKey), "Envelope with mismatched nonce was verified.");
+    Assert(!envelope.Verify("wrong-purpose", "nonce-123", now, operationKey), "Envelope with mismatched purpose was verified.");
+}
+
+static async Task TestDeviceFingerprintActivationMatchingAsync()
+{
+    var root = CreateTemporaryDirectory();
+    try
+    {
+        await using var provider = CreateServiceProvider(root, "device-activate-" + Guid.NewGuid());
+        await using var scope = provider.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<NetRelayDbContext>();
+        var activationService = scope.ServiceProvider.GetRequiredService<DeviceActivationService>();
+        
+        var installationId1 = Guid.NewGuid();
+        var request1 = new DeviceActivationRequest
+        {
+            InstallationId = installationId1,
+            FingerprintVersion = 1,
+            DeviceId = "hash-1",
+            AcceptedTermsVersion = "1.0",
+            AcceptedPrivacyVersion = "1.0",
+            ClientVersion = "1.0.0",
+            OsVersion = "Windows 10",
+            ProtocolVersion = 1,
+            Evidence = new Dictionary<string, List<string>>
+            {
+                ["hardware.windowsDeviceId"] = new List<string> { "win-id-1" },
+                ["hardware.machineGuid"] = new List<string> { "guid-1" },
+                ["hardware.systemUuid"] = new List<string> { "uuid-1" },
+                ["network.physicalCandidate.mac"] = new List<string> { "mac-1" }
+            }
+        };
+        
+        var response1 = await activationService.ActivateDeviceAsync(request1, CancellationToken.None);
+        Assert(response1 != null, "Activation failed.");
+        Assert(!string.IsNullOrEmpty(response1.MachineCode), "MachineCode is empty.");
+        
+        var devicesCount = await dbContext.Devices.CountAsync();
+        Assert(devicesCount == 1, $"Expected 1 device, got {devicesCount}.");
+        
+        // 1. Test cloning/matching with threshold met:
+        // We match 2 core features: windowsDeviceId and machineGuid.
+        // score: 2 * 20 (core) + 0 * 2 (network) = 40. Matches default min score 40, and min core match 2.
+        var installationId2 = Guid.NewGuid();
+        var request2 = new DeviceActivationRequest
+        {
+            InstallationId = installationId2,
+            FingerprintVersion = 1,
+            DeviceId = "hash-2",
+            AcceptedTermsVersion = "1.0",
+            AcceptedPrivacyVersion = "1.0",
+            ClientVersion = "1.0.0",
+            OsVersion = "Windows 10",
+            ProtocolVersion = 1,
+            Evidence = new Dictionary<string, List<string>>
+            {
+                ["hardware.windowsDeviceId"] = new List<string> { "win-id-1" }, // MATCH 1
+                ["hardware.machineGuid"] = new List<string> { "guid-1" },       // MATCH 2
+                ["hardware.systemUuid"] = new List<string> { "uuid-different" }, // mismatch
+                ["network.physicalCandidate.mac"] = new List<string> { "mac-different" }
+            }
+        };
+        
+        var response2 = await activationService.ActivateDeviceAsync(request2, CancellationToken.None);
+        Assert(response2.MachineCode == response1.MachineCode, "Cloned device failed to match existing device.");
+        
+        devicesCount = await dbContext.Devices.CountAsync();
+        var installationsCount = await dbContext.DeviceInstallations.CountAsync();
+        Assert(devicesCount == 1, $"Expected device count to stay 1, got {devicesCount}.");
+        Assert(installationsCount == 2, $"Expected installation count to be 2, got {installationsCount}.");
+        
+        // 2. Test mismatched device (below threshold):
+        // Only 1 core feature matches: windowsDeviceId.
+        // coreMatches = 1 < 2, so it shouldn't match.
+        var installationId3 = Guid.NewGuid();
+        var request3 = new DeviceActivationRequest
+        {
+            InstallationId = installationId3,
+            FingerprintVersion = 1,
+            DeviceId = "hash-3",
+            AcceptedTermsVersion = "1.0",
+            AcceptedPrivacyVersion = "1.0",
+            ClientVersion = "1.0.0",
+            OsVersion = "Windows 10",
+            ProtocolVersion = 1,
+            Evidence = new Dictionary<string, List<string>>
+            {
+                ["hardware.windowsDeviceId"] = new List<string> { "win-id-1" }, // MATCH 1
+                ["hardware.machineGuid"] = new List<string> { "guid-different-three" },
+                ["hardware.systemUuid"] = new List<string> { "uuid-different-three" },
+                ["network.physicalCandidate.mac"] = new List<string> { "mac-1" } // network match (doesn't count towards core count)
+            }
+        };
+        
+        var response3 = await activationService.ActivateDeviceAsync(request3, CancellationToken.None);
+        Assert(response3.MachineCode != response1.MachineCode, "Mismatched device incorrectly matched existing device.");
+        
+        devicesCount = await dbContext.Devices.CountAsync();
+        Assert(devicesCount == 2, $"Expected 2 devices in db, got {devicesCount}.");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestDeviceActivationAndChallengeApiAsync()
+{
+    const string password = "correct horse battery staple";
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    var environment = ApplyTestEnvironment(root, password, secret);
+    try
+    {
+        await using var factory = new TestServerFactory(root, password, secret);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        // 1. Activate device
+        var installationId = Guid.NewGuid();
+        var activateRequest = new DeviceActivationRequest
+        {
+            InstallationId = installationId,
+            FingerprintVersion = 1,
+            DeviceId = "device-id-hash",
+            AcceptedTermsVersion = "1.0",
+            AcceptedPrivacyVersion = "1.0",
+            ClientVersion = "1.0.0",
+            OsVersion = "Windows 10",
+            ProtocolVersion = 1,
+            Evidence = new Dictionary<string, List<string>>
+            {
+                ["hardware.windowsDeviceId"] = new List<string> { "win-id" },
+                ["hardware.machineGuid"] = new List<string> { "machine-guid" }
+            }
+        };
+
+        var activateResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/devices/activate", activateRequest);
+        Assert(activateResponseMsg.StatusCode == HttpStatusCode.OK, $"Device activation failed: {activateResponseMsg.StatusCode}");
+        
+        var activateResponse = await activateResponseMsg.Content.ReadFromJsonAsync<ApiResponse<DeviceActivationResponse>>();
+        Assert(activateResponse != null && activateResponse.Data != null, "Activation response payload is null.");
+        Assert(!string.IsNullOrEmpty(activateResponse.Data.MachineCode), "MachineCode is empty.");
+        
+        var envelope = activateResponse.Data.Envelope;
+        
+        // 2. Perform Connectivity Challenge
+        var challengeRequest = new ConnectivityChallengeRequest { Nonce = "nonce-val-123" };
+        var challengeResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/connectivity/challenge", challengeRequest);
+        Assert(challengeResponseMsg.StatusCode == HttpStatusCode.OK, $"Challenge failed: {challengeResponseMsg.StatusCode}");
+        
+        var challengeResponse = await challengeResponseMsg.Content.ReadFromJsonAsync<ApiResponse<ConnectivityChallengeResponse>>();
+        Assert(challengeResponse != null && challengeResponse.Data != null, "Challenge response payload is null.");
+        
+        // Verify challenge signature
+        using var rootKey = ECDsa.Create();
+        rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
+        
+        Assert(challengeResponse.Data.Certificate.Verify(DateTimeOffset.UtcNow, rootKey, "connectivity-challenge"), "Challenge certificate verification failed.");
+        
+        using var opKey = ECDsa.Create();
+        opKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(challengeResponse.Data.Certificate.PublicKey), out _);
+        Assert(challengeResponse.Data.Envelope.Verify("connectivity-challenge", challengeResponse.Data.Envelope.Nonce, DateTimeOffset.UtcNow, opKey), "Challenge envelope signature verification failed.");
+        
+        // 3. Heartbeat
+        var heartbeatRequest = new DeviceHeartbeatRequest
+        {
+            InstallationId = installationId,
+            MachineCode = activateResponse.Data.MachineCode,
+            ClientVersion = "1.0.0",
+            OsVersion = "Windows 10",
+            ReceiptEnvelope = envelope
+        };
+        
+        var heartbeatResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/devices/heartbeat", heartbeatRequest);
+        Assert(heartbeatResponseMsg.StatusCode == HttpStatusCode.OK, $"Heartbeat failed: {heartbeatResponseMsg.StatusCode}");
+        
+        var heartbeatResponse = await heartbeatResponseMsg.Content.ReadFromJsonAsync<ApiResponse<string>>();
+        Assert(heartbeatResponse != null && heartbeatResponse.Data != null, "Heartbeat response payload is null.");
+        
+        // Due to 24h throttling, the second heartbeat should be throttled (but still return 200 OK with throttling message)
+        var heartbeatResponseMsg2 = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/devices/heartbeat", heartbeatRequest);
+        Assert(heartbeatResponseMsg2.StatusCode == HttpStatusCode.OK, $"Heartbeat 2 failed: {heartbeatResponseMsg2.StatusCode}");
+        
+        var heartbeatResponse2 = await heartbeatResponseMsg2.Content.ReadFromJsonAsync<ApiResponse<string>>();
+        Assert(heartbeatResponse2 != null && heartbeatResponse2.Data.Contains("throttled"), "Heartbeat was not throttled on second call.");
+    }
+    finally
+    {
+        RestoreEnvironment(environment);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
 sealed class TestServerFactory(string root, string password, string secret) : WebApplicationFactory<ServerApplication>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -679,6 +916,7 @@ sealed class TestServerFactory(string root, string password, string secret) : We
                 ["NetRelay:FeedbackRoot"] = Path.Combine(root, "feedback"),
                 ["NetRelay:StagingRoot"] = Path.Combine(root, "staging"),
                 ["NetRelay:QuarantineRoot"] = Path.Combine(root, "quarantine"),
+                ["NetRelay:KeysRoot"] = Path.Combine(root, "keys_root"),
                 ["NetRelay:AutoMigrate"] = "false",
                 ["BootstrapAdmin:Username"] = "admin",
                 ["BootstrapAdmin:Password"] = password,

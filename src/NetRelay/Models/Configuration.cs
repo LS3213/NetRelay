@@ -33,6 +33,30 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("keepDays")]
     public int KeepDays { get; set; } = 30;
+
+    [JsonPropertyName("privacyConsentAccepted")]
+    public bool PrivacyConsentAccepted { get; set; } = false;
+
+    [JsonPropertyName("acceptedTermsVersion")]
+    public string AcceptedTermsVersion { get; set; } = string.Empty;
+
+    [JsonPropertyName("acceptedPrivacyVersion")]
+    public string AcceptedPrivacyVersion { get; set; } = string.Empty;
+
+    [JsonPropertyName("privacyConsentTimestamp")]
+    public DateTimeOffset? PrivacyConsentTimestamp { get; set; }
+
+    [JsonPropertyName("installationId")]
+    public string InstallationId { get; set; } = string.Empty;
+
+    [JsonPropertyName("machineCode")]
+    public string MachineCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("activationReceipt")]
+    public string ActivationReceipt { get; set; } = string.Empty;
+
+    [JsonPropertyName("lastHeartbeatTimestamp")]
+    public DateTimeOffset? LastHeartbeatTimestamp { get; set; }
 }
 
 public sealed class ConnectivityProbePolicy

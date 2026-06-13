@@ -48,7 +48,9 @@ var tests = new (string Name, Action Test)[]
     ("Notification actions require a valid one-shot ticket", NotificationActionsRequireValidOneShotTicket),
     ("Rich toast respects notification action permissions", RichToastRespectsNotificationActionPermissions),
     ("Scheduler triggers automatic recovery on time elapsed", SchedulerTriggersAutomaticRecoveryOnTimeElapsed),
-    ("Scheduler skips expired automatic recovery", SchedulerSkipsExpiredAutomaticRecovery)
+    ("Scheduler skips expired automatic recovery", SchedulerSkipsExpiredAutomaticRecovery),
+    ("EvidenceHasher anonymizes evidence properly", EvidenceHasherAnonymizesEvidenceProperly),
+    ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable)
 };
 
 var failures = new List<string>();
@@ -1439,5 +1441,94 @@ static void SchedulerSkipsExpiredAutomaticRecovery()
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+}
+
+static void EvidenceHasherAnonymizesEvidenceProperly()
+{
+    var hash1 = EvidenceHasher.Hash("hardware.windowsDeviceId", "original-value-1");
+    var hash2 = EvidenceHasher.Hash("hardware.windowsDeviceId", "original-value-1");
+    var hash3 = EvidenceHasher.Hash("hardware.windowsDeviceId", "original-value-2");
+    var hash4 = EvidenceHasher.Hash("hardware.machineGuid", "original-value-1");
+
+    Assert(hash1.Length == 64);
+    Assert(hash1 != "original-value-1");
+    Assert(hash1 == hash2);
+    Assert(hash1 != hash3);
+    Assert(hash1 != hash4);
+}
+
+static void ConnectivityServiceGracefulDegradationOnBackendUnavailable()
+{
+    var listener = new HttpListener();
+    listener.Prefixes.Add("http://127.0.0.1:54321/");
+    listener.Start();
+
+    // Start a background thread to handle a single request and return 503 Service Unavailable
+    var listenTask = Task.Run(async () =>
+    {
+        try
+        {
+            var context = await listener.GetContextAsync();
+            context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
+            context.Response.StatusDescription = "Service Unavailable";
+            context.Response.Close();
+        }
+        catch
+        {
+            // Ignore
+        }
+    });
+
+    try
+    {
+        Environment.SetEnvironmentVariable("NETRELAY_BACKEND_URL", "http://127.0.0.1:54321");
+
+        var method = typeof(ConnectivityService).GetMethod(
+            "TryProbeChallengeAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert(method is not null);
+
+        var localIp = IPAddress.Loopback;
+        var timeout = TimeSpan.FromSeconds(2);
+        var token = CancellationToken.None;
+
+        var task = (Task)method!.Invoke(null, new object[] { localIp, timeout, token })!;
+        task.Wait();
+
+        // Get result
+        var resultProperty = task.GetType().GetProperty("Result");
+        var attempt = resultProperty!.GetValue(task);
+        
+        Assert(attempt is not null);
+        var successProp = attempt!.GetType().GetProperty("Success");
+        var errorMsgProp = attempt.GetType().GetProperty("ErrorMessage");
+
+        var success = (bool)successProp!.GetValue(attempt)!;
+        var errorMsg = (string?)errorMsgProp!.GetValue(attempt);
+
+        Assert(!success);
+        Assert(errorMsg != null && errorMsg.StartsWith("BACKEND_ERROR", StringComparison.Ordinal));
+
+        // Test connection failure (e.g. no listener on port 54322)
+        Environment.SetEnvironmentVariable("NETRELAY_BACKEND_URL", "http://127.0.0.1:54322");
+        
+        var method2 = typeof(ConnectivityService).GetMethod(
+            "TryProbeChallengeAsync",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var task2 = (Task)method2!.Invoke(null, new object[] { IPAddress.Loopback, TimeSpan.FromSeconds(2), CancellationToken.None })!;
+        task2.Wait();
+
+        var attempt2 = task2.GetType().GetProperty("Result")!.GetValue(task2);
+        var success2 = (bool)attempt2!.GetType().GetProperty("Success")!.GetValue(attempt2)!;
+        var errorMsg2 = (string?)attempt2.GetType().GetProperty("ErrorMessage")!.GetValue(attempt2);
+
+        Assert(!success2);
+        Assert(errorMsg2 != null && !errorMsg2.StartsWith("BACKEND_ERROR", StringComparison.Ordinal));
+    }
+    finally
+    {
+        listener.Stop();
+        Environment.SetEnvironmentVariable("NETRELAY_BACKEND_URL", null);
     }
 }

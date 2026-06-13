@@ -25,4 +25,14 @@
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DeviceId" Version="6.11.0" />
+    <PackageReference Include="DeviceId.Windows" Version="6.11.0" />
+    <PackageReference Include="DeviceId.Windows.Wmi" Version="6.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetRelay.Contracts\NetRelay.Contracts.csproj" />
+  </ItemGroup>
 </Project>

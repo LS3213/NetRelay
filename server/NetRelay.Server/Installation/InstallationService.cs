@@ -158,6 +158,7 @@ public sealed class InstallationService(InstallationState state)
             FeedbackRoot = Path.Combine(root, "feedback-attachments"),
             StagingRoot = Path.Combine(root, "staging"),
             QuarantineRoot = Path.Combine(root, "quarantine"),
+            KeysRoot = Path.Combine(root, "keys"),
             AutoMigrate = false
         };
         var error = ServerOptionsValidator.Validate(options);
@@ -203,6 +204,7 @@ public sealed class InstallationService(InstallationState state)
         yield return options.FeedbackRoot;
         yield return options.StagingRoot;
         yield return options.QuarantineRoot;
+        yield return options.KeysRoot;
     }
 
     private static async Task WriteAtomicAsync(string path, string content, CancellationToken cancellationToken)

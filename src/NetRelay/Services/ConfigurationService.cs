@@ -94,6 +94,12 @@ public sealed class ConfigurationService
                 configUpdated = true;
             }
 
+            if (string.IsNullOrWhiteSpace(config.InstallationId))
+            {
+                config.InstallationId = Guid.NewGuid().ToString();
+                configUpdated = true;
+            }
+
             if (config.ProbePolicy?.Endpoints != null)
             {
                 for (int i = 0; i < config.ProbePolicy.Endpoints.Count; i++)
@@ -184,7 +190,8 @@ public sealed class ConfigurationService
             SchemaVersion = 2,
             ProbePolicy = new ConnectivityProbePolicy(),
             Rules = [],
-            AutoStart = false
+            AutoStart = false,
+            InstallationId = Guid.NewGuid().ToString()
         };
     }
 

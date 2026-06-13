@@ -40,6 +40,21 @@ public sealed record class ServerOptions
 
     [Range(1, 1440)]
     public int AccountLockoutMinutes { get; init; } = 15;
+
+    [Required]
+    public string KeysRoot { get; init; } = string.Empty;
+
+    [Range(1, 10)]
+    public int MinCoreEvidenceMatches { get; init; } = 2;
+
+    [Range(1, 100)]
+    public int MinEvidenceScore { get; init; } = 40;
+
+    [Range(1, 100)]
+    public int CoreEvidenceWeight { get; init; } = 20;
+
+    [Range(1, 100)]
+    public int NetworkEvidenceWeight { get; init; } = 2;
 }
 
 public static class ServerOptionsValidator
@@ -70,7 +85,8 @@ public static class ServerOptionsValidator
                 NormalizeRoot(options.ReleasesRoot),
                 NormalizeRoot(options.FeedbackRoot),
                 NormalizeRoot(options.StagingRoot),
-                NormalizeRoot(options.QuarantineRoot)
+                NormalizeRoot(options.QuarantineRoot),
+                NormalizeRoot(options.KeysRoot)
             ];
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException)

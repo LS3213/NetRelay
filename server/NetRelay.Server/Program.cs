@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -97,6 +98,8 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddSingleton<ManagedFileStorage>();
 builder.Services.AddHostedService<StorageInitializationService>();
 builder.Services.AddHostedService<AdminBootstrapService>();
+builder.Services.AddSingleton<KeyManagementService>();
+builder.Services.AddScoped<DeviceActivationService>();
 
 var app = builder.Build();
 app.UseForwardedHeaders();
@@ -126,6 +129,11 @@ adminAuth.MapGet("/csrf", RotateCsrfAsync);
 adminAuth.MapPost("/reauthenticate", ReauthenticateAsync).RequireRateLimiting("admin-login");
 adminAuth.MapPost("/logout", LogoutAsync);
 app.MapGet("/api/v1/admin/audit/verify", VerifyAuditAsync);
+
+var publicApi = app.MapGroup("/api/v1");
+publicApi.MapPost("/devices/activate", ActivateDeviceAsync);
+publicApi.MapPost("/devices/heartbeat", DeviceHeartbeatAsync);
+publicApi.MapPost("/connectivity/challenge", GetConnectivityChallengeAsync);
 
 if (args.Contains("--migrate", StringComparer.Ordinal))
 {
@@ -402,5 +410,132 @@ static CookieOptions CreateSessionCookie(DateTimeOffset expiresAt) => new()
     Expires = expiresAt,
     IsEssential = true
 };
+
+static async Task<IResult> ActivateDeviceAsync(
+    DeviceActivationRequest request,
+    HttpContext context,
+    DeviceActivationService activationService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    if (request == null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "请求数据不能为空。");
+    }
+
+    try
+    {
+        var response = await activationService.ActivateDeviceAsync(request, cancellationToken);
+        
+        await auditService.WriteAsync(
+            "device.activate",
+            "success",
+            ApiInfrastructure.GetRequestId(context),
+            null,
+            "device",
+            request.InstallationId.ToString(),
+            cancellationToken: cancellationToken);
+
+        return Results.Ok(new ApiResponse<DeviceActivationResponse>(ApiInfrastructure.GetRequestId(context), response));
+    }
+    catch (ArgumentException ex)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, ex.Message);
+    }
+}
+
+static async Task<IResult> DeviceHeartbeatAsync(
+    DeviceHeartbeatRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    KeyManagementService keyManagementService,
+    CancellationToken cancellationToken)
+{
+    if (request == null || request.InstallationId == Guid.Empty || string.IsNullOrWhiteSpace(request.MachineCode))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "请求参数无效。");
+    }
+
+    // 1. 验证证书是否合法
+    var now = DateTimeOffset.UtcNow;
+    if (!request.ReceiptEnvelope.Verify("device-activation", request.ReceiptEnvelope.Nonce, now, keyManagementService.OperationPrivateKey))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, "DEVICE_ACTIVATION_INVALID", "激活回执校验失败。");
+    }
+
+    // 2. 解析载荷并校验是否匹配
+    var payload = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(request.ReceiptEnvelope.PayloadJson);
+    if (payload == null ||
+        !payload.TryGetValue("installationId", out var instIdStr) ||
+        !payload.TryGetValue("machineCode", out var code) ||
+        !Guid.TryParse(instIdStr, out var instId) ||
+        instId != request.InstallationId ||
+        !string.Equals(code, request.MachineCode, StringComparison.OrdinalIgnoreCase))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, "DEVICE_ACTIVATION_INVALID", "激活回执载荷不匹配。");
+    }
+
+    var installation = await dbContext.DeviceInstallations
+        .FirstOrDefaultAsync(i => i.InstallationId == request.InstallationId, cancellationToken);
+
+    if (installation == null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "未找到相应的设备安装实例。");
+    }
+
+    // 限流：24 小时仅可更新一次 last_seen_at
+    if (installation.LastSeenAt.AddHours(24) > now)
+    {
+        return Results.Ok(new ApiResponse<string>(ApiInfrastructure.GetRequestId(context), "Heartbeat throttled (already updated within 24h)."));
+    }
+
+    installation.LastSeenAt = now;
+    installation.ClientVersion = request.ClientVersion;
+    installation.OsVersion = request.OsVersion;
+
+    var device = await dbContext.Devices.FindAsync(new object[] { installation.DeviceId }, cancellationToken);
+    if (device != null)
+    {
+        device.LastSeenAt = now;
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+    return Results.Ok(new ApiResponse<string>(ApiInfrastructure.GetRequestId(context), "Heartbeat accepted."));
+}
+
+static Task<IResult> GetConnectivityChallengeAsync(
+    ConnectivityChallengeRequest request,
+    HttpContext context,
+    KeyManagementService keyManagementService)
+{
+    if (request == null || string.IsNullOrWhiteSpace(request.Nonce))
+    {
+        return Task.FromResult(ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "Nonce 不能为空。"));
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    var expiresAt = now.AddMinutes(5);
+
+    var payload = new Dictionary<string, object?>
+    {
+        ["nonce"] = request.Nonce,
+        ["timestamp"] = now.ToString("O")
+    };
+
+    var envelope = keyManagementService.Sign(
+        "connectivity-challenge",
+        Guid.NewGuid().ToString("N"),
+        now,
+        expiresAt,
+        payload);
+
+    var response = new ConnectivityChallengeResponse
+    {
+        Envelope = envelope,
+        Certificate = keyManagementService.OperationCertificate
+    };
+
+    return Task.FromResult(Results.Ok(new ApiResponse<ConnectivityChallengeResponse>(ApiInfrastructure.GetRequestId(context), response)));
+}
 
 public partial class Program;

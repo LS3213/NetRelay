@@ -2,12 +2,16 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.Json;
 using NetRelay.Models;
 using NetRelay.Native;
+using NetRelay.Contracts;
+using NetRelay.Contracts.Security;
 
 namespace NetRelay.Services;
 
@@ -134,6 +138,24 @@ public sealed class ConnectivityService
             : routePresent
                 ? "PROBE_FAILED"
                 : "PROBE_ROUTE_UNAVAILABLE";
+
+        // 执行后端挑战验证 (仅在已配置数据目录和激活的情况下执行，这里总是尝试进行以作为高可信信号)
+        var challengeAttempt = await TryProbeChallengeAsync(localIp, policy.Timeout, cancellationToken);
+        attempts.Add(challengeAttempt);
+
+        if (challengeAttempt.Success)
+        {
+            isOnline = true;
+            reasonCode = "ONLINE";
+        }
+        else if (challengeAttempt.ErrorMessage != null && challengeAttempt.ErrorMessage.StartsWith("BACKEND_ERROR", StringComparison.Ordinal))
+        {
+            // 如果后端故障 (如 503 等)，我们优雅降级：不判定断网，但将原因修改为“后端验证不可用”
+            if (isOnline)
+            {
+                reasonCode = "BACKEND_UNAVAILABLE";
+            }
+        }
 
         return new ConnectivityResult(
             adapterId,
@@ -728,5 +750,129 @@ public sealed class ConnectivityService
         }
 
         return "Disconnected";
+    }
+
+    private static async Task<ProbeAttempt> TryProbeChallengeAsync(
+        IPAddress localIp,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var backendUrl = ActivationService.GetBackendUrl();
+        var url = backendUrl + "/api/v1/connectivity/challenge";
+        var nonce = Guid.NewGuid().ToString("N");
+
+        try
+        {
+            using var handler = new SocketsHttpHandler
+            {
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    var socket = new Socket(localIp.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+                    {
+                        NoDelay = true
+                    };
+
+                    try
+                    {
+                        socket.Bind(new IPEndPoint(localIp, 0));
+
+                        var ips = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken);
+                        var targetIp = ips.FirstOrDefault(ip => ip.AddressFamily == localIp.AddressFamily)
+                            ?? throw new SocketException((int)SocketError.AddressFamilyNotSupported);
+
+                        await socket.ConnectAsync(new IPEndPoint(targetIp, context.DnsEndPoint.Port), cancellationToken);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
+            };
+
+            using var client = new HttpClient(handler)
+            {
+                Timeout = timeout
+            };
+
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) NetRelay/1.0");
+            client.DefaultRequestHeaders.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            client.DefaultRequestHeaders.Add(Protocol.ClientVersionHeader, "1.0.0");
+            client.DefaultRequestHeaders.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
+
+            var response = await client.PostAsJsonAsync(url, new ConnectivityChallengeRequest { Nonce = nonce }, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new ProbeAttempt(
+                    url,
+                    Success: false,
+                    stopwatch.ElapsedMilliseconds,
+                    $"BACKEND_ERROR: HTTP {(int)response.StatusCode} {response.ReasonPhrase}"
+                );
+            }
+
+            var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<ConnectivityChallengeResponse>>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                cancellationToken);
+
+            if (apiResponse?.Data == null)
+            {
+                return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: 响应数据为空。");
+            }
+
+            var challengeResponse = apiResponse.Data;
+            var now = DateTimeOffset.Now;
+
+            // 验证在线证书
+            using var rootKey = ECDsa.Create();
+            rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
+
+            if (!challengeResponse.Certificate.Verify(now, rootKey, "connectivity-challenge"))
+            {
+                return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: 证书校验失败。");
+            }
+
+            // 验证挑战签名
+            using var operationalKey = ECDsa.Create();
+            operationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(challengeResponse.Certificate.PublicKey), out _);
+
+            if (!challengeResponse.Envelope.Verify("connectivity-challenge", challengeResponse.Envelope.Nonce, now, operationalKey))
+            {
+                return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: 挑战签名校验失败。");
+            }
+
+            // 校验 nonce 匹配
+            var payload = JsonSerializer.Deserialize<Dictionary<string, string>>(challengeResponse.Envelope.PayloadJson);
+            if (payload == null || !payload.TryGetValue("nonce", out var returnedNonce) || !string.Equals(returnedNonce, nonce, StringComparison.Ordinal))
+            {
+                return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: Nonce 不匹配。");
+            }
+
+            return new ProbeAttempt(
+                url,
+                Success: true,
+                stopwatch.ElapsedMilliseconds,
+                null
+            );
+        }
+        catch (OperationCanceledException)
+        {
+            return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "请求超时。");
+        }
+        catch (Exception exception)
+        {
+            var errorMsg = exception.Message;
+            var isBackendIssue = errorMsg.Contains("BACKEND_ERROR") || exception is CryptographicException || exception is JsonException;
+            var reason = isBackendIssue ? "BACKEND_ERROR: " + errorMsg : errorMsg;
+
+            return new ProbeAttempt(
+                url,
+                Success: false,
+                stopwatch.ElapsedMilliseconds,
+                reason
+            );
+        }
     }
 }

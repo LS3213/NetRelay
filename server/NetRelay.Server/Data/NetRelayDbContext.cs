@@ -10,6 +10,10 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
     public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
     public DbSet<AdminLoginChallengeRecord> AdminLoginChallenges => Set<AdminLoginChallengeRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Device> Devices => Set<Device>();
+    public DbSet<DeviceInstallation> DeviceInstallations => Set<DeviceInstallation>();
+    public DbSet<DeviceEvidence> DeviceEvidences => Set<DeviceEvidence>();
+    public DbSet<ActivationReceipt> ActivationReceipts => Set<ActivationReceipt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -77,6 +81,62 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.Property(item => item.EntryHash).HasMaxLength(64).IsFixedLength();
             entity.HasIndex(item => item.OccurredAt);
             entity.HasIndex(item => new { item.Action, item.OccurredAt });
+        });
+
+        modelBuilder.Entity<Device>(entity =>
+        {
+            entity.ToTable("devices");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.MachineCode).HasMaxLength(100);
+            entity.Property(item => item.DeviceIdHash).HasMaxLength(64);
+            entity.HasIndex(item => item.MachineCode).IsUnique();
+            entity.HasIndex(item => item.DeviceIdHash);
+            entity.HasIndex(item => item.LastSeenAt);
+        });
+
+        modelBuilder.Entity<DeviceInstallation>(entity =>
+        {
+            entity.ToTable("device_installations");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.DeviceId).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.InstallationId).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.ClientVersion).HasMaxLength(50);
+            entity.Property(item => item.OsVersion).HasMaxLength(100);
+            entity.HasIndex(item => item.InstallationId).IsUnique();
+            entity.HasIndex(item => new { item.DeviceId, item.LastSeenAt });
+            entity.HasOne(item => item.Device)
+                .WithMany()
+                .HasForeignKey(item => item.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DeviceEvidence>(entity =>
+        {
+            entity.ToTable("device_evidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.DeviceId).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.Category).HasMaxLength(100);
+            entity.Property(item => item.EvidenceHash).HasMaxLength(64);
+            entity.HasIndex(item => new { item.DeviceId, item.Category, item.EvidenceHash }).IsUnique();
+            entity.HasOne(item => item.Device)
+                .WithMany()
+                .HasForeignKey(item => item.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ActivationReceipt>(entity =>
+        {
+            entity.ToTable("activation_receipts");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.InstallationId).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.ReceiptId).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.KeyId).HasMaxLength(100);
+            entity.HasIndex(item => item.ReceiptId).IsUnique();
+            entity.HasIndex(item => item.ExpiresAt);
         });
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

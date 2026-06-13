@@ -1,5 +1,6 @@
 using System.Security.Principal;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using NetRelay.Infrastructure;
 using NetRelay.Services;
@@ -27,6 +28,85 @@ public partial class App : System.Windows.Application
             _singleInstanceService.SignalPrimaryInstance(e.Args);
             Shutdown();
             return;
+        }
+
+        // 隐私与首次运行激活检查
+        var configService = new ConfigurationService();
+        var config = configService.Current;
+        var activationService = new ActivationService(configService);
+
+        if (!config.PrivacyConsentAccepted)
+        {
+            var consentDialog = new Dialogs.PrivacyConsentDialog();
+            if (consentDialog.ShowDialog() != true)
+            {
+                Shutdown();
+                return;
+            }
+
+            var activated = false;
+            try
+            {
+                activated = Task.Run(async () => await activationService.ActivateAsync(CancellationToken.None)).Result;
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"设备激活过程中发生异常：{ex.InnerException?.Message ?? ex.Message}",
+                    "NetRelay 激活失败",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+
+            if (!activated)
+            {
+                System.Windows.MessageBox.Show(
+                    "首次使用需要联网激活，请检查您的网络连接并重试。",
+                    "NetRelay 激活失败",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                Shutdown();
+                return;
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(config.ActivationReceipt))
+        {
+            var activated = false;
+            try
+            {
+                activated = Task.Run(async () => await activationService.ActivateAsync(CancellationToken.None)).Result;
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"设备激活过程中发生异常：{ex.InnerException?.Message ?? ex.Message}",
+                    "NetRelay 激活失败",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+
+            if (!activated)
+            {
+                System.Windows.MessageBox.Show(
+                    "首次使用需要联网激活，请检查您的网络连接并重试。",
+                    "NetRelay 激活失败",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                Shutdown();
+                return;
+            }
+        }
+        else
+        {
+            // 已激活，后台发送心跳
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await activationService.SendHeartbeatAsync(CancellationToken.None);
+                }
+                catch {}
+            });
         }
 
         var mainWindow = new MainWindow();
