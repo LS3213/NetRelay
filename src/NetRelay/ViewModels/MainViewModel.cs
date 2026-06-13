@@ -19,6 +19,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly RuleSchedulerService? _ruleScheduler;
     private readonly LogService _logService;
     private readonly RuleEngine _ruleEngine;
+    private readonly UpdateService _updateService;
 
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
@@ -95,13 +96,68 @@ public sealed class MainViewModel : ObservableObject
         DelayPendingCommand = new RelayCommand(DelayPending);
         CancelPendingCommand = new RelayCommand(CancelPending);
 
+        _updateService = new UpdateService(_configService);
+
         CheckUpdatesCommand = new RelayCommand(async () =>
         {
             OperationMessage = "正在检查更新...";
-            await Task.Delay(1500);
-            OperationMessage = "当前已是最新版本 (v1.2.0)";
-            await Task.Delay(2000);
-            OperationMessage = null;
+            try
+            {
+                var manifest = await _updateService.CheckForUpdatesAsync("1.2.0", CancellationToken.None);
+                if (manifest == null)
+                {
+                    OperationMessage = "当前已是最新版本 (v1.2.0)";
+                    await Task.Delay(2000);
+                    OperationMessage = null;
+                    return;
+                }
+
+                OperationMessage = $"检测到新版本 v{manifest.Version}，正在下载更新包...";
+                var packagePath = await _updateService.DownloadPackageAsync(manifest, progress =>
+                {
+                    OperationMessage = $"正在下载更新包 ({progress:P0})...";
+                }, CancellationToken.None);
+
+                OperationMessage = "下载完成，正在启动更新器并退出应用...";
+                await Task.Delay(1500);
+
+                var updaterDir = AppDomain.CurrentDomain.BaseDirectory;
+                var updaterPath = Path.Combine(updaterDir, "NetRelay.Updater.exe");
+
+                if (!File.Exists(updaterPath))
+                {
+                    throw new FileNotFoundException("未找到独立更新器程序 (NetRelay.Updater.exe)。", updaterPath);
+                }
+
+                var targetDir = AppDomain.CurrentDomain.BaseDirectory;
+                var parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                var arguments = $"--package \"{packagePath}\" --target-dir \"{targetDir}\" --parent-pid {parentPid} --executable NetRelay.exe";
+
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = updaterPath,
+                    Arguments = arguments,
+                    UseShellExecute = true
+                };
+
+                if (IsDirectoryWritable(targetDir))
+                {
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+                else
+                {
+                    startInfo.Verb = "runas";
+                    System.Diagnostics.Process.Start(startInfo);
+                }
+
+                System.Windows.Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                OperationMessage = $"更新失败: {ex.Message}";
+                await Task.Delay(3000);
+                OperationMessage = null;
+            }
         });
 
         FeedbackCommand = new RelayCommand(async () =>
@@ -941,6 +997,21 @@ public sealed class MainViewModel : ObservableObject
         catch
         {
             // Ignore cancel/dispose exceptions on shutdown
+        }
+    }
+
+    private static bool IsDirectoryWritable(string directoryPath)
+    {
+        try
+        {
+            var tempFile = Path.Combine(directoryPath, Guid.NewGuid().ToString("N") + ".tmp");
+            File.WriteAllText(tempFile, "test");
+            File.Delete(tempFile);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 }

@@ -22,4 +22,5 @@ public static class ErrorCodes
     public const string AdminReauthenticationRequired = "ADMIN_REAUTHENTICATION_REQUIRED";
     public const string AdminCsrfInvalid = "ADMIN_CSRF_INVALID";
     public const string AdminAccountLocked = "ADMIN_ACCOUNT_LOCKED";
+    public const string UpdateNotAvailable = "UPDATE_NOT_AVAILABLE";
 }

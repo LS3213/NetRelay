@@ -13,6 +13,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using NetRelay.Contracts;
 using NetRelay.Server;
+using System.IO;
+using System.IO.Compression;
+using NetRelay.Server.Services;
+
 using NetRelay.Server.Configuration;
 using NetRelay.Server.Data;
 using NetRelay.Server.Infrastructure;
@@ -42,7 +46,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Admin HTTP authentication workflow enforces session and CSRF boundaries", TestAdminHttpWorkflowAsync),
     ("SignedEnvelope and OperationalKeyCertificate verification work correctly", () => RunSync(TestSignedEnvelopeAndCertificate)),
     ("Device fingerprint activation matching logic behaves correctly", TestDeviceFingerprintActivationMatchingAsync),
-    ("Device activation and connectivity challenge endpoints work correctly", TestDeviceActivationAndChallengeApiAsync)
+    ("Device activation and connectivity challenge endpoints work correctly", TestDeviceActivationAndChallengeApiAsync),
+    ("Update management and download endpoints behave correctly", TestUpdateApiAsync)
 };
 
 var failed = 0;
@@ -568,6 +573,16 @@ static Task<HttpResponseMessage> SendJsonAsync<T>(
     return client.SendAsync(request);
 }
 
+static Task<HttpResponseMessage> SendGetAsync(
+    HttpClient client,
+    string path)
+{
+    var request = new HttpRequestMessage(HttpMethod.Get, path);
+    request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+    return client.SendAsync(request);
+}
+
+
 static ServiceProvider CreateServiceProvider(string root, string databaseName)
 {
     var services = new ServiceCollection();
@@ -899,6 +914,157 @@ static async Task TestDeviceActivationAndChallengeApiAsync()
     }
 }
 
+static async Task TestUpdateApiAsync()
+{
+    const string password = "correct horse battery staple";
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    var environment = ApplyTestEnvironment(root, password, secret);
+    try
+    {
+        await using var factory = new TestServerFactory(root, password, secret);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        // 1. Check latest updates (before any release uploaded) -> expect 404 UpdateNotAvailable
+        var initCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
+        Assert(initCheck.StatusCode == HttpStatusCode.NotFound, $"Initial check should fail: {initCheck.StatusCode}");
+        var initCheckResponse = await initCheck.Content.ReadFromJsonAsync<ApiErrorResponse>();
+        Assert(initCheckResponse != null && initCheckResponse.Error != null && initCheckResponse.Error.Code == ErrorCodes.UpdateNotAvailable, "Error code should be UPDATE_NOT_AVAILABLE");
+
+        // 2. Perform admin login
+        var loginResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/auth/login", new AdminLoginRequest("admin", password));
+        Assert(loginResponseMsg.StatusCode == HttpStatusCode.OK, "Login failed");
+        var login = await loginResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminLoginChallenge>>() ?? throw new InvalidOperationException();
+        
+        var totpResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new AdminTotpRequest(login.Data.ChallengeToken, TotpService.GenerateCode(secret, DateTimeOffset.UtcNow)));
+        Assert(totpResponseMsg.StatusCode == HttpStatusCode.OK, "TOTP validation failed");
+        var session = await totpResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminSessionResponse>>() ?? throw new InvalidOperationException();
+        var csrf = session.Data.CsrfToken;
+
+        // 3. Create dummy update zip
+        var dummyZipPath = Path.Combine(root, "win-x64.zip");
+        using (var archive = ZipFile.Open(dummyZipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("test.txt");
+            using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync("hello update");
+        }
+
+        // 4. Create Release (draft)
+        using var fileStream = File.OpenRead(dummyZipPath);
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent("1.3.0"), "version");
+        form.Add(new StringContent("stable"), "channel");
+        form.Add(new StringContent("win-x64"), "architecture");
+        form.Add(new StringContent("1.0.0"), "minUpgradableVersion");
+        form.Add(new StringContent("Changelog message"), "changelog");
+        
+        var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        form.Add(streamContent, "file", "win-x64.zip");
+
+        var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/releases")
+        {
+            Content = form
+        };
+        createRequest.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+        createRequest.Headers.Add(Protocol.CsrfHeader, csrf);
+
+        var createResponseMsg = await client.SendAsync(createRequest);
+        Assert(createResponseMsg.StatusCode == HttpStatusCode.OK, $"Create release failed: {createResponseMsg.StatusCode}");
+        
+        var createResponse = await createResponseMsg.Content.ReadFromJsonAsync<ApiResponse<Release>>();
+        Assert(createResponse != null && createResponse.Data != null, "Create release response null");
+        var releaseId = createResponse.Data.Id;
+        Assert(createResponse.Data.Status == "draft", "Status should be draft");
+
+        // 5. Check latest updates -> expect 404 (draft releases should not be visible to clients)
+        var draftCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
+        Assert(draftCheck.StatusCode == HttpStatusCode.NotFound, "Draft release should not be visible");
+
+        // 6. Reauthenticate admin for sensitive operations
+        var reauthResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            csrf);
+        Assert(reauthResponseMsg.StatusCode == HttpStatusCode.NoContent, "Reauthentication failed");
+
+        // 7. Publish Release
+        var publishResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/v1/admin/releases/{releaseId}/publish",
+            new { },
+            csrf);
+        Assert(publishResponseMsg.StatusCode == HttpStatusCode.OK, $"Publish release failed: {publishResponseMsg.StatusCode}");
+
+        // 8. Check latest updates -> expect 200 OK with signed UpdateCheckResponse
+        var checkResult = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
+        Assert(checkResult.StatusCode == HttpStatusCode.OK, $"Check updates after publish failed: {checkResult.StatusCode}");
+
+        var checkResponse = await checkResult.Content.ReadFromJsonAsync<ApiResponse<UpdateCheckResponse>>();
+        Assert(checkResponse != null && checkResponse.Data != null, "Check updates payload null");
+
+        // Validate check updates response signature
+        using var rootKey = ECDsa.Create();
+        rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
+        Assert(checkResponse.Data.Certificate.Verify(DateTimeOffset.UtcNow, rootKey, "update-manifest"), "Cert verification failed");
+
+        using var opKey = ECDsa.Create();
+        opKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(checkResponse.Data.Certificate.PublicKey), out _);
+        Assert(checkResponse.Data.Envelope.Verify("update-manifest", checkResponse.Data.Envelope.Nonce, DateTimeOffset.UtcNow, opKey), "Envelope verification failed");
+
+        var manifest = JsonSerializer.Deserialize<UpdateManifest>(checkResponse.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(manifest != null, "Manifest deserialization failed");
+        Assert(manifest.Version == "1.3.0", "Version mismatch");
+        Assert(manifest.Sha256 == createResponse.Data.Sha256, "Sha256 hash mismatch");
+
+        // 9. Download package
+        var downloadResult = await SendGetAsync(client, "/api/v1/updates/1.3.0/download/win-x64.zip");
+        Assert(downloadResult.StatusCode == HttpStatusCode.OK, $"Download package failed: {downloadResult.StatusCode}");
+        
+        var bytes = await downloadResult.Content.ReadAsByteArrayAsync();
+        Assert(bytes.Length == createResponse.Data.PackageSize, "Downloaded package size mismatch");
+
+        // 10. Reauthenticate and Revoke Release
+        var reauthResponseMsg2 = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            csrf);
+        Assert(reauthResponseMsg2.StatusCode == HttpStatusCode.NoContent, "Reauthentication 2 failed");
+
+        var revokeResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/v1/admin/releases/{releaseId}/revoke",
+            new { },
+            csrf);
+        Assert(revokeResponseMsg.StatusCode == HttpStatusCode.OK, $"Revoke release failed: {revokeResponseMsg.StatusCode}");
+
+        // 11. Check latest updates -> expect 404 UpdateNotAvailable
+        var finalCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
+        Assert(finalCheck.StatusCode == HttpStatusCode.NotFound, "Revoked release should not be visible");
+    }
+    finally
+    {
+        RestoreEnvironment(environment);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
 sealed class TestServerFactory(string root, string password, string secret) : WebApplicationFactory<ServerApplication>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -977,3 +1143,4 @@ sealed class InstallServerFactory : WebApplicationFactory<ServerApplication>
         throw new DirectoryNotFoundException("NetRelay.Server project directory was not found.");
     }
 }
+

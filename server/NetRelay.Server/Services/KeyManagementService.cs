@@ -85,7 +85,7 @@ public sealed class KeyManagementService
                 {
                     var now = DateTimeOffset.UtcNow;
                     // 如果证书在未来 2 天内过期，或者当前时间不在有效期内，则重新生成
-                    if (now >= cert.NotBefore && now < cert.NotAfter.AddDays(-2))
+                    if (now >= cert.NotBefore && now < cert.NotAfter.AddDays(-2) && cert.AllowedPurposes.Contains("update-manifest"))
                     {
                         var key = ECDsa.Create();
                         key.ImportPkcs8PrivateKey(keyBytes, out _);
@@ -131,7 +131,7 @@ public sealed class KeyManagementService
         var cert = OperationalKeyCertificate.Create(
             keyId,
             operationPublicKeyBytes,
-            new[] { "connectivity-challenge", "client-configuration", "device-activation", "heartbeat" },
+            new[] { "connectivity-challenge", "client-configuration", "device-activation", "heartbeat", "update-manifest" },
             now.AddDays(-1),
             now.AddDays(30),
             rootKey);

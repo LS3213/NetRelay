@@ -1,0 +1,6 @@
+{
+  "primaryApiBaseUrl": "https://netrelay.lansil.cn",
+  "githubRepository": "lansi/NetRelay",
+  "updateChannel": "stable",
+  "allowGithubFallback": true
+}

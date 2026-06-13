@@ -57,6 +57,21 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("lastHeartbeatTimestamp")]
     public DateTimeOffset? LastHeartbeatTimestamp { get; set; }
+
+    [JsonPropertyName("clientConfigurationVersion")]
+    public int ClientConfigurationVersion { get; set; } = 0;
+
+    [JsonPropertyName("primaryApiBaseUrl")]
+    public string PrimaryApiBaseUrl { get; set; } = "https://netrelay.lansil.cn";
+
+    [JsonPropertyName("githubRepository")]
+    public string GithubRepository { get; set; } = "lansi/NetRelay";
+
+    [JsonPropertyName("updateChannel")]
+    public string UpdateChannel { get; set; } = "stable";
+
+    [JsonPropertyName("allowGithubFallback")]
+    public bool AllowGithubFallback { get; set; } = true;
 }
 
 public sealed class ConnectivityProbePolicy

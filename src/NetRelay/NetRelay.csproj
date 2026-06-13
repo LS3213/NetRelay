@@ -35,4 +35,8 @@
   <ItemGroup>
     <ProjectReference Include="..\NetRelay.Contracts\NetRelay.Contracts.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="bootstrap-config.json" />
+  </ItemGroup>
 </Project>

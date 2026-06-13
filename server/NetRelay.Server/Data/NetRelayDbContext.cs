@@ -14,6 +14,7 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
     public DbSet<DeviceInstallation> DeviceInstallations => Set<DeviceInstallation>();
     public DbSet<DeviceEvidence> DeviceEvidences => Set<DeviceEvidence>();
     public DbSet<ActivationReceipt> ActivationReceipts => Set<ActivationReceipt>();
+    public DbSet<Release> Releases => Set<Release>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -137,6 +138,23 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.Property(item => item.KeyId).HasMaxLength(100);
             entity.HasIndex(item => item.ReceiptId).IsUnique();
             entity.HasIndex(item => item.ExpiresAt);
+        });
+
+        modelBuilder.Entity<Release>(entity =>
+        {
+            entity.ToTable("releases");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.Version).HasMaxLength(50);
+            entity.Property(item => item.Channel).HasMaxLength(50);
+            entity.Property(item => item.Architecture).HasMaxLength(50);
+            entity.Property(item => item.MinUpgradableVersion).HasMaxLength(50);
+            entity.Property(item => item.Sha256).HasMaxLength(64).IsFixedLength();
+            entity.Property(item => item.AssetPath).HasMaxLength(500);
+            entity.Property(item => item.Status).HasMaxLength(50);
+            entity.Property(item => item.Changelog).HasMaxLength(4000);
+            entity.HasIndex(item => new { item.Version, item.Channel, item.Architecture }).IsUnique();
+            entity.HasIndex(item => item.Status);
         });
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

@@ -16,6 +16,12 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         SmoothScrollBehavior.Enable();
 
+        if (TryRunUpdateVerification(e.Args, out var verifyExitCode))
+        {
+            Shutdown(verifyExitCode);
+            return;
+        }
+
         if (TryRunAdapterDiagnostic(e.Args, out var diagnosticExitCode))
         {
             Shutdown(diagnosticExitCode);
@@ -177,6 +183,38 @@ public partial class App : System.Windows.Application
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
+        }
+
+        return true;
+    }
+
+    private static bool TryRunUpdateVerification(IReadOnlyList<string> args, out int exitCode)
+    {
+        exitCode = 0;
+        var verifyIndex = -1;
+        for (var index = 0; index < args.Count; index++)
+        {
+            if (string.Equals(args[index], "--verify-update", StringComparison.OrdinalIgnoreCase))
+            {
+                verifyIndex = index;
+                break;
+            }
+        }
+
+        if (verifyIndex < 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var configService = new ConfigurationService();
+            _ = configService.Current;
+            exitCode = 0;
+        }
+        catch
+        {
+            exitCode = 1;
         }
 
         return true;

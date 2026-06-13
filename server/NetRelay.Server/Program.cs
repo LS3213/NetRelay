@@ -130,10 +130,18 @@ adminAuth.MapPost("/reauthenticate", ReauthenticateAsync).RequireRateLimiting("a
 adminAuth.MapPost("/logout", LogoutAsync);
 app.MapGet("/api/v1/admin/audit/verify", VerifyAuditAsync);
 
+var adminReleases = app.MapGroup("/api/v1/admin/releases");
+adminReleases.MapPost("/", CreateReleaseAsync);
+adminReleases.MapGet("/", GetReleasesAsync);
+adminReleases.MapPost("/{id}/publish", PublishReleaseAsync);
+adminReleases.MapPost("/{id}/revoke", RevokeReleaseAsync);
+
 var publicApi = app.MapGroup("/api/v1");
 publicApi.MapPost("/devices/activate", ActivateDeviceAsync);
 publicApi.MapPost("/devices/heartbeat", DeviceHeartbeatAsync);
 publicApi.MapPost("/connectivity/challenge", GetConnectivityChallengeAsync);
+publicApi.MapGet("/updates/latest", GetLatestUpdateAsync);
+publicApi.MapGet("/updates/{version}/download/{filename}", DownloadUpdatePackageAsync);
 
 if (args.Contains("--migrate", StringComparer.Ordinal))
 {
@@ -536,6 +544,353 @@ static Task<IResult> GetConnectivityChallengeAsync(
     };
 
     return Task.FromResult(Results.Ok(new ApiResponse<ConnectivityChallengeResponse>(ApiInfrastructure.GetRequestId(context), response)));
+}
+
+static async Task<IResult> GetLatestUpdateAsync(
+    string channel,
+    string architecture,
+    string currentVersion,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    KeyManagementService keyManagementService,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(channel) || string.IsNullOrWhiteSpace(architecture) || string.IsNullOrWhiteSpace(currentVersion))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "请求参数不能为空。");
+    }
+
+    var latest = await dbContext.Releases
+        .Where(r => r.Status == "published" && r.Channel == channel && r.Architecture == architecture)
+        .OrderByDescending(r => r.ReleaseDate)
+        .FirstOrDefaultAsync(cancellationToken);
+
+    if (latest is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "没有可用的更新。");
+    }
+
+    // 比较版本
+    if (Version.TryParse(latest.Version, out var latestVer) && Version.TryParse(currentVersion, out var currentVer))
+    {
+        if (latestVer <= currentVer)
+        {
+            return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "当前已是最新版本。");
+        }
+    }
+    else if (string.Compare(latest.Version, currentVersion, StringComparison.OrdinalIgnoreCase) <= 0)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "当前已是最新版本。");
+    }
+
+    var manifest = new UpdateManifest
+    {
+        Version = latest.Version,
+        Channel = latest.Channel,
+        Architecture = latest.Architecture,
+        MinUpgradableVersion = latest.MinUpgradableVersion,
+        PackageSize = latest.PackageSize,
+        Sha256 = latest.Sha256,
+        ReleaseDate = latest.ReleaseDate,
+        Changelog = latest.Changelog
+    };
+
+    var payload = new Dictionary<string, object?>
+    {
+        ["version"] = manifest.Version,
+        ["channel"] = manifest.Channel,
+        ["architecture"] = manifest.Architecture,
+        ["minUpgradableVersion"] = manifest.MinUpgradableVersion,
+        ["packageSize"] = manifest.PackageSize,
+        ["sha256"] = manifest.Sha256,
+        ["releaseDate"] = manifest.ReleaseDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+        ["changelog"] = manifest.Changelog
+    };
+
+    var envelope = keyManagementService.Sign(
+        "update-manifest",
+        Guid.NewGuid().ToString("N"),
+        DateTimeOffset.UtcNow,
+        DateTimeOffset.UtcNow.AddMinutes(5),
+        payload);
+
+    var response = new UpdateCheckResponse
+    {
+        Envelope = envelope,
+        Certificate = keyManagementService.OperationCertificate
+    };
+
+    return Results.Ok(new ApiResponse<UpdateCheckResponse>(ApiInfrastructure.GetRequestId(context), response));
+}
+
+static async Task<IResult> DownloadUpdatePackageAsync(
+    string version,
+    string filename,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    ManagedFileStorage storage,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(filename))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "无效的下载请求。");
+    }
+
+    var release = await dbContext.Releases
+        .Where(r => r.Version == version && r.Status == "published")
+        .FirstOrDefaultAsync(cancellationToken);
+
+    if (release is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "版本包不存在。");
+    }
+
+    var expectedFilename = Path.GetFileName(release.AssetPath);
+    if (!string.Equals(expectedFilename, filename, StringComparison.OrdinalIgnoreCase))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "文件名不匹配。");
+    }
+
+    var path = storage.Resolve(StorageArea.Releases, release.AssetPath);
+    if (!File.Exists(path))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "物理文件丢失。");
+    }
+
+    return Results.File(path, "application/zip", filename);
+}
+
+static async Task<IResult> CreateReleaseAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    ManagedFileStorage storage,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (!context.Request.HasFormContentType)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "请求必须是表单形式。");
+    }
+
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var version = form["version"].ToString();
+    var channel = form["channel"].ToString();
+    var architecture = form["architecture"].ToString();
+    var minUpgradableVersion = form["minUpgradableVersion"].ToString();
+    var changelog = form["changelog"].ToString();
+
+    if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(channel) ||
+        string.IsNullOrWhiteSpace(architecture) || string.IsNullOrWhiteSpace(minUpgradableVersion))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "必填参数缺失。");
+    }
+
+    var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "更新包文件缺失。");
+    }
+
+    var exists = await dbContext.Releases.AnyAsync(r => r.Version == version && r.Channel == channel && r.Architecture == architecture, cancellationToken);
+    if (exists)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "该版本更新已存在。");
+    }
+
+    var tempName = Guid.NewGuid().ToString("N") + ".zip";
+    var tempPath = storage.Resolve(StorageArea.Staging, tempName);
+
+    string sha256Hex;
+    long packageSize;
+    using (var sha256 = SHA256.Create())
+    {
+        using (var destStream = File.Create(tempPath))
+        {
+            using (var srcStream = file.OpenReadStream())
+            {
+                var buffer = new byte[81920];
+                int read;
+                while ((read = await srcStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                {
+                    await destStream.WriteAsync(buffer, 0, read, cancellationToken);
+                    sha256.TransformBlock(buffer, 0, read, null, 0);
+                }
+                sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            }
+            packageSize = destStream.Length;
+        }
+        sha256Hex = Convert.ToHexString(sha256.Hash!).ToLower();
+    }
+
+    var targetPath = $"{channel}/{version}/{architecture}.zip";
+    try
+    {
+        await storage.MoveFromStagingAsync(tempName, StorageArea.Releases, targetPath, cancellationToken);
+    }
+    catch (Exception ex)
+    {
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+        return ApiInfrastructure.Error(context, StatusCodes.Status500InternalServerError, ErrorCodes.ServiceTemporarilyUnavailable, $"保存更新文件失败: {ex.Message}");
+    }
+
+    var release = new Release
+    {
+        Id = Guid.NewGuid(),
+        Version = version,
+        Channel = channel,
+        Architecture = architecture,
+        MinUpgradableVersion = minUpgradableVersion,
+        PackageSize = packageSize,
+        Sha256 = sha256Hex,
+        ReleaseDate = DateTimeOffset.UtcNow,
+        Changelog = changelog,
+        AssetPath = targetPath,
+        Status = "draft",
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    dbContext.Releases.Add(release);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "release.create",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        release.Id,
+        details: new { version, channel, architecture },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<Release>(ApiInfrastructure.GetRequestId(context), release));
+}
+
+static async Task<IResult> GetReleasesAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    var list = await dbContext.Releases.OrderByDescending(r => r.CreatedAt).ToListAsync(cancellationToken);
+    return Results.Ok(new ApiResponse<List<Release>>(ApiInfrastructure.GetRequestId(context), list));
+}
+
+static async Task<IResult> PublishReleaseAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    IOptions<ServerOptions> options,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var release = await dbContext.Releases.FindAsync(new object[] { id }, cancellationToken);
+    if (release is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "版本记录不存在。");
+    }
+
+    if (release.Status != "draft")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "只有草稿状态的版本可以发布。");
+    }
+
+    release.Status = "published";
+    release.PublishedAt = DateTimeOffset.UtcNow;
+    release.ReleaseDate = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "release.publish",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        release.Id,
+        details: new { version = release.Version, channel = release.Channel, architecture = release.Architecture },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<object?>(ApiInfrastructure.GetRequestId(context), null));
+}
+
+static async Task<IResult> RevokeReleaseAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var release = await dbContext.Releases.FindAsync(new object[] { id }, cancellationToken);
+    if (release is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "版本记录不存在。");
+    }
+
+    release.Status = "revoked";
+    release.RevokedAt = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "release.revoke",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        release.Id,
+        details: new { version = release.Version, channel = release.Channel, architecture = release.Architecture },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<object?>(ApiInfrastructure.GetRequestId(context), null));
 }
 
 public partial class Program;

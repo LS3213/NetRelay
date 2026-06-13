@@ -16,6 +16,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.Server", "server\N
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.Server.Tests", "server\NetRelay.Server.Tests\NetRelay.Server.Tests.csproj", "{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetRelay.Updater", "src\NetRelay.Updater\NetRelay.Updater.csproj", "{7543AF62-4AE5-46E8-926E-F4F0B1816F51}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,10 +44,15 @@ Global
 		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7543AF62-4AE5-46E8-926E-F4F0B1816F51}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{7543AF62-4AE5-46E8-926E-F4F0B1816F51}.Debug|Any CPU.Build.0 = Debug|x64
+		{7543AF62-4AE5-46E8-926E-F4F0B1816F51}.Release|Any CPU.ActiveCfg = Release|x64
+		{7543AF62-4AE5-46E8-926E-F4F0B1816F51}.Release|Any CPU.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{FFB5B4FE-895C-405D-A6C1-17AEDC99914B} = {B1D10C3B-6C49-414B-BA66-6C0447F12B33}
 		{79533D38-1DA6-44D3-9A32-7487EF58FEAC} = {AC0B3739-9939-4556-8853-288AD61E08E2}
 		{D237B113-CBCC-4CAC-B33C-A81859CDA4A7} = {AC0B3739-9939-4556-8853-288AD61E08E2}
+		{7543AF62-4AE5-46E8-926E-F4F0B1816F51} = {B1D10C3B-6C49-414B-BA66-6C0447F12B33}
 	EndGlobalSection
 EndGlobal

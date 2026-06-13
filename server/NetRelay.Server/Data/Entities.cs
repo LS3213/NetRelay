@@ -98,3 +98,20 @@ public sealed class ActivationReceipt
     public DateTimeOffset? RevokedAt { get; set; }
 }
 
+public sealed class Release
+{
+    public Guid Id { get; set; }
+    public required string Version { get; set; }
+    public required string Channel { get; set; }
+    public required string Architecture { get; set; }
+    public required string MinUpgradableVersion { get; set; }
+    public long PackageSize { get; set; }
+    public required string Sha256 { get; set; }
+    public DateTimeOffset ReleaseDate { get; set; }
+    public required string Changelog { get; set; }
+    public required string AssetPath { get; set; }
+    public required string Status { get; set; } // "draft" | "published" | "revoked"
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? PublishedAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+}
