@@ -33,6 +33,7 @@
 14. [后端安全、签名与隐私规范](14-backend-security-signing-and-privacy.md)
 15. [后端部署与运维规范](15-backend-deployment-and-operations.md)
 16. [B0 设备指纹与安全原型报告](16-b0-device-fingerprint-and-security-prototype-report.md)
+17. [B0 设备指纹手动测试指南](17-b0-device-fingerprint-manual-test-guide.md)
 
 ## 目录结构
 

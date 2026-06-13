@@ -25,4 +25,20 @@ NetRelay 网卡辅助层复用程序已有的物理候选分类逻辑，只加�
 dotnet run --project prototypes/NetRelay.B0.DeviceIdPrototype/NetRelay.B0.DeviceIdPrototype.csproj -c Release
 ```
 
-输出只包含分类名、SHA-256 哈希和耗时，不打印原始硬件值。正式接入前仍需执行稳定性、虚拟机克隆、换硬盘、重装系统和网络抓包测试。
+双击 EXE 或不带参数运行时，会在 EXE 同目录的 `reports/` 下生成 JSON 报告。报告不包含原始硬件值，但为了比较前后变化会包含稳定哈希，因此不得公开分享或上传到公开仓库。
+
+生成带标签报告：
+
+```powershell
+NetRelay.B0.DeviceIdTestTool.exe --label "更换网卡前"
+```
+
+比较两个报告：
+
+```powershell
+NetRelay.B0.DeviceIdTestTool.exe --compare before.json after.json
+```
+
+也可以在资源管理器中选中两份 JSON 报告，并将它们一起拖到 EXE 上完成比较。
+
+比较结果只输出各分类匹配、增加和移除数量，不复制完整证据哈希。正式接入前仍需执行稳定性、虚拟机克隆、换硬盘、重装系统和网络抓包测试。
