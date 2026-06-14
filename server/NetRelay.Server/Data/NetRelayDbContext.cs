@@ -15,6 +15,8 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
     public DbSet<DeviceEvidence> DeviceEvidences => Set<DeviceEvidence>();
     public DbSet<ActivationReceipt> ActivationReceipts => Set<ActivationReceipt>();
     public DbSet<Release> Releases => Set<Release>();
+    public DbSet<Feedback> Feedbacks => Set<Feedback>();
+    public DbSet<Announcement> Announcements => Set<Announcement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -155,6 +157,38 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.Property(item => item.Changelog).HasMaxLength(4000);
             entity.HasIndex(item => new { item.Version, item.Channel, item.Architecture }).IsUnique();
             entity.HasIndex(item => item.Status);
+        });
+
+        modelBuilder.Entity<Feedback>(entity =>
+        {
+            entity.ToTable("feedbacks");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.Type).HasMaxLength(50);
+            entity.Property(item => item.Title).HasMaxLength(200);
+            entity.Property(item => item.Content).HasMaxLength(4000);
+            entity.Property(item => item.Contact).HasMaxLength(200);
+            entity.Property(item => item.AttachmentFilename).HasMaxLength(200);
+            entity.Property(item => item.Status).HasMaxLength(50);
+            entity.HasIndex(item => item.CreatedAt);
+            entity.HasIndex(item => item.Status);
+        });
+
+        modelBuilder.Entity<Announcement>(entity =>
+        {
+            entity.ToTable("announcements");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.Title).HasMaxLength(200);
+            entity.Property(item => item.Content).HasMaxLength(4000);
+            entity.Property(item => item.Severity).HasMaxLength(50);
+            entity.Property(item => item.TargetVersionMin).HasMaxLength(50);
+            entity.Property(item => item.TargetVersionMax).HasMaxLength(50);
+            entity.Property(item => item.DisplayTrigger).HasMaxLength(50);
+            entity.Property(item => item.Status).HasMaxLength(50);
+            entity.HasIndex(item => item.Status);
+            entity.HasIndex(item => item.PublishedAt);
+            entity.HasIndex(item => item.ExpiresAt);
         });
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

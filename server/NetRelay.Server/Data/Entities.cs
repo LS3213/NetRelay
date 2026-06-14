@@ -115,3 +115,35 @@ public sealed class Release
     public DateTimeOffset? PublishedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
 }
+
+public sealed class Feedback
+{
+    public Guid Id { get; set; }
+    public required string Type { get; set; } // "bug" | "suggestion" | "other"
+    public required string Title { get; set; }
+    public required string Content { get; set; }
+    public string? Contact { get; set; }
+    public bool HasAttachment { get; set; }
+    public string? AttachmentFilename { get; set; }
+    public long? AttachmentSize { get; set; }
+    public required string Status { get; set; } // "pending" | "resolved" | "ignored"
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? StatusUpdatedAt { get; set; }
+}
+
+public sealed class Announcement
+{
+    public Guid Id { get; set; }
+    public required string Title { get; set; }
+    public required string Content { get; set; }
+    public required string Severity { get; set; } // "normal" | "important" | "critical"
+    public string? TargetVersionMin { get; set; }
+    public string? TargetVersionMax { get; set; }
+    public required string DisplayTrigger { get; set; } // "once_per_device" | "every_startup"
+    public required string Status { get; set; } // "draft" | "published" | "revoked"
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? PublishedAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+}
+

@@ -72,6 +72,9 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("allowGithubFallback")]
     public bool AllowGithubFallback { get; set; } = true;
+
+    [JsonPropertyName("displayedAnnouncementIds")]
+    public List<string> DisplayedAnnouncementIds { get; set; } = [];
 }
 
 public sealed class ConnectivityProbePolicy

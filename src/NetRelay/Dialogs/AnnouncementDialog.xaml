@@ -1,0 +1,41 @@
+<Window x:Class="NetRelay.Dialogs.AnnouncementDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="系统公告" Width="480" Height="380"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False">
+    <Border Margin="15" Padding="25" CornerRadius="24" Background="#F4F8FD"
+            BorderBrush="#FFFFFFFF" BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="30" ShadowDepth="8" Opacity="0.20" Color="#263753"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                <Border x:Name="IconBorder" Width="42" Height="42" CornerRadius="15" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1">
+                    <TextBlock x:Name="IconTextBlock" Text="&#xE715;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2" FontSize="18"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleTextBlock" Text="系统公告" FontWeight="Bold" FontSize="16"/>
+                    <TextBlock x:Name="SubTitleTextBlock" Text="发布时间: --" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,4,0,0"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Markdown Viewer -->
+            <FlowDocumentScrollViewer x:Name="DocViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" 
+                                      HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0" Margin="0,10"/>
+
+            <!-- Action Buttons -->
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+                <Button x:Name="ActionButton" Style="{StaticResource PrimaryButtonStyle}" Content="我知道了" Click="ActionButton_Click" Width="120" HorizontalAlignment="Right"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

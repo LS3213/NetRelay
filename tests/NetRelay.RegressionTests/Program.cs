@@ -1,3 +1,6 @@
+using System.IO;
+using System.Linq;
+using System.Threading;
 using NetRelay.Models;
 using NetRelay.Services;
 using System.Net;
@@ -50,7 +53,9 @@ var tests = new (string Name, Action Test)[]
     ("Scheduler triggers automatic recovery on time elapsed", SchedulerTriggersAutomaticRecoveryOnTimeElapsed),
     ("Scheduler skips expired automatic recovery", SchedulerSkipsExpiredAutomaticRecovery),
     ("EvidenceHasher anonymizes evidence properly", EvidenceHasherAnonymizesEvidenceProperly),
-    ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable)
+    ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable),
+    ("Log packaging logic zips jsonl files properly", TestLogPackagingLogic),
+    ("Safe markdown parser parses formatting and filters unsafe protocols", TestSafeMarkdownParser)
 };
 
 var failures = new List<string>();
@@ -1532,3 +1537,107 @@ static void ConnectivityServiceGracefulDegradationOnBackendUnavailable()
         Environment.SetEnvironmentVariable("NETRELAY_BACKEND_URL", null);
     }
 }
+
+static void TestLogPackagingLogic()
+{
+    var tempDir = Path.Combine(Path.GetTempPath(), $"netrelay_test_logs_{Guid.NewGuid():N}");
+    Directory.CreateDirectory(tempDir);
+    var zipPath = Path.Combine(Path.GetTempPath(), $"netrelay_test_zip_{Guid.NewGuid():N}.zip");
+
+    try
+    {
+        var file1 = Path.Combine(tempDir, "execution-20260613.jsonl");
+        var file2 = Path.Combine(tempDir, "execution-20260614.jsonl");
+        var file3 = Path.Combine(tempDir, "other.txt");
+
+        File.WriteAllText(file1, "line1\nline2");
+        File.WriteAllText(file2, "line3\nline4");
+        File.WriteAllText(file3, "ignored");
+
+        var logService = new LogService(tempDir);
+        logService.CreateDiagnosticZipAsync(zipPath).Wait();
+
+        Assert(File.Exists(zipPath));
+
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(zipPath))
+        {
+            Assert(archive.Entries.Count == 2);
+            var entryNames = archive.Entries.Select(e => e.Name).ToList();
+            Assert(entryNames.Contains("execution-20260613.jsonl"));
+            Assert(entryNames.Contains("execution-20260614.jsonl"));
+            Assert(!entryNames.Contains("other.txt"));
+        }
+    }
+    finally
+    {
+        try { Directory.Delete(tempDir, true); } catch {}
+        try { File.Delete(zipPath); } catch {}
+    }
+}
+
+static void RunOnSTA(Action action)
+{
+    var tcs = new TaskCompletionSource<object?>();
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            action();
+            tcs.SetResult(null);
+        }
+        catch (Exception ex)
+        {
+            tcs.SetException(ex);
+        }
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    tcs.Task.GetAwaiter().GetResult();
+}
+
+static void TestSafeMarkdownParser()
+{
+    RunOnSTA(() =>
+    {
+        var doc = SafeMarkdownParser.Parse("# Hello\nSome **bold** text\n- List item\n[Safe Link](https://google.com)\n[Unsafe Link](file:///c:/)");
+        Assert(doc != null);
+        Assert(doc!.Blocks.Count >= 5);
+
+        var p0 = doc.Blocks.ElementAt(0) as System.Windows.Documents.Paragraph;
+        Assert(p0 != null);
+        Assert(p0!.FontSize == 16);
+        Assert(p0.FontWeight == System.Windows.FontWeights.Bold);
+
+        var p1 = doc.Blocks.ElementAt(1) as System.Windows.Documents.Paragraph;
+        Assert(p1 != null);
+        Assert(p1!.Inlines.Count == 3);
+        var run0 = p1.Inlines.ElementAt(0) as System.Windows.Documents.Run;
+        var run1 = p1.Inlines.ElementAt(1) as System.Windows.Documents.Run;
+        var run2 = p1.Inlines.ElementAt(2) as System.Windows.Documents.Run;
+        Assert(run0?.Text == "Some ");
+        Assert(run1?.Text == "bold");
+        Assert(run1?.FontWeight == System.Windows.FontWeights.Bold);
+        Assert(run2?.Text == " text");
+
+        var list = doc.Blocks.ElementAt(2) as System.Windows.Documents.List;
+        Assert(list != null);
+        Assert(list!.ListItems.Count == 1);
+
+        var p3 = doc.Blocks.ElementAt(3) as System.Windows.Documents.Paragraph;
+        Assert(p3 != null);
+        Assert(p3!.Inlines.Count == 1);
+        var hyper = p3.Inlines.FirstInline as System.Windows.Documents.Hyperlink;
+        Assert(hyper != null);
+        Assert(hyper!.NavigateUri?.AbsoluteUri == "https://google.com/");
+
+        var p4 = doc.Blocks.ElementAt(4) as System.Windows.Documents.Paragraph;
+        Assert(p4 != null);
+        Assert(p4!.Inlines.Count == 1);
+        var grayRun = p4.Inlines.FirstInline as System.Windows.Documents.Run;
+        Assert(grayRun != null);
+        Assert(grayRun!.Text == "Unsafe Link (file:///c:/)");
+        Assert(grayRun.Foreground == System.Windows.Media.Brushes.Gray);
+    });
+}
+

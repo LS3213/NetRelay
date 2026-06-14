@@ -166,4 +166,42 @@ public sealed class LogService
             }
         });
     }
+
+    public Task CreateDiagnosticZipAsync(string zipPath)
+    {
+        return Task.Run(() =>
+        {
+            if (File.Exists(zipPath))
+            {
+                File.Delete(zipPath);
+            }
+
+            var dir = Path.GetDirectoryName(zipPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            using var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create);
+            if (Directory.Exists(_logDirectory))
+            {
+                var files = Directory.GetFiles(_logDirectory, "execution-*.jsonl");
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var entryName = Path.GetFileName(file);
+                        using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        var entry = zip.CreateEntry(entryName);
+                        using var entryStream = entry.Open();
+                        fileStream.CopyTo(entryStream);
+                    }
+                    catch
+                    {
+                        // Skip if it fails to read or archive
+                    }
+                }
+            }
+        });
+    }
 }

@@ -136,12 +136,26 @@ adminReleases.MapGet("/", GetReleasesAsync);
 adminReleases.MapPost("/{id}/publish", PublishReleaseAsync);
 adminReleases.MapPost("/{id}/revoke", RevokeReleaseAsync);
 
+var adminFeedback = app.MapGroup("/api/v1/admin/feedback");
+adminFeedback.MapGet("/", GetFeedbacksAsync);
+adminFeedback.MapPost("/{id}/status", UpdateFeedbackStatusAsync);
+adminFeedback.MapGet("/{id}/attachment", DownloadFeedbackAttachmentAsync);
+
+var adminAnnouncements = app.MapGroup("/api/v1/admin/announcements");
+adminAnnouncements.MapPost("/", CreateAnnouncementAsync);
+adminAnnouncements.MapGet("/", GetAnnouncementsAsync);
+adminAnnouncements.MapPut("/{id}", EditAnnouncementAsync);
+adminAnnouncements.MapPost("/{id}/publish", PublishAnnouncementAsync);
+adminAnnouncements.MapPost("/{id}/revoke", RevokeAnnouncementAsync);
+
 var publicApi = app.MapGroup("/api/v1");
 publicApi.MapPost("/devices/activate", ActivateDeviceAsync);
 publicApi.MapPost("/devices/heartbeat", DeviceHeartbeatAsync);
 publicApi.MapPost("/connectivity/challenge", GetConnectivityChallengeAsync);
 publicApi.MapGet("/updates/latest", GetLatestUpdateAsync);
 publicApi.MapGet("/updates/{version}/download/{filename}", DownloadUpdatePackageAsync);
+publicApi.MapPost("/feedback", SubmitFeedbackAsync);
+publicApi.MapGet("/announcements/active", GetActiveAnnouncementsAsync);
 
 if (args.Contains("--migrate", StringComparer.Ordinal))
 {
@@ -891,6 +905,507 @@ static async Task<IResult> RevokeReleaseAsync(
         cancellationToken: cancellationToken);
 
     return Results.Ok(new ApiResponse<object?>(ApiInfrastructure.GetRequestId(context), null));
+}
+
+static async Task<IResult> SubmitFeedbackAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    ManagedFileStorage storage,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    if (!context.Request.HasFormContentType)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "只接受 Form 内容提交。");
+    }
+
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    
+    var type = form["type"].ToString();
+    var title = form["title"].ToString();
+    var content = form["content"].ToString();
+    var contact = form["contact"].ToString();
+
+    if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(content))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "类型、标题和正文不能为空。");
+    }
+
+    if (type != "bug" && type != "suggestion" && type != "other")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "不支持的反馈类型。");
+    }
+
+    var feedbackId = Uuid7.Create();
+    var hasAttachment = false;
+    string? attachmentFilename = null;
+    long? attachmentSize = null;
+
+    if (form.Files.GetFile("file") is { } file)
+    {
+        if (file.Length > 10 * 1024 * 1024)
+        {
+            return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "附件大小不能超过 10 MB。");
+        }
+
+        var ext = Path.GetExtension(file.FileName);
+        if (!ext.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "仅允许上传 .zip 格式的压缩日志包。");
+        }
+
+        hasAttachment = true;
+        attachmentFilename = file.FileName;
+        attachmentSize = file.Length;
+
+        // Save attachment to FeedbackRoot
+        var targetPath = storage.Resolve(StorageArea.Feedback, $"feedback_{feedbackId:N}.zip");
+        await using var targetStream = File.Create(targetPath);
+        await file.CopyToAsync(targetStream, cancellationToken);
+    }
+
+    var feedback = new Feedback
+    {
+        Id = feedbackId,
+        Type = type,
+        Title = title,
+        Content = content,
+        Contact = string.IsNullOrWhiteSpace(contact) ? null : contact,
+        HasAttachment = hasAttachment,
+        AttachmentFilename = attachmentFilename,
+        AttachmentSize = attachmentSize,
+        Status = "pending",
+        CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    dbContext.Feedbacks.Add(feedback);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "feedback.submit",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        feedback.Id,
+        details: new { type = feedback.Type, title = feedback.Title, hasAttachment = feedback.HasAttachment },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<Feedback>(ApiInfrastructure.GetRequestId(context), feedback));
+}
+
+static async Task<IResult> GetActiveAnnouncementsAsync(
+    string clientVersion,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    KeyManagementService keyManagementService,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(clientVersion))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "客户端版本号不能为空。");
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    var allPublished = await dbContext.Announcements
+        .Where(a => a.Status == "published" && a.PublishedAt <= now && (a.ExpiresAt == null || a.ExpiresAt > now))
+        .ToListAsync(cancellationToken);
+
+    // Filter by target version ranges in memory
+    var activeAnnouncements = new List<AnnouncementDto>();
+    foreach (var a in allPublished)
+    {
+        var match = true;
+        if (!string.IsNullOrWhiteSpace(a.TargetVersionMin))
+        {
+            if (Version.TryParse(a.TargetVersionMin, out var minVer) && Version.TryParse(clientVersion, out var cVer))
+            {
+                if (cVer < minVer) match = false;
+            }
+            else if (string.Compare(clientVersion, a.TargetVersionMin, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                match = false;
+            }
+        }
+        if (match && !string.IsNullOrWhiteSpace(a.TargetVersionMax))
+        {
+            if (Version.TryParse(a.TargetVersionMax, out var maxVer) && Version.TryParse(clientVersion, out var cVer))
+            {
+                if (cVer > maxVer) match = false;
+            }
+            else if (string.Compare(clientVersion, a.TargetVersionMax, StringComparison.OrdinalIgnoreCase) > 0)
+            {
+                match = false;
+            }
+        }
+
+        if (match)
+        {
+            activeAnnouncements.Add(new AnnouncementDto
+            {
+                Id = a.Id,
+                Title = a.Title,
+                Content = a.Content,
+                Severity = a.Severity,
+                TargetVersionMin = a.TargetVersionMin,
+                TargetVersionMax = a.TargetVersionMax,
+                DisplayTrigger = a.DisplayTrigger,
+                PublishedAt = a.PublishedAt ?? a.CreatedAt,
+                ExpiresAt = a.ExpiresAt
+            });
+        }
+    }
+
+    var payload = new Dictionary<string, object?>
+    {
+        ["announcements"] = activeAnnouncements.Select(a => new Dictionary<string, object?>
+        {
+            ["id"] = a.Id.ToString("D"),
+            ["title"] = a.Title,
+            ["content"] = a.Content,
+            ["severity"] = a.Severity,
+            ["targetVersionMin"] = a.TargetVersionMin,
+            ["targetVersionMax"] = a.TargetVersionMax,
+            ["displayTrigger"] = a.DisplayTrigger,
+            ["publishedAt"] = a.PublishedAt.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            ["expiresAt"] = a.ExpiresAt?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+        }).ToList()
+    };
+
+    var envelope = keyManagementService.Sign(
+        "announcement",
+        Guid.NewGuid().ToString("N"),
+        DateTimeOffset.UtcNow,
+        DateTimeOffset.UtcNow.AddMinutes(5),
+        payload);
+
+    var response = new AnnouncementCheckResponse
+    {
+        Envelope = envelope,
+        Certificate = keyManagementService.OperationCertificate
+    };
+
+    return Results.Ok(new ApiResponse<AnnouncementCheckResponse>(ApiInfrastructure.GetRequestId(context), response));
+}
+
+static async Task<IResult> GetFeedbacksAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    var list = await dbContext.Feedbacks
+        .OrderByDescending(f => f.CreatedAt)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<List<Feedback>>(ApiInfrastructure.GetRequestId(context), list));
+}
+
+static async Task<IResult> UpdateFeedbackStatusAsync(
+    Guid id,
+    FeedbackStatusUpdateRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Status) || (request.Status != "pending" && request.Status != "resolved" && request.Status != "ignored"))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "非法状态值。");
+    }
+
+    var feedback = await dbContext.Feedbacks.FindAsync(new object[] { id }, cancellationToken);
+    if (feedback is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "反馈记录不存在。");
+    }
+
+    var oldStatus = feedback.Status;
+    feedback.Status = request.Status;
+    feedback.StatusUpdatedAt = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "feedback.update_status",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        feedback.Id,
+        details: new { oldStatus, newStatus = feedback.Status },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<Feedback>(ApiInfrastructure.GetRequestId(context), feedback));
+}
+
+static async Task<IResult> DownloadFeedbackAttachmentAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    ManagedFileStorage storage,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var feedback = await dbContext.Feedbacks.FindAsync(new object[] { id }, cancellationToken);
+    if (feedback is null || !feedback.HasAttachment)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "附件文件不存在。");
+    }
+
+    var path = storage.Resolve(StorageArea.Feedback, $"feedback_{feedback.Id:N}.zip");
+    if (!File.Exists(path))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "附件物理文件丢失。");
+    }
+
+    var stream = File.OpenRead(path);
+    return Results.File(stream, "application/zip", feedback.AttachmentFilename ?? $"feedback_{feedback.Id:N}.zip");
+}
+
+static async Task<IResult> CreateAnnouncementAsync(
+    AnnouncementCreateRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Content) || string.IsNullOrWhiteSpace(request.Severity) || string.IsNullOrWhiteSpace(request.DisplayTrigger))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "标题、内容、等级与展示触发器均不能为空。");
+    }
+
+    if (request.Severity != "normal" && request.Severity != "important" && request.Severity != "critical")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "无效的通知等级。");
+    }
+
+    if (request.DisplayTrigger != "once_per_device" && request.DisplayTrigger != "every_startup")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "无效的展示触发类型。");
+    }
+
+    var announcement = new Announcement
+    {
+        Id = Uuid7.Create(),
+        Title = request.Title,
+        Content = request.Content,
+        Severity = request.Severity,
+        TargetVersionMin = string.IsNullOrWhiteSpace(request.TargetVersionMin) ? null : request.TargetVersionMin,
+        TargetVersionMax = string.IsNullOrWhiteSpace(request.TargetVersionMax) ? null : request.TargetVersionMax,
+        DisplayTrigger = request.DisplayTrigger,
+        Status = "draft",
+        CreatedAt = DateTimeOffset.UtcNow,
+        ExpiresAt = request.ExpiresAt
+    };
+
+    dbContext.Announcements.Add(announcement);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<Announcement>(ApiInfrastructure.GetRequestId(context), announcement));
+}
+
+static async Task<IResult> EditAnnouncementAsync(
+    Guid id,
+    AnnouncementCreateRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Content) || string.IsNullOrWhiteSpace(request.Severity) || string.IsNullOrWhiteSpace(request.DisplayTrigger))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "标题、内容、等级与展示触发器均不能为空。");
+    }
+
+    var announcement = await dbContext.Announcements.FindAsync(new object[] { id }, cancellationToken);
+    if (announcement is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "公告不存在。");
+    }
+
+    if (announcement.Status != "draft")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "非草稿状态公告不可编辑。");
+    }
+
+    announcement.Title = request.Title;
+    announcement.Content = request.Content;
+    announcement.Severity = request.Severity;
+    announcement.TargetVersionMin = string.IsNullOrWhiteSpace(request.TargetVersionMin) ? null : request.TargetVersionMin;
+    announcement.TargetVersionMax = string.IsNullOrWhiteSpace(request.TargetVersionMax) ? null : request.TargetVersionMax;
+    announcement.DisplayTrigger = request.DisplayTrigger;
+    announcement.ExpiresAt = request.ExpiresAt;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<Announcement>(ApiInfrastructure.GetRequestId(context), announcement));
+}
+
+static async Task<IResult> PublishAnnouncementAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var announcement = await dbContext.Announcements.FindAsync(new object[] { id }, cancellationToken);
+    if (announcement is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "公告不存在。");
+    }
+
+    if (announcement.Status != "draft")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "只有草稿状态公告才可发布。");
+    }
+
+    announcement.Status = "published";
+    announcement.PublishedAt = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "announcement.publish",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        announcement.Id,
+        details: new { title = announcement.Title },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<Announcement>(ApiInfrastructure.GetRequestId(context), announcement));
+}
+
+static async Task<IResult> RevokeAnnouncementAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var announcement = await dbContext.Announcements.FindAsync(new object[] { id }, cancellationToken);
+    if (announcement is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "公告不存在。");
+    }
+
+    if (announcement.Status != "published")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "只有已发布公告才可撤回。");
+    }
+
+    announcement.Status = "revoked";
+    announcement.RevokedAt = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "announcement.revoke",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        announcement.Id,
+        details: new { title = announcement.Title },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<Announcement>(ApiInfrastructure.GetRequestId(context), announcement));
+}
+
+static async Task<IResult> GetAnnouncementsAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    CancellationToken cancellationToken)
+{
+    var list = await dbContext.Announcements
+        .OrderByDescending(a => a.CreatedAt)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<List<Announcement>>(ApiInfrastructure.GetRequestId(context), list));
 }
 
 public partial class Program;

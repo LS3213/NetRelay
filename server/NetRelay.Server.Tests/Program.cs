@@ -47,7 +47,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("SignedEnvelope and OperationalKeyCertificate verification work correctly", () => RunSync(TestSignedEnvelopeAndCertificate)),
     ("Device fingerprint activation matching logic behaves correctly", TestDeviceFingerprintActivationMatchingAsync),
     ("Device activation and connectivity challenge endpoints work correctly", TestDeviceActivationAndChallengeApiAsync),
-    ("Update management and download endpoints behave correctly", TestUpdateApiAsync)
+    ("Update management and download endpoints behave correctly", TestUpdateApiAsync),
+    ("Feedback submission, listing, status updates, and download behavior work correctly", TestFeedbackApiAsync),
+    ("Announcement lifecycle (creation, editing, signing, and retrieval) works correctly", TestAnnouncementApiAsync)
 };
 
 var failed = 0;
@@ -1057,6 +1059,313 @@ static async Task TestUpdateApiAsync()
         // 11. Check latest updates -> expect 404 UpdateNotAvailable
         var finalCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
         Assert(finalCheck.StatusCode == HttpStatusCode.NotFound, "Revoked release should not be visible");
+    }
+    finally
+    {
+        RestoreEnvironment(environment);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestFeedbackApiAsync()
+{
+    const string password = "correct horse battery staple";
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    var environment = ApplyTestEnvironment(root, password, secret);
+    try
+    {
+        await using var factory = new TestServerFactory(root, password, secret);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        // 1. Submit invalid feedback (missing type/title/content)
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new StringContent(""), "type");
+            form.Add(new StringContent("Some title"), "title");
+            form.Add(new StringContent("Some content"), "content");
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/feedback") { Content = form };
+            req.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            var response = await client.SendAsync(req);
+            Assert(response.StatusCode == HttpStatusCode.BadRequest, $"Empty type should be rejected: {response.StatusCode}");
+        }
+
+        // 2. Submit invalid feedback type
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new StringContent("invalid_type"), "type");
+            form.Add(new StringContent("Some title"), "title");
+            form.Add(new StringContent("Some content"), "content");
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/feedback") { Content = form };
+            req.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            var response = await client.SendAsync(req);
+            Assert(response.StatusCode == HttpStatusCode.BadRequest, $"Invalid type should be rejected: {response.StatusCode}");
+        }
+
+        // 3. Submit feedback with non-zip attachment
+        var badFilePath = Path.Combine(root, "bad.txt");
+        await File.WriteAllTextAsync(badFilePath, "not a zip");
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new StringContent("bug"), "type");
+            form.Add(new StringContent("Some title"), "title");
+            form.Add(new StringContent("Some content"), "content");
+            using var fileStream = File.OpenRead(badFilePath);
+            var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain");
+            form.Add(streamContent, "file", "bad.txt");
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/feedback") { Content = form };
+            req.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            var response = await client.SendAsync(req);
+            Assert(response.StatusCode == HttpStatusCode.BadRequest, $"Non-zip extension should be rejected: {response.StatusCode}");
+        }
+
+        // 4. Submit valid feedback with a ZIP attachment
+        var goodZipPath = Path.Combine(root, "logs.zip");
+        using (var archive = ZipFile.Open(goodZipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("log.txt");
+            using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync("system diagnostic logs content");
+        }
+
+        Guid feedbackId;
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new StringContent("bug"), "type");
+            form.Add(new StringContent("UI Crash"), "title");
+            form.Add(new StringContent("App crashed when clicking feedback button"), "content");
+            form.Add(new StringContent("user@example.com"), "contact");
+            using var fileStream = File.OpenRead(goodZipPath);
+            var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+            form.Add(streamContent, "file", "logs.zip");
+
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/feedback") { Content = form };
+            req.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            var response = await client.SendAsync(req);
+            Assert(response.StatusCode == HttpStatusCode.OK, $"Submit valid feedback failed: {response.StatusCode}");
+            var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<Feedback>>();
+            Assert(apiResponse != null && apiResponse.Data != null, "Response should have feedback data");
+            Assert(apiResponse.Data.Type == "bug", "Type mismatch");
+            Assert(apiResponse.Data.HasAttachment == true, "HasAttachment should be true");
+            Assert(apiResponse.Data.AttachmentFilename == "logs.zip", "Attachment filename mismatch");
+            feedbackId = apiResponse.Data.Id;
+        }
+
+        // 5. Admin check feedbacks (unauthenticated)
+        var listUnauth = await SendGetAsync(client, "/api/v1/admin/feedback");
+        Assert(listUnauth.StatusCode == HttpStatusCode.Unauthorized, $"Admin list should be protected: {listUnauth.StatusCode}");
+
+        // 6. Admin Login
+        var loginResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/auth/login", new AdminLoginRequest("admin", password));
+        Assert(loginResponseMsg.StatusCode == HttpStatusCode.OK, "Login failed");
+        var login = await loginResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminLoginChallenge>>() ?? throw new InvalidOperationException();
+        
+        var totpResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new AdminTotpRequest(login.Data.ChallengeToken, TotpService.GenerateCode(secret, DateTimeOffset.UtcNow)));
+        Assert(totpResponseMsg.StatusCode == HttpStatusCode.OK, "TOTP validation failed");
+        var session = await totpResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminSessionResponse>>() ?? throw new InvalidOperationException();
+        var csrf = session.Data.CsrfToken;
+
+        // 7. Admin check feedbacks (authenticated)
+        var listAuth = await SendGetAsync(client, "/api/v1/admin/feedback");
+        Assert(listAuth.StatusCode == HttpStatusCode.OK, $"Admin list should succeed: {listAuth.StatusCode}");
+        var feedbacksList = await listAuth.Content.ReadFromJsonAsync<ApiResponse<List<Feedback>>>();
+        Assert(feedbacksList != null && feedbacksList.Data != null, "Feedbacks list should not be null");
+        Assert(feedbacksList.Data.Any(f => f.Id == feedbackId), "List must contain submitted feedback");
+
+        // 8. Re-authenticate
+        var reauthResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            csrf);
+        Assert(reauthResponseMsg.StatusCode == HttpStatusCode.NoContent, "Reauthentication failed");
+
+        // 9. Update feedback status -> succeeds
+        var updateStatusMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/v1/admin/feedback/{feedbackId}/status",
+            new FeedbackStatusUpdateRequest { Status = "resolved" },
+            csrf);
+        Assert(updateStatusMsg.StatusCode == HttpStatusCode.OK, $"Status update should succeed: {updateStatusMsg.StatusCode}");
+        var updatedFeedback = await updateStatusMsg.Content.ReadFromJsonAsync<ApiResponse<Feedback>>();
+        Assert(updatedFeedback != null && updatedFeedback.Data != null && updatedFeedback.Data.Status == "resolved", "Status should be updated to resolved");
+
+        // 10. Download attachment
+        var downloadMsg = await SendGetAsync(client, $"/api/v1/admin/feedback/{feedbackId}/attachment");
+        Assert(downloadMsg.StatusCode == HttpStatusCode.OK, $"Download attachment should succeed: {downloadMsg.StatusCode}");
+        var downloadBytes = await downloadMsg.Content.ReadAsByteArrayAsync();
+        var uploadBytes = await File.ReadAllBytesAsync(goodZipPath);
+        Assert(downloadBytes.SequenceEqual(uploadBytes), "Downloaded attachment bytes should match uploaded zip");
+    }
+    finally
+    {
+        RestoreEnvironment(environment);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestAnnouncementApiAsync()
+{
+    const string password = "correct horse battery staple";
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    var environment = ApplyTestEnvironment(root, password, secret);
+    try
+    {
+        await using var factory = new TestServerFactory(root, password, secret);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        // 1. Check active announcements initially -> empty signed response
+        var initCheck = await SendGetAsync(client, "/api/v1/announcements/active?clientVersion=1.0.0");
+        Assert(initCheck.StatusCode == HttpStatusCode.OK, $"Initial check failed: {initCheck.StatusCode}");
+        var initRes = await initCheck.Content.ReadFromJsonAsync<ApiResponse<AnnouncementCheckResponse>>();
+        Assert(initRes != null && initRes.Data != null, "Response should have payload");
+        Assert(initRes.Data.Envelope != null, "Envelope should not be null");
+        Assert(initRes.Data.Certificate != null, "Certificate should not be null");
+
+        var payloadJson = initRes.Data.Envelope.PayloadJson;
+        var payloadObj = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson);
+        Assert(payloadObj != null && payloadObj.ContainsKey("announcements"), "Payload must contain announcements key");
+        var announcementsJson = payloadObj["announcements"].ToString();
+        var initList = JsonSerializer.Deserialize<List<object>>(announcementsJson!);
+        Assert(initList != null && initList.Count == 0, "Initial active announcements list should be empty");
+
+        // 2. Admin Login
+        var loginResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/auth/login", new AdminLoginRequest("admin", password));
+        Assert(loginResponseMsg.StatusCode == HttpStatusCode.OK, "Login failed");
+        var login = await loginResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminLoginChallenge>>() ?? throw new InvalidOperationException();
+        
+        var totpResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new AdminTotpRequest(login.Data.ChallengeToken, TotpService.GenerateCode(secret, DateTimeOffset.UtcNow)));
+        Assert(totpResponseMsg.StatusCode == HttpStatusCode.OK, "TOTP validation failed");
+        var session = await totpResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminSessionResponse>>() ?? throw new InvalidOperationException();
+        var csrf = session.Data.CsrfToken;
+
+        // 3. Create announcement (draft)
+        var createReq = new AnnouncementCreateRequest
+        {
+            Title = "Scheduled Maintenance",
+            Content = "System will be down for 2 hours.",
+            Severity = "important",
+            TargetVersionMin = "1.2.0",
+            TargetVersionMax = "1.5.0",
+            DisplayTrigger = "once_per_device",
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
+        };
+
+        var createMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/announcements", createReq, csrf);
+        Assert(createMsg.StatusCode == HttpStatusCode.OK, $"Create draft failed: {createMsg.StatusCode}");
+        var createRes = await createMsg.Content.ReadFromJsonAsync<ApiResponse<Announcement>>();
+        Assert(createRes != null && createRes.Data != null, "Create result is null");
+        Assert(createRes.Data.Status == "draft", "Status should be draft");
+        var announcementId = createRes.Data.Id;
+
+        // 4. Edit announcement
+        var editReq = new AnnouncementCreateRequest
+        {
+            Title = "Scheduled Maintenance (Updated)",
+            Content = "System will be down for 1 hour.",
+            Severity = "important",
+            TargetVersionMin = "1.2.0",
+            TargetVersionMax = "1.5.0",
+            DisplayTrigger = "once_per_device",
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
+        };
+        var editMsg = await SendJsonAsync(client, HttpMethod.Put, $"/api/v1/admin/announcements/{announcementId}", editReq, csrf);
+        Assert(editMsg.StatusCode == HttpStatusCode.OK, $"Edit draft failed: {editMsg.StatusCode}");
+        var editRes = await editMsg.Content.ReadFromJsonAsync<ApiResponse<Announcement>>();
+        Assert(editRes != null && editRes.Data != null && editRes.Data.Title == "Scheduled Maintenance (Updated)", "Edit verification failed");
+
+        // 5. Re-authenticate
+        var reauthResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            csrf);
+        Assert(reauthResponseMsg.StatusCode == HttpStatusCode.NoContent, "Reauthentication failed");
+
+        // 6. Publish announcement -> succeeds
+        var publishMsg = await SendJsonAsync(client, HttpMethod.Post, $"/api/v1/admin/announcements/{announcementId}/publish", new { }, csrf);
+        Assert(publishMsg.StatusCode == HttpStatusCode.OK, $"Publish failed: {publishMsg.StatusCode}");
+
+        // 8. Try editing after published -> expect 400
+        var editAfterPublishMsg = await SendJsonAsync(client, HttpMethod.Put, $"/api/v1/admin/announcements/{announcementId}", editReq, csrf);
+        Assert(editAfterPublishMsg.StatusCode == HttpStatusCode.BadRequest, $"Editing published announcement should fail: {editAfterPublishMsg.StatusCode}");
+
+        // 9. Query active announcements with clientVersion matching target
+        var matchCheck = await SendGetAsync(client, "/api/v1/announcements/active?clientVersion=1.3.0");
+        Assert(matchCheck.StatusCode == HttpStatusCode.OK, "Check active announcements failed");
+        var matchRes = await matchCheck.Content.ReadFromJsonAsync<ApiResponse<AnnouncementCheckResponse>>();
+        Assert(matchRes != null && matchRes.Data != null, "Match response should have data");
+        
+        var matchPayloadJson = matchRes.Data.Envelope.PayloadJson;
+        var matchPayloadObj = JsonSerializer.Deserialize<Dictionary<string, object>>(matchPayloadJson);
+        var matchAnnouncementsJson = matchPayloadObj!["announcements"].ToString();
+        var matchAnnouncements = JsonSerializer.Deserialize<List<AnnouncementDto>>(matchAnnouncementsJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert(matchAnnouncements != null && matchAnnouncements.Count == 1, "Should return 1 active announcement");
+        Assert(matchAnnouncements[0].Id == announcementId, "ID mismatch");
+        Assert(matchAnnouncements[0].Title == "Scheduled Maintenance (Updated)", "Title mismatch");
+
+        // Validate signing using SignedEnvelope verification helper
+        using (var ecdsa = ECDsa.Create())
+        {
+            ecdsa.ImportSubjectPublicKeyInfo(Convert.FromBase64String(matchRes.Data.Certificate.PublicKey), out _);
+            var verified = matchRes.Data.Envelope.Verify("announcement", matchRes.Data.Envelope.Nonce, DateTimeOffset.UtcNow, ecdsa);
+            Assert(verified, "Signature verification failed using operational certificate public key");
+        }
+
+        // 10. Query active announcements with clientVersion NOT matching target
+        var mismatchCheck = await SendGetAsync(client, "/api/v1/announcements/active?clientVersion=1.1.0");
+        Assert(mismatchCheck.StatusCode == HttpStatusCode.OK, "Check mismatch active announcements failed");
+        var mismatchRes = await mismatchCheck.Content.ReadFromJsonAsync<ApiResponse<AnnouncementCheckResponse>>();
+        var mismatchPayloadJson = mismatchRes!.Data!.Envelope.PayloadJson;
+        var mismatchPayloadObj = JsonSerializer.Deserialize<Dictionary<string, object>>(mismatchPayloadJson);
+        var mismatchAnnouncementsJson = mismatchPayloadObj!["announcements"].ToString();
+        var mismatchAnnouncements = JsonSerializer.Deserialize<List<AnnouncementDto>>(mismatchAnnouncementsJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert(mismatchAnnouncements != null && mismatchAnnouncements.Count == 0, "Mismatching version should return empty active announcements");
+
+        // 11. Re-authenticate and Revoke announcement
+        var reauthResponseMsg2 = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            csrf);
+        Assert(reauthResponseMsg2.StatusCode == HttpStatusCode.NoContent, "Reauthentication 2 failed");
+
+        var revokeMsg = await SendJsonAsync(client, HttpMethod.Post, $"/api/v1/admin/announcements/{announcementId}/revoke", new { }, csrf);
+        Assert(revokeMsg.StatusCode == HttpStatusCode.OK, $"Revoke failed: {revokeMsg.StatusCode}");
+
+        // 12. Check active announcements again -> empty
+        var postRevokeCheck = await SendGetAsync(client, "/api/v1/announcements/active?clientVersion=1.3.0");
+        var postRevokeRes = await postRevokeCheck.Content.ReadFromJsonAsync<ApiResponse<AnnouncementCheckResponse>>();
+        var postRevokePayloadJson = postRevokeRes!.Data!.Envelope.PayloadJson;
+        var postRevokePayloadObj = JsonSerializer.Deserialize<Dictionary<string, object>>(postRevokePayloadJson);
+        var postRevokeAnnouncementsJson = postRevokePayloadObj!["announcements"].ToString();
+        var postRevokeAnnouncements = JsonSerializer.Deserialize<List<AnnouncementDto>>(postRevokeAnnouncementsJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert(postRevokeAnnouncements != null && postRevokeAnnouncements.Count == 0, "Revoked announcement should not be returned");
     }
     finally
     {

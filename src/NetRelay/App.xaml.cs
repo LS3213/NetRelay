@@ -123,6 +123,20 @@ public partial class App : System.Windows.Application
             mainWindow.HandleCommandLineArgs(e.Args);
         }
         mainWindow.Show();
+
+        // Check and display active announcements asynchronously
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var announcementService = new AnnouncementService(configService);
+                await announcementService.CheckAndDisplayAnnouncementsAsync(CancellationToken.None);
+            }
+            catch
+            {
+                // Ignore unexpected issues to protect main app startup
+            }
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)
