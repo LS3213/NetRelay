@@ -109,8 +109,7 @@ export function App() {
   const [blockReason, setBlockReason] = useState("");
   const [blockExpires, setBlockExpires] = useState("");
 
-  // 4. Policy
-  const [policyType, setPolicyType] = useState<"global" | "version_range">("global");
+  // 4. Policy (determined dynamically based on version inputs)
   const [policyMinVer, setPolicyMinVer] = useState("");
   const [policyMaxVer, setPolicyMaxVer] = useState("");
   const [policyReason, setPolicyReason] = useState("");
@@ -315,11 +314,13 @@ export function App() {
   function submitGlobalPolicyForm(event: FormEvent) {
     event.preventDefault();
     void run(async () => {
-      const isGlobalType = policyType === "global";
+      const minVer = policyMinVer.trim();
+      const maxVer = policyMaxVer.trim();
+      const isVersionRange = minVer !== "" || maxVer !== "";
       const requestData = {
-        type: policyType,
-        targetVersionMin: isGlobalType ? null : (policyMinVer.trim() || null),
-        targetVersionMax: isGlobalType ? null : (policyMaxVer.trim() || null),
+        type: isVersionRange ? "version_range" as const : "global" as const,
+        targetVersionMin: minVer || null,
+        targetVersionMax: maxVer || null,
         reason: policyReason.trim(),
         allowUpdate: policyAllowUpdate,
         expiresAt: policyExpires ? new Date(policyExpires).toISOString() : null,
@@ -783,12 +784,6 @@ export function App() {
           <article className="card form-card">
             <h2>添加全局策略</h2>
             <form onSubmit={submitGlobalPolicyForm}>
-              <label>策略动作类型
-                <select value={policyType} onChange={(e) => setPolicyType(e.target.value as any)}>
-                  <option value="global">Global (常规对所有版本生效)</option>
-                  <option value="version_range">Version Range (常规对指定版本范围生效)</option>
-                </select>
-              </label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                 <label>影响最低版本 (可选)<input placeholder="e.g. 1.0.0" value={policyMinVer} onChange={(e) => setPolicyMinVer(e.target.value)} /></label>
                 <label>影响最高版本 (可选)<input placeholder="e.g. 1.9.9" value={policyMaxVer} onChange={(e) => setPolicyMaxVer(e.target.value)} /></label>
