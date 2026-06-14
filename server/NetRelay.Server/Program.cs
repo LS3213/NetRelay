@@ -1878,7 +1878,7 @@ static async Task<IResult> EvaluatePolicyAsync(
         }
         else
         {
-            expiresAt = matchingBlock.ExpiresAt;
+            expiresAt = matchingBlock!.ExpiresAt;
             reason = matchingBlock.Reason;
             allowUpdate = true;
         }
