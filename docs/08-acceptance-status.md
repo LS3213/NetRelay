@@ -112,7 +112,7 @@
 - **编译与发布验证**：
   - 服务端 `NetRelay.Server` 成功以 `Release` 配置编译，解决并清除了 1 项 CS8602 空指针潜在警告，实现 0 错误 0 警告交付。
   - Windows x64 客户端成功进行 `dotnet publish -c Release -r win-x64 --self-contained false` 框架依赖打包，生成于 `artifacts/publish/win-x64/`。
-  - 生成的 `BUILD-INFO.txt` 记录了发布时的 Commit `b93a52a74474a116d60c31d9eb2117ed68c2b64b`、构建时间及关键组件哈希。
+  - 生成的 `BUILD-INFO.txt` 记录了发布时的 Commit `e0b18ec998fb35737c2635c488078750048e3cc4`、构建时间及关键组件哈希。
 - **运维脚本加固与静态审查**：
   - 对 `deploy/scripts/` 下的 `deploy.sh`、`migrate.sh`、`backup.sh` 和 `restore.sh` 进行了全面健壮性升级，增加了 `.env` 配置文件自检、Docker 命令可用性自检、MySQL 容器运行状态和健康检测，以及备份数据完整性 (SHA256) 验证。
 - **测试通过状态**：

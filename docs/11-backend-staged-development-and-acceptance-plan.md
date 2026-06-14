@@ -571,7 +571,7 @@ npm --prefix website/admin audit --audit-level=moderate
 | 开始日期 | 2026-06-14 |
 | 开发完成日期 | 2026-06-14 |
 | 验收日期 | 2026-06-14 |
-| 相关 Commit | `b93a52a74474a116d60c31d9eb2117ed68c2b64b` |
+| 相关 Commit | `e0b18ec998fb35737c2635c488078750048e3cc4` |
 | 阻塞项 | 无 |
 
 ### 11.2 目标
@@ -631,7 +631,7 @@ npm --prefix website/admin audit --audit-level=moderate
 
 | 日期 | 类型 | 范围 | 结果 | 证据或 Commit | 未完成事项 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-06-14 | 开发与部署验收 | B6.1-B6.3 | 已通过 | 运维脚本加固，消除 1 项解引用警告，编译发布 Windows 客户端并生成 BUILD-INFO.txt，43 项回归测试和 25 项服务端测试全数通过。Commit: b93a52a74474a116d60c31d9eb2117ed68c2b64b | 无 |
+| 2026-06-14 | 开发与部署验收 | B6.1-B6.3 | 已通过 | 运维脚本加固，消除 1 项解引用警告，编译发布 Windows 客户端并生成 BUILD-INFO.txt，43 项回归测试和 25 项服务端测试全数通过。Commit: e0b18ec998fb35737c2635c488078750048e3cc4 | 无 |
 
 ## 12. 文档职责与维护矩阵
 
