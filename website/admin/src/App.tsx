@@ -502,10 +502,20 @@ export function App() {
                     releasesList.map((rel) => (
                       <tr key={rel.id}>
                         <td><strong>{rel.version}</strong></td>
-                        <td><span className="badge draft">{rel.channel}</span></td>
+                        <td>
+                          <span className="badge draft">
+                            {rel.channel === "stable" ? "稳定版" : "测试版"}
+                          </span>
+                        </td>
                         <td>{rel.architecture}</td>
                         <td>{formatBytes(rel.packageSize)}</td>
-                        <td><span className={`badge ${rel.status}`}>{rel.status}</span></td>
+                        <td>
+                          <span className={`badge ${rel.status}`}>
+                            {rel.status === "draft" && "草稿"}
+                            {rel.status === "published" && "已发布"}
+                            {rel.status === "revoked" && "已撤回"}
+                          </span>
+                        </td>
                         <td>{formatTime(rel.createdAt)}</td>
                         <td>
                           <div className="action-btn-group">
@@ -585,10 +595,22 @@ export function App() {
                     announcementsList.map((ann) => (
                       <tr key={ann.id}>
                         <td><strong>{ann.title}</strong></td>
-                        <td><span className={`badge severity-${ann.severity}`}>{ann.severity}</span></td>
+                        <td>
+                          <span className={`badge severity-${ann.severity}`}>
+                            {ann.severity === "normal" && "普通"}
+                            {ann.severity === "important" && "重要"}
+                            {ann.severity === "critical" && "关键"}
+                          </span>
+                        </td>
                         <td>{ann.displayTrigger === "once_per_device" ? "仅一次" : "每次启动"}</td>
                         <td>{ann.targetVersionMin || "*"} ~ {ann.targetVersionMax || "*"}</td>
-                        <td><span className={`badge ${ann.status}`}>{ann.status}</span></td>
+                        <td>
+                          <span className={`badge ${ann.status}`}>
+                            {ann.status === "draft" && "草稿"}
+                            {ann.status === "published" && "已发布"}
+                            {ann.status === "revoked" && "已撤回"}
+                          </span>
+                        </td>
                         <td>
                           <div className="action-btn-group">
                             {ann.status === "draft" && (
@@ -694,7 +716,11 @@ export function App() {
                           {block.installationId && <div><span style={{ fontSize: "10px", color: "#71809a" }}>实例 ID:</span> {block.installationId}</div>}
                         </td>
                         <td>{block.reason}</td>
-                        <td><span className={`badge ${block.status === "active" ? "published" : "revoked"}`}>{block.status}</span></td>
+                        <td>
+                          <span className={`badge ${block.status === "active" ? "published" : "revoked"}`}>
+                            {block.status === "active" ? "生效中" : "已解封"}
+                          </span>
+                        </td>
                         <td>
                           <div>创建: {formatTime(block.createdAt)}</div>
                           {block.expiresAt && <div>到期: {formatTime(block.expiresAt)}</div>}
@@ -762,7 +788,11 @@ export function App() {
                         <td>{policy.targetVersionMin || "*"} ~ {policy.targetVersionMax || "*"}</td>
                         <td>{policy.reason}</td>
                         <td>{policy.allowUpdate ? "是" : "否"}</td>
-                        <td><span className={`badge ${policy.status === "active" ? "published" : "revoked"}`}>{policy.status}</span></td>
+                        <td>
+                          <span className={`badge ${policy.status === "active" ? "published" : "revoked"}`}>
+                            {policy.status === "active" ? "生效中" : "已撤回"}
+                          </span>
+                        </td>
                         <td>
                           {policy.status === "active" && (
                             <button className="action-btn danger" disabled={busy} onClick={() => run(async () => {
@@ -825,7 +855,9 @@ export function App() {
                     <tr key={fb.id}>
                       <td>
                         <span className={`badge ${fb.type === "bug" ? "severity-critical" : fb.type === "suggestion" ? "severity-normal" : "draft"}`}>
-                          {fb.type}
+                          {fb.type === "bug" && "故障/缺陷"}
+                          {fb.type === "suggestion" && "功能建议"}
+                          {fb.type === "other" && "其他反馈"}
                         </span>
                       </td>
                       <td><strong>{fb.title}</strong></td>
@@ -843,7 +875,13 @@ export function App() {
                           <span className="muted">—</span>
                         )}
                       </td>
-                      <td><span className={`badge ${fb.status}`}>{fb.status}</span></td>
+                      <td>
+                        <span className={`badge ${fb.status}`}>
+                          {fb.status === "pending" && "待处理"}
+                          {fb.status === "resolved" && "已解决"}
+                          {fb.status === "ignored" && "已忽略"}
+                        </span>
+                      </td>
                       <td>{formatTime(fb.createdAt)}</td>
                       <td>
                         <div className="action-btn-group">
