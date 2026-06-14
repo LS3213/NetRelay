@@ -44,12 +44,12 @@ public partial class PrivacyConsentDialog : Window
 
     private void Terms_Click(object sender, RoutedEventArgs e)
     {
-        OpenUrl("https://netrelay.lansil.cn/terms/");
+        OpenUrl("https://netrelay.473700.xyz/terms/");
     }
 
     private void Privacy_Click(object sender, RoutedEventArgs e)
     {
-        OpenUrl("https://netrelay.lansil.cn/privacy/");
+        OpenUrl("https://netrelay.473700.xyz/privacy/");
     }
 
     private static void OpenUrl(string url)

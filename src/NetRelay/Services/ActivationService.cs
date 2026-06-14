@@ -29,7 +29,7 @@ public sealed class ActivationService
         {
             return envUrl.TrimEnd('/');
         }
-        return "https://netrelay.lansil.cn";
+        return "https://netrelay.473700.xyz";
     }
 
     public async Task<bool> ActivateAsync(CancellationToken cancellationToken)

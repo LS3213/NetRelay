@@ -30,8 +30,8 @@ public sealed class UpdateService
         var config = _configService.Current;
         // If config values are uninitialized (or default), try reading bootstrap-config
         if (config.ClientConfigurationVersion == 0 && 
-            config.PrimaryApiBaseUrl == "https://netrelay.lansil.cn" && 
-            config.GithubRepository == "lansi/NetRelay")
+            config.PrimaryApiBaseUrl == "https://netrelay.473700.xyz" && 
+            config.GithubRepository == "LS3213/NetRelay")
         {
             try
             {

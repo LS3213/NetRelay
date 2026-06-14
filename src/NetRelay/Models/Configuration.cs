@@ -63,10 +63,10 @@ public sealed class AppConfiguration
     public int ClientConfigurationVersion { get; set; } = 0;
 
     [JsonPropertyName("primaryApiBaseUrl")]
-    public string PrimaryApiBaseUrl { get; set; } = "https://netrelay.lansil.cn";
+    public string PrimaryApiBaseUrl { get; set; } = "https://netrelay.473700.xyz";
 
     [JsonPropertyName("githubRepository")]
-    public string GithubRepository { get; set; } = "lansi/NetRelay";
+    public string GithubRepository { get; set; } = "LS3213/NetRelay";
 
     [JsonPropertyName("updateChannel")]
     public string UpdateChannel { get; set; } = "stable";
