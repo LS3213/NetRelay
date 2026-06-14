@@ -7,6 +7,8 @@ namespace NetRelay.Services;
 
 public sealed class ConfigurationService
 {
+    public static ConfigurationService? Instance { get; private set; }
+
     private readonly string _directoryPath;
     private readonly string _filePath;
     private readonly string _tempFilePath;
@@ -18,6 +20,7 @@ public sealed class ConfigurationService
 
     public ConfigurationService()
     {
+        Instance = this;
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         _directoryPath = Path.Combine(appData, "NetRelay");
         _filePath = Path.Combine(_directoryPath, "config.json");
@@ -32,9 +35,9 @@ public sealed class ConfigurationService
         Current = Load();
     }
 
-    // Constructor for custom path (useful for testing)
     public ConfigurationService(string customDirectoryPath)
     {
+        Instance = this;
         _directoryPath = customDirectoryPath;
         _filePath = Path.Combine(_directoryPath, "config.json");
         _tempFilePath = _filePath + ".tmp";

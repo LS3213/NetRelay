@@ -792,6 +792,15 @@ public sealed class ConnectivityService
                 }
             };
 
+            var ignoreSsl = ConfigurationService.Instance?.Current?.IgnoreSslErrors == true;
+            if (ignoreSsl)
+            {
+                handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                {
+                    RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true
+                };
+            }
+
             using var client = new HttpClient(handler)
             {
                 Timeout = timeout
@@ -799,7 +808,7 @@ public sealed class ConnectivityService
 
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) NetRelay/1.0");
             client.DefaultRequestHeaders.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            client.DefaultRequestHeaders.Add(Protocol.ClientVersionHeader, "1.0.0");
+            client.DefaultRequestHeaders.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
             client.DefaultRequestHeaders.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
 
             var response = await client.PostAsJsonAsync(url, new ConnectivityChallengeRequest { Nonce = nonce }, cancellationToken);

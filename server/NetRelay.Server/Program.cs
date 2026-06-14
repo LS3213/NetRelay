@@ -1828,6 +1828,7 @@ static async Task<IResult> EvaluatePolicyAsync(
             if (inRange)
             {
                 matchingGlobalPolicy = policy;
+                break;
             }
         }
     }

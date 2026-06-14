@@ -78,11 +78,173 @@ dt { color: #71809a; font-size: 13px; } dd { margin: 0; font-size: 13px; font-we
 .inline-form { grid-template-columns: 1fr auto; align-items: end; }
 .wide { max-width: 1400px; margin: 0 auto 18px; }
 
-@media (max-width: 850px) {
+.tab-bar {
+  max-width: 1400px;
+  margin: 24px auto 0;
+  display: flex;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  padding: 6px;
+  border-radius: 18px;
+  overflow-x: auto;
+}
+.tab-bar button {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 12px;
+  color: #52647f;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.tab-bar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.45);
+  color: #10213d;
+  transform: none;
+}
+.tab-bar button.active {
+  background: #ffffff;
+  color: #465fdc;
+  box-shadow: 0 4px 12px rgba(35, 55, 94, 0.08);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1.2fr;
+  gap: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 16px;
+  margin-top: 16px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+th, td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(86, 111, 151, 0.1);
+  vertical-align: middle;
+}
+th {
+  color: #71809a;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+tr:last-child td {
+  border-bottom: 0;
+}
+td.break-all {
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.badge.draft { background: rgba(113, 128, 154, 0.15); color: #4a5568; }
+.badge.published, .badge.active, .badge.resolved { background: rgba(38, 191, 146, 0.18); color: #1a7f60; }
+.badge.revoked, .badge.ignored { background: rgba(229, 90, 114, 0.15); color: #9b2c2c; }
+.badge.pending { background: rgba(237, 181, 77, 0.18); color: #9c6c10; }
+.badge.severity-normal { background: rgba(95, 127, 244, 0.15); color: #2b4c7e; }
+.badge.severity-important { background: rgba(237, 181, 77, 0.18); color: #9c6c10; }
+.badge.severity-critical { background: rgba(229, 90, 114, 0.18); color: #9b2c2c; }
+
+.action-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.action-btn {
+  padding: 6px 12px;
+  font-size: 11px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-weight: 600;
+}
+.action-btn.danger {
+  background: linear-gradient(145deg, #e55a72, #cb3952);
+  color: white;
+}
+.action-btn.secondary {
+  background: rgba(255, 255, 255, 0.5);
+  color: #425575;
+  border: 1px solid rgba(105, 129, 171, 0.2);
+}
+.action-btn.success {
+  background: linear-gradient(145deg, #26bf92, #189873);
+  color: white;
+}
+
+textarea, select {
+  width: 100%;
+  padding: 14px 16px;
+  color: #172943;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(105, 129, 171, 0.2);
+  border-radius: 15px;
+  outline: none;
+  font: inherit;
+  transition: border-color .2s, box-shadow .2s;
+}
+textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+textarea:focus, select:focus {
+  border-color: #6785f5;
+  box-shadow: 0 0 0 4px rgba(86, 117, 238, 0.12);
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352647f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 16px;
+}
+
+.checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 950px) {
   .auth-layout { grid-template-columns: 1fr; padding: 24px; }
   .brand-panel { padding-top: 30px; }
   .grid { grid-template-columns: 1fr; }
   .span-two { grid-column: auto; }
   .inline-form { grid-template-columns: 1fr; }
   .admin-name { display: none; }
+  .dashboard-grid { grid-template-columns: 1fr; }
 }
+

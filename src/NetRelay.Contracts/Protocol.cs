@@ -3,6 +3,7 @@ namespace NetRelay.Contracts;
 public static class Protocol
 {
     public const int CurrentVersion = 1;
+    public const string ProductVersion = "1.2.0";
     public const string VersionHeader = "X-NetRelay-Protocol";
     public const string ClientVersionHeader = "X-NetRelay-Version";
     public const string RequestIdHeader = "X-Request-Id";

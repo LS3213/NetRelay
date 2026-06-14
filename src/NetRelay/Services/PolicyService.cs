@@ -117,13 +117,13 @@ public sealed class PolicyService
                 .SelectMany(p => p.Value));
             var deviceIdHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combinedString)));
 
-            using var client = new HttpClient();
+            using var client = ActivationService.CreateHttpClient();
             var backendUrl = ActivationService.GetBackendUrl();
             var request = new PolicyEvaluateRequest
             {
                 DeviceId = deviceIdHash,
                 InstallationId = Guid.Parse(_configService.Current.InstallationId),
-                ClientVersion = "1.0.0"
+                ClientVersion = Protocol.ProductVersion
             };
 
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, $"{backendUrl}/api/v1/policies/evaluate")
@@ -131,7 +131,7 @@ public sealed class PolicyService
                 Content = JsonContent.Create(request)
             };
             requestMessage.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            requestMessage.Headers.Add(Protocol.ClientVersionHeader, "1.0.0");
+            requestMessage.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
             requestMessage.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
 
             var response = await client.SendAsync(requestMessage, cancellationToken);

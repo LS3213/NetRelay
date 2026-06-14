@@ -65,6 +65,9 @@ public sealed class AppConfiguration
     [JsonPropertyName("primaryApiBaseUrl")]
     public string PrimaryApiBaseUrl { get; set; } = "https://netrelay.473700.xyz";
 
+    [JsonPropertyName("ignoreSslErrors")]
+    public bool IgnoreSslErrors { get; set; } = false;
+
     [JsonPropertyName("githubRepository")]
     public string GithubRepository { get; set; } = "LS3213/NetRelay";
 

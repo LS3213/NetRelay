@@ -53,7 +53,7 @@ let csrfToken = "";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("X-NetRelay-Protocol", "1");
-  if (init?.body) {
+  if (init?.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (csrfToken && init?.method && init.method !== "GET") {
@@ -140,4 +140,208 @@ export async function verifyAudit() {
   return (
     await request<ApiResponse<AuditVerification>>("/admin/audit/verify")
   ).data;
+}
+
+// === Releases ===
+
+export interface Release {
+  id: string;
+  version: string;
+  channel: string;
+  architecture: string;
+  minUpgradableVersion: string;
+  packageSize: number;
+  sha256: string;
+  releaseDate: string;
+  changelog: string;
+  assetPath: string;
+  status: "draft" | "published" | "revoked";
+  createdAt: string;
+  publishedAt?: string;
+  revokedAt?: string;
+}
+
+export async function getReleases() {
+  return (await request<ApiResponse<Release[]>>("/admin/releases")).data;
+}
+
+export async function createRelease(formData: FormData) {
+  return (
+    await request<ApiResponse<Release>>("/admin/releases", {
+      method: "POST",
+      body: formData,
+    })
+  ).data;
+}
+
+export async function publishRelease(id: string) {
+  return (await request<ApiResponse<unknown>>(`/admin/releases/${id}/publish`, { method: "POST" })).data;
+}
+
+export async function revokeRelease(id: string) {
+  return (await request<ApiResponse<unknown>>(`/admin/releases/${id}/revoke`, { method: "POST" })).data;
+}
+
+// === Feedback ===
+
+export interface Feedback {
+  id: string;
+  type: "bug" | "suggestion" | "other";
+  title: string;
+  content: string;
+  contact: string | null;
+  hasAttachment: boolean;
+  attachmentFilename: string | null;
+  attachmentSize: number | null;
+  status: "pending" | "resolved" | "ignored";
+  createdAt: string;
+  statusUpdatedAt?: string;
+}
+
+export async function getFeedbacks() {
+  return (await request<ApiResponse<Feedback[]>>("/admin/feedback")).data;
+}
+
+export async function updateFeedbackStatus(id: string, status: "pending" | "resolved" | "ignored") {
+  return (
+    await request<ApiResponse<Feedback>>(`/admin/feedback/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    })
+  ).data;
+}
+
+// === Announcements ===
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  severity: "normal" | "important" | "critical";
+  targetVersionMin: string | null;
+  targetVersionMax: string | null;
+  displayTrigger: "once_per_device" | "every_startup";
+  status: "draft" | "published" | "revoked";
+  createdAt: string;
+  publishedAt?: string;
+  revokedAt?: string;
+  expiresAt?: string;
+}
+
+export interface AnnouncementCreateRequest {
+  title: string;
+  content: string;
+  severity: "normal" | "important" | "critical";
+  targetVersionMin?: string | null;
+  targetVersionMax?: string | null;
+  displayTrigger: "once_per_device" | "every_startup";
+  expiresAt?: string | null;
+}
+
+export async function getAnnouncements() {
+  return (await request<ApiResponse<Announcement[]>>("/admin/announcements")).data;
+}
+
+export async function createAnnouncement(data: AnnouncementCreateRequest) {
+  return (
+    await request<ApiResponse<Announcement>>("/admin/announcements", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  ).data;
+}
+
+export async function editAnnouncement(id: string, data: AnnouncementCreateRequest) {
+  return (
+    await request<ApiResponse<Announcement>>(`/admin/announcements/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  ).data;
+}
+
+export async function publishAnnouncement(id: string) {
+  return (await request<ApiResponse<Announcement>>(`/admin/announcements/${id}/publish`, { method: "POST" })).data;
+}
+
+export async function revokeAnnouncement(id: string) {
+  return (await request<ApiResponse<Announcement>>(`/admin/announcements/${id}/revoke`, { method: "POST" })).data;
+}
+
+// === Device Blocks ===
+
+export interface DeviceBlock {
+  id: string;
+  deviceId: string | null;
+  installationId: string | null;
+  reason: string;
+  status: "active" | "revoked";
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
+}
+
+export interface DeviceBlockCreateRequest {
+  deviceId?: string | null;
+  installationId?: string | null;
+  reason: string;
+  expiresAt?: string | null;
+}
+
+export async function getDeviceBlocks() {
+  return (await request<ApiResponse<DeviceBlock[]>>("/admin/device-blocks")).data;
+}
+
+export async function createDeviceBlock(data: DeviceBlockCreateRequest) {
+  return (
+    await request<ApiResponse<DeviceBlock>>("/admin/device-blocks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  ).data;
+}
+
+export async function revokeDeviceBlock(id: string) {
+  return (await request<ApiResponse<unknown>>(`/admin/device-blocks/${id}/revoke`, { method: "POST" })).data;
+}
+
+// === Policies ===
+
+export interface GlobalPolicy {
+  id: string;
+  type: "global" | "version_range";
+  targetVersionMin: string | null;
+  targetVersionMax: string | null;
+  reason: string;
+  allowUpdate: boolean;
+  status: "active" | "revoked";
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
+}
+
+export interface GlobalPolicyCreateRequest {
+  type: "global" | "version_range";
+  targetVersionMin?: string | null;
+  targetVersionMax?: string | null;
+  reason: string;
+  allowUpdate: boolean;
+  expiresAt?: string | null;
+}
+
+export async function getGlobalPolicies() {
+  return (await request<ApiResponse<GlobalPolicy[]>>("/admin/policies")).data;
+}
+
+export async function createGlobalPolicy(data: GlobalPolicyCreateRequest) {
+  return (
+    await request<ApiResponse<GlobalPolicy>>("/admin/policies", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  ).data;
+}
+
+export async function revokeGlobalPolicy(id: string) {
+  return (await request<ApiResponse<unknown>>(`/admin/policies/${id}/revoke`, { method: "POST" })).data;
 }

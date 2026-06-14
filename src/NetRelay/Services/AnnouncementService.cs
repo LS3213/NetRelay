@@ -28,11 +28,11 @@ public sealed class AnnouncementService
         try
         {
             // 1. Fetch active announcements
-            using var client = new HttpClient();
+            using var client = ActivationService.CreateHttpClient();
             var backendUrl = ActivationService.GetBackendUrl();
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{backendUrl}/api/v1/announcements/active?clientVersion=1.0.0");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{backendUrl}/api/v1/announcements/active?clientVersion={Protocol.ProductVersion}");
             request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            request.Headers.Add(Protocol.ClientVersionHeader, "1.0.0");
+            request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
             request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
 
             var response = await client.SendAsync(request, cancellationToken);
@@ -83,7 +83,6 @@ public sealed class AnnouncementService
 
             // 4. Process and display active announcements
             var displayedIds = _configService.Current.DisplayedAnnouncementIds;
-            var newDisplayedIds = new List<string>();
 
             // Sort so critical announcements display first/last or process sequentially
             foreach (var announcement in payload.Announcements.OrderByDescending(a => a.Severity == "critical" ? 2 : a.Severity == "important" ? 1 : 0))
@@ -114,7 +113,11 @@ public sealed class AnnouncementService
                 // Record display
                 if (announcement.DisplayTrigger == "once_per_device")
                 {
-                    newDisplayedIds.Add(idStr);
+                    if (!_configService.Current.DisplayedAnnouncementIds.Contains(idStr))
+                    {
+                        _configService.Current.DisplayedAnnouncementIds.Add(idStr);
+                        _configService.Save();
+                    }
                 }
 
                 // Critical blocks application execution completely: shutdown immediately upon closing
@@ -126,12 +129,6 @@ public sealed class AnnouncementService
                     });
                     return;
                 }
-            }
-
-            if (newDisplayedIds.Count > 0)
-            {
-                _configService.Current.DisplayedAnnouncementIds.AddRange(newDisplayedIds);
-                _configService.Save();
             }
         }
         catch (Exception ex)

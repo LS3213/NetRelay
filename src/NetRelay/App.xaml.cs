@@ -117,7 +117,7 @@ public partial class App : System.Windows.Application
             });
         }
 
-        var mainWindow = new MainWindow();
+        var mainWindow = new MainWindow(configService);
         MainWindow = mainWindow;
         _singleInstanceService.StartListening(args => Dispatcher.Invoke(() => mainWindow.HandleCommandLineArgs(args)));
         if (e.Args.Length > 0)

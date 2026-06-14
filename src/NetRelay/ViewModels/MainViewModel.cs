@@ -168,11 +168,13 @@ public sealed class MainViewModel : ObservableObject
             }
         });
 
-        FeedbackCommand = new RelayCommand(async () =>
+        FeedbackCommand = new RelayCommand(() =>
         {
-            OperationMessage = "反馈通道待后续开放";
-            await Task.Delay(2000);
-            OperationMessage = null;
+            var dialog = new NetRelay.Dialogs.FeedbackDialog
+            {
+                Owner = System.Windows.Application.Current.MainWindow
+            };
+            dialog.ShowDialog();
         });
 
         // Bind Scheduler Events

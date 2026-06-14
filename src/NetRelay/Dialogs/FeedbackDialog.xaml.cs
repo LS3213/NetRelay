@@ -168,14 +168,14 @@ public partial class FeedbackDialog : Window
             }
 
             // 3. Send HTTP Request
-            using var client = new HttpClient();
+            using var client = ActivationService.CreateHttpClient();
             var backendUrl = ActivationService.GetBackendUrl();
             var request = new HttpRequestMessage(HttpMethod.Post, $"{backendUrl}/api/v1/feedback")
             {
                 Content = multipartContent
             };
             request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            request.Headers.Add(Protocol.ClientVersionHeader, "1.0.0");
+            request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
             request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
 
             var response = await client.SendAsync(request, token);

@@ -103,7 +103,7 @@ public sealed class UpdateService
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        using var client = new HttpClient();
+        using var client = ActivationService.CreateHttpClient();
         client.Timeout = TimeSpan.FromSeconds(10);
         
         var requestUrl = $"{baseUrl.TrimEnd('/')}/api/v1/updates/latest?channel={channel}&architecture=win-x64&currentVersion={Uri.EscapeDataString(currentVersion)}";
@@ -235,7 +235,7 @@ public sealed class UpdateService
         bool useGithub = false;
         try
         {
-            using var client = new HttpClient();
+            using var client = ActivationService.CreateHttpClient();
             client.Timeout = TimeSpan.FromSeconds(5);
             var headUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
             var headRequest = new HttpRequestMessage(HttpMethod.Head, headUrl);
@@ -273,7 +273,7 @@ public sealed class UpdateService
         Directory.CreateDirectory(tempDirectory);
         var tempFilePath = Path.Combine(tempDirectory, $"update-{manifest.Version}.zip");
 
-        using var httpClient = new HttpClient();
+        using var httpClient = ActivationService.CreateHttpClient();
         httpClient.Timeout = TimeSpan.FromMinutes(5);
         if (useGithub)
         {

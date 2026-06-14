@@ -21,7 +21,11 @@ public partial class MainWindow : Window
     private bool _isForceExiting;
     private readonly bool _startMinimized;
 
-    public MainWindow()
+    public MainWindow() : this(new ConfigurationService())
+    {
+    }
+
+    public MainWindow(ConfigurationService configService)
     {
         var commandLineArgs = Environment.GetCommandLineArgs();
         _startMinimized = commandLineArgs.Contains("--startup", StringComparer.OrdinalIgnoreCase)
@@ -34,7 +38,6 @@ public partial class MainWindow : Window
 
         InitializeComponent();
         RichToastService.Initialize();
-        var configService = new ConfigurationService();
         var connectivityService = new ConnectivityService();
         _connectionService = new NativeNetworkConnectionService();
 

@@ -29,7 +29,25 @@ public sealed class ActivationService
         {
             return envUrl.TrimEnd('/');
         }
+
+        var configUrl = ConfigurationService.Instance?.Current?.PrimaryApiBaseUrl;
+        if (!string.IsNullOrWhiteSpace(configUrl))
+        {
+            return configUrl.TrimEnd('/');
+        }
+
         return "https://netrelay.473700.xyz";
+    }
+
+    public static HttpClient CreateHttpClient()
+    {
+        var handler = new HttpClientHandler();
+        var ignoreSsl = ConfigurationService.Instance?.Current?.IgnoreSslErrors == true;
+        if (ignoreSsl)
+        {
+            handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        }
+        return new HttpClient(handler);
     }
 
     public async Task<bool> ActivateAsync(CancellationToken cancellationToken)
@@ -55,19 +73,19 @@ public sealed class ActivationService
             Evidence = fingerprintEvidence.Evidence.ToDictionary(p => p.Key, p => p.Value.ToList()),
             AcceptedTermsVersion = "1.0",
             AcceptedPrivacyVersion = "1.0",
-            ClientVersion = "1.0.0",
+            ClientVersion = Protocol.ProductVersion,
             OsVersion = Environment.OSVersion.ToString(),
             ProtocolVersion = Protocol.CurrentVersion
         };
 
         // 3. 发送请求
-        using var client = new HttpClient();
+        using var client = CreateHttpClient();
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, GetBackendUrl() + "/api/v1/devices/activate")
         {
             Content = JsonContent.Create(request)
         };
         requestMessage.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-        requestMessage.Headers.Add(Protocol.ClientVersionHeader, "1.0.0");
+        requestMessage.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
         requestMessage.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
 
         var response = await client.SendAsync(requestMessage, cancellationToken);
@@ -147,18 +165,18 @@ public sealed class ActivationService
         {
             InstallationId = Guid.Parse(config.InstallationId),
             MachineCode = config.MachineCode,
-            ClientVersion = "1.0.0",
+            ClientVersion = Protocol.ProductVersion,
             OsVersion = Environment.OSVersion.ToString(),
             ReceiptEnvelope = receiptEnvelope
         };
 
-        using var client = new HttpClient();
+        using var client = CreateHttpClient();
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, GetBackendUrl() + "/api/v1/devices/heartbeat")
         {
             Content = JsonContent.Create(request)
         };
         requestMessage.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-        requestMessage.Headers.Add(Protocol.ClientVersionHeader, "1.0.0");
+        requestMessage.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
         requestMessage.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
 
         var response = await client.SendAsync(requestMessage, cancellationToken);
