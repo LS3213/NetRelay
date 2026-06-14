@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using NetRelay.Contracts;
 
 namespace NetRelay.Models;
 
@@ -75,6 +76,9 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("displayedAnnouncementIds")]
     public List<string> DisplayedAnnouncementIds { get; set; } = [];
+
+    [JsonPropertyName("persistedBlockState")]
+    public PolicyEvaluateResponse? PersistedBlockState { get; set; }
 }
 
 public sealed class ConnectivityProbePolicy

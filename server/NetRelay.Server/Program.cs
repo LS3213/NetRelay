@@ -148,6 +148,16 @@ adminAnnouncements.MapPut("/{id}", EditAnnouncementAsync);
 adminAnnouncements.MapPost("/{id}/publish", PublishAnnouncementAsync);
 adminAnnouncements.MapPost("/{id}/revoke", RevokeAnnouncementAsync);
 
+var adminDeviceBlocks = app.MapGroup("/api/v1/admin/device-blocks");
+adminDeviceBlocks.MapGet("/", GetDeviceBlocksAsync);
+adminDeviceBlocks.MapPost("/", CreateDeviceBlockAsync);
+adminDeviceBlocks.MapPost("/{id}/revoke", RevokeDeviceBlockAsync);
+
+var adminPolicies = app.MapGroup("/api/v1/admin/policies");
+adminPolicies.MapGet("/", GetGlobalPoliciesAsync);
+adminPolicies.MapPost("/", CreateGlobalPolicyAsync);
+adminPolicies.MapPost("/{id}/revoke", RevokeGlobalPolicyAsync);
+
 var publicApi = app.MapGroup("/api/v1");
 publicApi.MapPost("/devices/activate", ActivateDeviceAsync);
 publicApi.MapPost("/devices/heartbeat", DeviceHeartbeatAsync);
@@ -156,6 +166,7 @@ publicApi.MapGet("/updates/latest", GetLatestUpdateAsync);
 publicApi.MapGet("/updates/{version}/download/{filename}", DownloadUpdatePackageAsync);
 publicApi.MapPost("/feedback", SubmitFeedbackAsync);
 publicApi.MapGet("/announcements/active", GetActiveAnnouncementsAsync);
+publicApi.MapPost("/policies/evaluate", EvaluatePolicyAsync);
 
 if (args.Contains("--migrate", StringComparer.Ordinal))
 {
@@ -1406,6 +1417,498 @@ static async Task<IResult> GetAnnouncementsAsync(
         .ToListAsync(cancellationToken);
 
     return Results.Ok(new ApiResponse<List<Announcement>>(ApiInfrastructure.GetRequestId(context), list));
+}
+
+static async Task<IResult> GetDeviceBlocksAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    var list = await dbContext.DeviceBlocks
+        .OrderByDescending(b => b.CreatedAt)
+        .Select(b => new DeviceBlockDto
+        {
+            Id = b.Id,
+            DeviceId = b.DeviceId,
+            InstallationId = b.InstallationId,
+            Reason = b.Reason,
+            Status = b.Status,
+            CreatedAt = b.CreatedAt,
+            ExpiresAt = b.ExpiresAt,
+            RevokedAt = b.RevokedAt
+        })
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<List<DeviceBlockDto>>(ApiInfrastructure.GetRequestId(context), list));
+}
+
+static async Task<IResult> CreateDeviceBlockAsync(
+    DeviceBlockCreateRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Reason))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "封锁原因不能为空。");
+    }
+
+    if (request.DeviceId == null && request.InstallationId == null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "必须指定 DeviceId 或 InstallationId 进行封锁。");
+    }
+
+    if (request.DeviceId.HasValue)
+    {
+        var deviceExists = await dbContext.Devices.AnyAsync(d => d.Id == request.DeviceId.Value, cancellationToken);
+        if (!deviceExists)
+        {
+            return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "指定的设备不存在。");
+        }
+    }
+    if (request.InstallationId.HasValue)
+    {
+        var instExists = await dbContext.DeviceInstallations.AnyAsync(i => i.Id == request.InstallationId.Value, cancellationToken);
+        if (!instExists)
+        {
+            return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "指定的安装实例不存在。");
+        }
+    }
+
+    var block = new DeviceBlock
+    {
+        Id = Uuid7.Create(),
+        DeviceId = request.DeviceId,
+        InstallationId = request.InstallationId,
+        Reason = request.Reason,
+        Status = "active",
+        CreatedAt = DateTimeOffset.UtcNow,
+        ExpiresAt = request.ExpiresAt
+    };
+
+    dbContext.DeviceBlocks.Add(block);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "device_block.create",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        block.Id,
+        "device_block",
+        block.Id.ToString(),
+        details: new { deviceId = block.DeviceId, installationId = block.InstallationId, reason = block.Reason },
+        cancellationToken: cancellationToken);
+
+    var dto = new DeviceBlockDto
+    {
+        Id = block.Id,
+        DeviceId = block.DeviceId,
+        InstallationId = block.InstallationId,
+        Reason = block.Reason,
+        Status = block.Status,
+        CreatedAt = block.CreatedAt,
+        ExpiresAt = block.ExpiresAt,
+        RevokedAt = block.RevokedAt
+    };
+
+    return Results.Ok(new ApiResponse<DeviceBlockDto>(ApiInfrastructure.GetRequestId(context), dto));
+}
+
+static async Task<IResult> RevokeDeviceBlockAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var block = await dbContext.DeviceBlocks.FindAsync(new object[] { id }, cancellationToken);
+    if (block is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "封锁记录不存在。");
+    }
+
+    if (block.Status == "revoked")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "封锁记录已是撤销状态。");
+    }
+
+    block.Status = "revoked";
+    block.RevokedAt = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "device_block.revoke",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        block.Id,
+        "device_block",
+        block.Id.ToString(),
+        details: new { reason = block.Reason },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<object?>(ApiInfrastructure.GetRequestId(context), null));
+}
+
+static async Task<IResult> GetGlobalPoliciesAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    var list = await dbContext.GlobalPolicies
+        .OrderByDescending(p => p.CreatedAt)
+        .Select(p => new GlobalPolicyDto
+        {
+            Id = p.Id,
+            Type = p.Type,
+            TargetVersionMin = p.TargetVersionMin,
+            TargetVersionMax = p.TargetVersionMax,
+            Reason = p.Reason,
+            AllowUpdate = p.AllowUpdate,
+            Status = p.Status,
+            CreatedAt = p.CreatedAt,
+            ExpiresAt = p.ExpiresAt,
+            RevokedAt = p.RevokedAt
+        })
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<List<GlobalPolicyDto>>(ApiInfrastructure.GetRequestId(context), list));
+}
+
+static async Task<IResult> CreateGlobalPolicyAsync(
+    GlobalPolicyCreateRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Reason))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "策略原因不能为空。");
+    }
+
+    if (request.Type != "global" && request.Type != "version_range")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "无效的策略类型。");
+    }
+
+    if (request.Type == "version_range" && string.IsNullOrWhiteSpace(request.TargetVersionMin) && string.IsNullOrWhiteSpace(request.TargetVersionMax))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "版本范围策略必须指定至少一个版本限制。");
+    }
+
+    var policy = new GlobalPolicy
+    {
+        Id = Uuid7.Create(),
+        Type = request.Type,
+        TargetVersionMin = string.IsNullOrWhiteSpace(request.TargetVersionMin) ? null : request.TargetVersionMin.Trim(),
+        TargetVersionMax = string.IsNullOrWhiteSpace(request.TargetVersionMax) ? null : request.TargetVersionMax.Trim(),
+        Reason = request.Reason,
+        AllowUpdate = request.AllowUpdate,
+        Status = "active",
+        CreatedAt = DateTimeOffset.UtcNow,
+        ExpiresAt = request.ExpiresAt
+    };
+
+    dbContext.GlobalPolicies.Add(policy);
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "global_policy.create",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        policy.Id,
+        "global_policy",
+        policy.Id.ToString(),
+        details: new { type = policy.Type, versionMin = policy.TargetVersionMin, versionMax = policy.TargetVersionMax, reason = policy.Reason, allowUpdate = policy.AllowUpdate },
+        cancellationToken: cancellationToken);
+
+    var dto = new GlobalPolicyDto
+    {
+        Id = policy.Id,
+        Type = policy.Type,
+        TargetVersionMin = policy.TargetVersionMin,
+        TargetVersionMax = policy.TargetVersionMax,
+        Reason = policy.Reason,
+        AllowUpdate = policy.AllowUpdate,
+        Status = policy.Status,
+        CreatedAt = policy.CreatedAt,
+        ExpiresAt = policy.ExpiresAt,
+        RevokedAt = policy.RevokedAt
+    };
+
+    return Results.Ok(new ApiResponse<GlobalPolicyDto>(ApiInfrastructure.GetRequestId(context), dto));
+}
+
+static async Task<IResult> RevokeGlobalPolicyAsync(
+    Guid id,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    var policy = await dbContext.GlobalPolicies.FindAsync(new object[] { id }, cancellationToken);
+    if (policy is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "全局策略不存在。");
+    }
+
+    if (policy.Status == "revoked")
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "策略已是撤销状态。");
+    }
+
+    policy.Status = "revoked";
+    policy.RevokedAt = DateTimeOffset.UtcNow;
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "global_policy.revoke",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        policy.Id,
+        "global_policy",
+        policy.Id.ToString(),
+        details: new { reason = policy.Reason },
+        cancellationToken: cancellationToken);
+
+    return Results.Ok(new ApiResponse<object?>(ApiInfrastructure.GetRequestId(context), null));
+}
+
+static async Task<IResult> EvaluatePolicyAsync(
+    PolicyEvaluateRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    KeyManagementService keyManagementService,
+    IOptions<ServerOptions> options,
+    CancellationToken cancellationToken)
+{
+    if (request == null || string.IsNullOrWhiteSpace(request.DeviceId) || request.InstallationId == Guid.Empty || string.IsNullOrWhiteSpace(request.ClientVersion))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "评估请求参数不全。");
+    }
+
+    var now = DateTimeOffset.UtcNow;
+
+    var device = await dbContext.Devices.FirstOrDefaultAsync(d => d.DeviceIdHash == request.DeviceId, cancellationToken);
+    var installation = await dbContext.DeviceInstallations.FirstOrDefaultAsync(i => i.InstallationId == request.InstallationId, cancellationToken);
+
+    DeviceBlock? matchingBlock = null;
+    if (device != null || installation != null)
+    {
+        matchingBlock = await dbContext.DeviceBlocks
+            .Where(b => b.Status == "active" && (b.ExpiresAt == null || b.ExpiresAt > now))
+            .Where(b => (device != null && b.DeviceId == device.Id) || (installation != null && b.InstallationId == installation.Id))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    var globalPolicies = await dbContext.GlobalPolicies
+        .Where(p => p.Status == "active" && (p.ExpiresAt == null || p.ExpiresAt > now))
+        .ToListAsync(cancellationToken);
+
+    GlobalPolicy? matchingGlobalPolicy = null;
+    foreach (var policy in globalPolicies)
+    {
+        if (policy.Type == "global")
+        {
+            matchingGlobalPolicy = policy;
+            break;
+        }
+        else if (policy.Type == "version_range")
+        {
+            var inRange = true;
+            var clientVerStr = request.ClientVersion;
+            if (Version.TryParse(clientVerStr, out var cVer))
+            {
+                if (!string.IsNullOrWhiteSpace(policy.TargetVersionMin) && Version.TryParse(policy.TargetVersionMin, out var minVer) && cVer < minVer)
+                {
+                    inRange = false;
+                }
+                if (!string.IsNullOrWhiteSpace(policy.TargetVersionMax) && Version.TryParse(policy.TargetVersionMax, out var maxVer) && cVer > maxVer)
+                {
+                    inRange = false;
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(policy.TargetVersionMin) && string.Compare(clientVerStr, policy.TargetVersionMin, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    inRange = false;
+                }
+                if (!string.IsNullOrWhiteSpace(policy.TargetVersionMax) && string.Compare(clientVerStr, policy.TargetVersionMax, StringComparison.OrdinalIgnoreCase) > 0)
+                {
+                    inRange = false;
+                }
+            }
+
+            if (inRange)
+            {
+                matchingGlobalPolicy = policy;
+            }
+        }
+    }
+
+    bool isBlocked = false;
+    string? reason = null;
+    DateTimeOffset? expiresAt = null;
+    bool allowUpdate = true;
+
+    if (matchingBlock != null || matchingGlobalPolicy != null)
+    {
+        isBlocked = true;
+
+        if (matchingBlock != null && matchingGlobalPolicy != null)
+        {
+            if (matchingBlock.ExpiresAt == null || matchingGlobalPolicy.ExpiresAt == null)
+            {
+                expiresAt = null;
+                if (matchingGlobalPolicy.ExpiresAt == null)
+                {
+                    reason = matchingGlobalPolicy.Reason;
+                    allowUpdate = matchingGlobalPolicy.AllowUpdate;
+                }
+                else
+                {
+                    reason = matchingBlock.Reason;
+                    allowUpdate = true;
+                }
+            }
+            else if (matchingBlock.ExpiresAt.Value > matchingGlobalPolicy.ExpiresAt.Value)
+            {
+                expiresAt = matchingBlock.ExpiresAt;
+                reason = matchingBlock.Reason;
+                allowUpdate = true;
+            }
+            else
+            {
+                expiresAt = matchingGlobalPolicy.ExpiresAt;
+                reason = matchingGlobalPolicy.Reason;
+                allowUpdate = matchingGlobalPolicy.AllowUpdate;
+            }
+        }
+        else if (matchingGlobalPolicy != null)
+        {
+            expiresAt = matchingGlobalPolicy.ExpiresAt;
+            reason = matchingGlobalPolicy.Reason;
+            allowUpdate = matchingGlobalPolicy.AllowUpdate;
+        }
+        else
+        {
+            expiresAt = matchingBlock.ExpiresAt;
+            reason = matchingBlock.Reason;
+            allowUpdate = true;
+        }
+    }
+
+    var appealUrl = $"{options.Value.PublicBaseUrl.TrimEnd('/')}/appeal";
+
+    var payload = new Dictionary<string, object?>
+    {
+        ["isBlocked"] = isBlocked,
+        ["reason"] = reason,
+        ["appealUrl"] = isBlocked ? appealUrl : null,
+        ["expiresAt"] = expiresAt?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+        ["allowUpdate"] = allowUpdate
+    };
+
+    var envelope = keyManagementService.Sign(
+        "policy",
+        Guid.NewGuid().ToString("N"),
+        now,
+        now.AddMinutes(5),
+        payload);
+
+    var response = new PolicyEvaluateResponse
+    {
+        Envelope = envelope,
+        Certificate = keyManagementService.OperationCertificate
+    };
+
+    return Results.Ok(new ApiResponse<PolicyEvaluateResponse>(ApiInfrastructure.GetRequestId(context), response));
 }
 
 public partial class Program;

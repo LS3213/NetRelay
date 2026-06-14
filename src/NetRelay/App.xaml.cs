@@ -10,6 +10,7 @@ namespace NetRelay;
 public partial class App : System.Windows.Application
 {
     private SingleInstanceService? _singleInstanceService;
+    public static PolicyService PolicyService { get; private set; } = null!;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -38,6 +39,7 @@ public partial class App : System.Windows.Application
 
         // 隐私与首次运行激活检查
         var configService = new ConfigurationService();
+        PolicyService = new PolicyService(configService);
         var config = configService.Current;
         var activationService = new ActivationService(configService);
 
@@ -123,6 +125,52 @@ public partial class App : System.Windows.Application
             mainWindow.HandleCommandLineArgs(e.Args);
         }
         mainWindow.Show();
+
+        if (PolicyService.IsBlocked)
+        {
+            var dialog = new Dialogs.BlockWarningDialog(PolicyService)
+            {
+                Owner = mainWindow
+            };
+            dialog.ShowDialog();
+        }
+
+        // Asynchronously check online policy
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await PolicyService.CheckPolicyAsync(CancellationToken.None);
+                if (PolicyService.IsBlocked)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        var alreadyOpen = false;
+                        foreach (Window win in Current.Windows)
+                        {
+                            if (win is Dialogs.BlockWarningDialog)
+                            {
+                                alreadyOpen = true;
+                                break;
+                            }
+                        }
+
+                        if (!alreadyOpen)
+                        {
+                            var dialog = new Dialogs.BlockWarningDialog(PolicyService)
+                            {
+                                Owner = mainWindow
+                            };
+                            dialog.ShowDialog();
+                        }
+                    });
+                }
+            }
+            catch
+            {
+                // Ignore policy check errors during startup
+            }
+        });
 
         // Check and display active announcements asynchronously
         _ = Task.Run(async () =>

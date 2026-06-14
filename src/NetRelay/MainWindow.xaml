@@ -410,50 +410,69 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Border Grid.Row="0" Style="{StaticResource GlassCardStyle}" Padding="24,20,24,18">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="*"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Text="当前选择" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
-                                        <StackPanel Grid.Row="1" Margin="0,6,0,0">
-                                            <TextBlock Text="{Binding SelectedAdapter.Name, TargetNullValue=请选择网卡}" FontWeight="Bold" FontSize="20" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding SelectedAdapter.Description}" Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="10" TextWrapping="Wrap" MaxHeight="34"/>
-                                        </StackPanel>
-                                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" BorderThickness="0" Padding="0,0,4,0" Margin="0,12,0,0" Focusable="False">
-                                            <StackPanel>
-                                                <Grid Margin="0,0,0,8"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                <Grid Margin="0,0,0,8"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                <Grid Margin="0,0,0,8"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                 <Grid Margin="0,0,0,8"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                 <Grid Margin="0,0,0,8"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                 <Grid Margin="0,0,0,8"><TextBlock Text="启用状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.EnabledStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                 <Grid Margin="0,0,0,8"><TextBlock Text="链路状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LinkStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                 <Grid Margin="0,0,0,8"><TextBlock Text="联网状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.InternetStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                 <Grid Margin="0,0,0,8"><TextBlock Text="系统 (NLM) 状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.NlmConnectivityLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                <Grid Margin="0,0,0,8"><TextBlock Text="检测时间" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LastProbeTimeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                                <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
-                                            </StackPanel>
-                                        </ScrollViewer>
-                                        <StackPanel Grid.Row="3">
+                                    <DockPanel>
+                                        <!-- Block Warning Banner -->
+                                        <Border DockPanel.Dock="Top" Background="#1AE81123" CornerRadius="12" Padding="12" Margin="0,0,0,12" BorderBrush="#30E81123" BorderThickness="1"
+                                                Visibility="{Binding IsBlocked, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="9"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}"
-                                                        IsEnabled="{Binding CanOperateSelectedAdapter}"
-                                                        Click="EnableAdapterButton_Click" Content="启用网卡"/>
-                                                <Button Grid.Column="2" Style="{StaticResource DangerButtonStyle}"
-                                                        IsEnabled="{Binding CanOperateSelectedAdapter}"
-                                                        Click="DisableAdapterButton_Click" Content="禁用网卡"/>
+                                                <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" Foreground="#E81123" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="安全受限模式已启用" FontWeight="Bold" FontSize="11" Foreground="#D11D29"/>
+                                                    <TextBlock Text="{Binding BlockedReason, TargetNullValue='设备已被系统封锁'}" FontSize="10" Foreground="#8A3C42" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                    <TextBlock Text="{Binding BlockedExpiryText, StringFormat='解封时间: {0}'}" FontSize="9" Foreground="#8A3C42" Margin="0,2,0,0"/>
+                                                </StackPanel>
                                             </Grid>
-                                        </StackPanel>
-                                    </Grid>
+                                        </Border>
+
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="当前选择" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10"/>
+                                            <StackPanel Grid.Row="1" Margin="0,6,0,0">
+                                                <TextBlock Text="{Binding SelectedAdapter.Name, TargetNullValue=请选择网卡}" FontWeight="Bold" FontSize="20" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding SelectedAdapter.Description}" Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="10" TextWrapping="Wrap" MaxHeight="34"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" BorderThickness="0" Padding="0,0,4,0" Margin="0,12,0,0" Focusable="False">
+                                                <StackPanel>
+                                                    <Grid Margin="0,0,0,8"><TextBlock Text="接口类型" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TypeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                    <Grid Margin="0,0,0,8"><TextBlock Text="主要 IP" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.PrimaryIpAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                    <Grid Margin="0,0,0,8"><TextBlock Text="连接速度" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.SpeedLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                     <Grid Margin="0,0,0,8"><TextBlock Text="实时流量" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.TrafficRateLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                     <Grid Margin="0,0,0,8"><TextBlock Text="接口判断" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.ClassificationLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                     <Grid Margin="0,0,0,8"><TextBlock Text="启用状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.EnabledStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                     <Grid Margin="0,0,0,8"><TextBlock Text="链路状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LinkStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                     <Grid Margin="0,0,0,8"><TextBlock Text="联网状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.InternetStatusLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                     <Grid Margin="0,0,0,8"><TextBlock Text="系统 (NLM) 状态" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.NlmConnectivityLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                    <Grid Margin="0,0,0,8"><TextBlock Text="检测时间" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.LastProbeTimeLabel}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                    <Grid><TextBlock Text="MAC 地址" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/><TextBlock HorizontalAlignment="Right" Text="{Binding SelectedAdapter.MacAddress}" FontWeight="SemiBold" FontSize="10"/></Grid>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <StackPanel Grid.Row="3">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="9"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}"
+                                                            IsEnabled="{Binding CanOperateSelectedAdapter}"
+                                                            Click="EnableAdapterButton_Click" Content="启用网卡"/>
+                                                    <Button Grid.Column="2" Style="{StaticResource DangerButtonStyle}"
+                                                            IsEnabled="{Binding CanOperateSelectedAdapter}"
+                                                            Click="DisableAdapterButton_Click" Content="禁用网卡"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DockPanel>
                                 </Border>
                                 <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" CornerRadius="20" Padding="15">
                                     <Grid>
@@ -493,7 +512,7 @@
                                 <TextBlock Text="自动化控制" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
                                 <TextBlock Text="自动规则配置" FontWeight="Bold" FontSize="40" Margin="0,6,0,0"/>
                             </StackPanel>
-                            <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddRuleCommand}" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="18,10">
+                            <Button Style="{StaticResource PrimaryButtonStyle}" Command="{Binding AddRuleCommand}" IsEnabled="{Binding IsNotBlocked}" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="18,10">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <TextBlock Text="新建规则" VerticalAlignment="Center"/>
@@ -548,26 +567,30 @@
                                                 <!-- Operations Actions -->
                                                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <!-- Switch Toggle -->
-                                                    <CheckBox IsChecked="{Binding Enabled}" Content="启用" VerticalAlignment="Center" Margin="0,0,20,0"/>
+                                                    <CheckBox IsChecked="{Binding Enabled}" Content="启用" VerticalAlignment="Center" Margin="0,0,20,0"
+                                                              IsEnabled="{Binding DataContext.IsNotBlocked, RelativeSource={RelativeSource AncestorType=Window}}"/>
 
                                                     <!-- Run Now -->
                                                     <Button Style="{StaticResource IconOnlyButtonStyle}"
                                                             Command="{Binding DataContext.RunRuleNowCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="立即测试运行该规则">
+                                                            CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="立即测试运行该规则"
+                                                            IsEnabled="{Binding DataContext.IsNotBlocked, RelativeSource={RelativeSource AncestorType=Window}}">
                                                         <TextBlock Text="&#xF5B0;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#27B588"/>
                                                     </Button>
 
                                                     <!-- Edit -->
                                                     <Button Style="{StaticResource IconOnlyButtonStyle}"
                                                             Command="{Binding DataContext.EditRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="修改规则配置">
+                                                            CommandParameter="{Binding}" Margin="0,0,8,0" ToolTip="修改规则配置"
+                                                            IsEnabled="{Binding DataContext.IsNotBlocked, RelativeSource={RelativeSource AncestorType=Window}}">
                                                         <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#536EF2"/>
                                                     </Button>
 
                                                     <!-- Delete -->
                                                     <Button Style="{StaticResource IconOnlyButtonStyle}"
                                                             Command="{Binding DataContext.DeleteRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}" ToolTip="彻底删除规则">
+                                                            CommandParameter="{Binding}" ToolTip="彻底删除规则"
+                                                            IsEnabled="{Binding DataContext.IsNotBlocked, RelativeSource={RelativeSource AncestorType=Window}}">
                                                         <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="#E85C63"/>
                                                     </Button>
                                                 </StackPanel>

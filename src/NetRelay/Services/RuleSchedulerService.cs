@@ -475,7 +475,7 @@ public sealed class RuleSchedulerService : IDisposable
 
         try
         {
-            if (!_configService.IsAutomationEnabled)
+            if (!_configService.IsAutomationEnabled || App.PolicyService?.IsBlocked == true)
             {
                 return;
             }
@@ -904,7 +904,7 @@ public sealed class RuleSchedulerService : IDisposable
 
     private void OnNetworkAddressChanged(object? sender, EventArgs e)
     {
-        if (!_configService.IsAutomationEnabled)
+        if (!_configService.IsAutomationEnabled || App.PolicyService?.IsBlocked == true)
         {
             return;
         }

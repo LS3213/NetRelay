@@ -2,20 +2,31 @@
 
 [上一篇：后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md) | [返回索引](README.md)
 
-> 状态：B1 实现中。`NetRelay.Contracts` 与后端基础正在按本文建立；实现变化需同步更新本文和 OpenAPI。
+> 状态：B5 已完成。`NetRelay.Contracts` 与后端基础已全部实现；实现变化需同步更新本文和 OpenAPI。
 
-OpenAPI 初稿见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件当前只定义公开客户端核心接口；管理 API 将在 B1 认证边界稳定后补全。
+OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件当前定义了公开客户端核心接口及管理 API。
 
-当前 B1 已实现：
+当前已实现：
 
-- `NetRelay.Contracts` 中的协议头、错误码、统一响应和管理认证 DTO。
-- 请求 ID 生成与回传、`X-NetRelay-Protocol: 1` 校验、统一异常响应。
-- `/health/live` 与包含 MySQL 连通性的 `/health/ready`。
-- `/openapi/v1.yaml` 直接提供与仓库共同维护的运行时 OpenAPI。
-- `/api/v1/admin/auth/login`、`totp`、`me`、`csrf`、`reauthenticate` 和 `logout`。
-- `/api/v1/admin/audit/verify` 验证当前审计哈希链。
-
-尚未实现的公开客户端接口与其他管理业务接口仍以本文和 OpenAPI 作为设计，不得视为可调用接口。
+- **B1 基础与认证**：
+  - `NetRelay.Contracts` 中的协议头、错误码、统一响应和管理认证 DTO。
+  - 请求 ID 生成与回传、`X-NetRelay-Protocol: 1` 校验、统一异常响应。
+  - `/health/live` 与包含 MySQL 连通性的 `/health/ready`。
+  - `/openapi/v1.yaml` 直接提供与仓库共同维护的运行时 OpenAPI。
+  - `/api/v1/admin/auth/login`、`totp`、`me`、`csrf`、`reauthenticate` 和 `logout`。
+  - `/api/v1/admin/audit/verify` 验证当前审计哈希链。
+- **B2 设备激活与心跳**：
+  - `/api/v1/devices/activate`（设备激活，指纹置信度匹配克隆）与 `/api/v1/devices/heartbeat`（活跃度心跳）。
+  - `/api/v1/connectivity/challenge`（高可信联网验证挑战）。
+- **B3 双源更新**：
+  - `/api/v1/updates/latest`（获取最新清单）与 `/api/v1/updates/{version}/download/{filename}`（流式包下载）。
+  - 管理端 `/api/v1/admin/releases`（更新包分块上传、草稿管理、双重 TOTP 授权发布与撤销）。
+- **B4 反馈、日志与公告**：
+  - `/api/v1/feedback`（反馈创建）、流式上传附件，管理端 `/api/v1/admin/feedback`（反馈列表、附件下载，受 Re-auth 保护）。
+  - `/api/v1/announcements/active`（获取签名活动公告），管理端 `/api/v1/admin/announcements`（公告草稿、编辑、发布与撤销）。
+- **B5 封锁与受限模式**：
+  - `/api/v1/policies/evaluate`（设备及全局封锁策略评估，双重签名信封下发）。
+  - 管理端 `/api/v1/admin/device-blocks` 与 `/api/v1/admin/policies`（封锁规则/全局限制的发布与撤销，带 CSRF/Re-auth 安全验证并计入 AuditLog）。
 
 ## 1. 设计目标
 

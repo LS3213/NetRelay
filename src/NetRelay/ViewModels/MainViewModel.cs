@@ -100,6 +100,14 @@ public sealed class MainViewModel : ObservableObject
 
         CheckUpdatesCommand = new RelayCommand(async () =>
         {
+            if (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false)
+            {
+                OperationMessage = "更新功能在该受限状态下已被系统管理员禁用。";
+                await Task.Delay(2550);
+                OperationMessage = null;
+                return;
+            }
+
             OperationMessage = "正在检查更新...";
             try
             {
@@ -172,6 +180,18 @@ public sealed class MainViewModel : ObservableObject
         {
             _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
             _ruleScheduler.RuleExecuted += OnSchedulerRuleExecuted;
+        }
+
+        if (App.PolicyService != null)
+        {
+            App.PolicyService.BlockStateChanged += (sender, args) =>
+            {
+                RaisePropertyChanged(nameof(IsBlocked));
+                RaisePropertyChanged(nameof(IsNotBlocked));
+                RaisePropertyChanged(nameof(BlockedReason));
+                RaisePropertyChanged(nameof(BlockedExpiryText));
+                RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
+            };
         }
 
         LoadRules();
@@ -253,7 +273,14 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
     public bool HasOperationMessage => !string.IsNullOrWhiteSpace(OperationMessage);
-    public bool CanOperateSelectedAdapter => SelectedAdapter?.CanToggle == true && !IsOperating;
+    public bool CanOperateSelectedAdapter => SelectedAdapter?.CanToggle == true && !IsOperating && App.PolicyService?.IsBlocked != true;
+
+    public bool IsBlocked => App.PolicyService?.IsBlocked == true;
+    public bool IsNotBlocked => !IsBlocked;
+    public string? BlockedReason => App.PolicyService?.Reason;
+    public string BlockedExpiryText => App.PolicyService?.ExpiresAt.HasValue == true
+        ? App.PolicyService.ExpiresAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        : "永久封锁";
 
     public string? OperationMessage
     {
@@ -524,6 +551,15 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task RunRuleNowAsync(AutomationRule rule)
     {
+        if (App.PolicyService?.IsBlocked == true)
+        {
+            ErrorMessage = "当前处于受限模式，无法执行规则。";
+            OperationMessage = "当前处于受限模式，无法执行规则。";
+            await Task.Delay(2550);
+            OperationMessage = null;
+            return;
+        }
+
         IsOperating = true;
         OperationMessage = $"正在立即执行规则“{rule.Name}”…";
         try
@@ -684,6 +720,11 @@ public sealed class MainViewModel : ObservableObject
         NativeNetworkConnectionService connectionService,
         bool enabled)
     {
+        if (App.PolicyService?.IsBlocked == true)
+        {
+            return new AdapterActionResult(false, "当前处于受限模式，无法启用或禁用网卡。");
+        }
+
         if (IsOperating)
         {
             return new AdapterActionResult(false, "已有网卡操作正在执行，请稍候。");

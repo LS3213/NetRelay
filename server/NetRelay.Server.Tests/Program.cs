@@ -49,7 +49,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Device activation and connectivity challenge endpoints work correctly", TestDeviceActivationAndChallengeApiAsync),
     ("Update management and download endpoints behave correctly", TestUpdateApiAsync),
     ("Feedback submission, listing, status updates, and download behavior work correctly", TestFeedbackApiAsync),
-    ("Announcement lifecycle (creation, editing, signing, and retrieval) works correctly", TestAnnouncementApiAsync)
+    ("Announcement lifecycle (creation, editing, signing, and retrieval) works correctly", TestAnnouncementApiAsync),
+    ("Device block and global policies (evaluate, block, revoke, and version evaluation) work correctly", TestPolicyApiAsync)
 };
 
 var failed = 0;
@@ -1371,6 +1372,202 @@ static async Task TestAnnouncementApiAsync()
     {
         RestoreEnvironment(environment);
         Directory.Delete(root, recursive: true);
+    }
+}
+
+static async Task TestPolicyApiAsync()
+{
+    const string password = "correct horse battery staple";
+    const string secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    var root = CreateTemporaryDirectory();
+    var environment = ApplyTestEnvironment(root, password, secret);
+    try
+    {
+        await using var factory = new TestServerFactory(root, password, secret);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+            AllowAutoRedirect = false
+        });
+
+        // 1. Activate device
+        var installationId = Guid.NewGuid();
+        var activateRequest = new DeviceActivationRequest
+        {
+            InstallationId = installationId,
+            FingerprintVersion = 1,
+            DeviceId = "test-device-id-hash",
+            AcceptedTermsVersion = "1.0",
+            AcceptedPrivacyVersion = "1.0",
+            ClientVersion = "1.0.0",
+            OsVersion = "Windows 10",
+            ProtocolVersion = 1,
+            Evidence = new Dictionary<string, List<string>>
+            {
+                ["hardware.windowsDeviceId"] = new List<string> { "win-id-123" },
+                ["hardware.machineGuid"] = new List<string> { "machine-guid-123" }
+            }
+        };
+
+        var activateResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/devices/activate", activateRequest);
+        Assert(activateResponseMsg.StatusCode == HttpStatusCode.OK, $"Device activation failed: {activateResponseMsg.StatusCode}");
+
+        // 2. Evaluate policy initially -> not blocked
+        var evalReq = new PolicyEvaluateRequest
+        {
+            DeviceId = "test-device-id-hash",
+            InstallationId = installationId,
+            ClientVersion = "1.0.0"
+        };
+        var evalResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/policies/evaluate", evalReq);
+        Assert(evalResponseMsg.StatusCode == HttpStatusCode.OK, $"Policy evaluation failed: {evalResponseMsg.StatusCode}");
+        var evalRes = await evalResponseMsg.Content.ReadFromJsonAsync<ApiResponse<PolicyEvaluateResponse>>();
+        Assert(evalRes != null && evalRes.Data != null, "Policy response payload is null.");
+        
+        // Double-verify signatures
+        using (var rootKey = ECDsa.Create())
+        {
+            rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
+            Assert(evalRes.Data.Certificate.Verify(DateTimeOffset.UtcNow, rootKey, "policy"), "Certificate verification failed.");
+            
+            using var opKey = ECDsa.Create();
+            opKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(evalRes.Data.Certificate.PublicKey), out _);
+            Assert(evalRes.Data.Envelope.Verify("policy", evalRes.Data.Envelope.Nonce, DateTimeOffset.UtcNow, opKey), "Envelope verification failed.");
+        }
+
+        var payload = JsonSerializer.Deserialize<PolicyEvaluationResult>(evalRes.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(payload != null && !payload.IsBlocked, "Device should not be blocked initially.");
+
+        // 3. Admin Login
+        var loginResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/auth/login", new AdminLoginRequest("admin", password));
+        Assert(loginResponseMsg.StatusCode == HttpStatusCode.OK, "Login failed");
+        var login = await loginResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminLoginChallenge>>() ?? throw new InvalidOperationException();
+        
+        var totpResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/totp",
+            new AdminTotpRequest(login.Data.ChallengeToken, TotpService.GenerateCode(secret, DateTimeOffset.UtcNow)));
+        Assert(totpResponseMsg.StatusCode == HttpStatusCode.OK, "TOTP validation failed");
+        var session = await totpResponseMsg.Content.ReadFromJsonAsync<ApiResponse<AdminSessionResponse>>() ?? throw new InvalidOperationException();
+        var csrf = session.Data.CsrfToken;
+
+        // Re-auth
+        var reauthResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            "/api/v1/admin/auth/reauthenticate",
+            new AdminReauthenticateRequest(password),
+            csrf);
+        Assert(reauthResponseMsg.StatusCode == HttpStatusCode.NoContent, "Reauthentication failed");
+
+        // Fetch Device.Id & DeviceInstallation.Id from database
+        Guid dbDeviceId;
+        Guid dbInstallationId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NetRelayDbContext>();
+            var device = await db.Devices.FirstAsync(d => d.DeviceIdHash == "test-device-id-hash");
+            var inst = await db.DeviceInstallations.FirstAsync(i => i.InstallationId == installationId);
+            dbDeviceId = device.Id;
+            dbInstallationId = inst.Id;
+        }
+
+        // 4. Create DeviceBlock
+        var blockReq = new DeviceBlockCreateRequest
+        {
+            DeviceId = dbDeviceId,
+            Reason = "Test Block Reason",
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30)
+        };
+        var createBlockMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/device-blocks", blockReq, csrf);
+        Assert(createBlockMsg.StatusCode == HttpStatusCode.OK, $"Create block failed: {createBlockMsg.StatusCode}");
+        var blockRes = await createBlockMsg.Content.ReadFromJsonAsync<ApiResponse<DeviceBlockDto>>();
+        Assert(blockRes != null && blockRes.Data != null, "Create block response payload is null.");
+        Assert(blockRes.Data.Status == "active", "Block status should be active.");
+        var blockId = blockRes.Data.Id;
+
+        // 5. Evaluate policy again -> blocked
+        var evalResponseMsg2 = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/policies/evaluate", evalReq);
+        Assert(evalResponseMsg2.StatusCode == HttpStatusCode.OK, $"Policy evaluation failed: {evalResponseMsg2.StatusCode}");
+        var evalRes2 = await evalResponseMsg2.Content.ReadFromJsonAsync<ApiResponse<PolicyEvaluateResponse>>();
+        var payload2 = JsonSerializer.Deserialize<PolicyEvaluationResult>(evalRes2!.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(payload2 != null && payload2.IsBlocked, "Device should be blocked.");
+        Assert(payload2.Reason == "Test Block Reason", "Reason should match.");
+
+        // 6. Revoke block
+        var revokeBlockMsg = await SendJsonAsync(client, HttpMethod.Post, $"/api/v1/admin/device-blocks/{blockId}/revoke", new { }, csrf);
+        Assert(revokeBlockMsg.StatusCode == HttpStatusCode.OK, $"Revoke block failed: {revokeBlockMsg.StatusCode}");
+
+        // 7. Evaluate policy again -> unblocked
+        var evalResponseMsg3 = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/policies/evaluate", evalReq);
+        var evalRes3 = await evalResponseMsg3.Content.ReadFromJsonAsync<ApiResponse<PolicyEvaluateResponse>>();
+        var payload3 = JsonSerializer.Deserialize<PolicyEvaluationResult>(evalRes3!.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(payload3 != null && !payload3.IsBlocked, "Device should be unblocked.");
+
+        // 8. Create Global Policy of type version_range
+        var policyReq = new GlobalPolicyCreateRequest
+        {
+            Type = "version_range",
+            TargetVersionMin = "1.0.0",
+            TargetVersionMax = "1.0.5",
+            Reason = "Vulnerable client version",
+            AllowUpdate = true,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30)
+        };
+        var createPolicyMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/policies", policyReq, csrf);
+        Assert(createPolicyMsg.StatusCode == HttpStatusCode.OK, $"Create global policy failed: {createPolicyMsg.StatusCode}");
+        var policyRes = await createPolicyMsg.Content.ReadFromJsonAsync<ApiResponse<GlobalPolicyDto>>();
+        Assert(policyRes != null && policyRes.Data != null, "Create policy response payload is null.");
+        var policyId = policyRes.Data.Id;
+
+        // 9. Evaluate policy with ClientVersion in range -> blocked
+        var evalReq4 = new PolicyEvaluateRequest
+        {
+            DeviceId = "test-device-id-hash",
+            InstallationId = installationId,
+            ClientVersion = "1.0.3"
+        };
+        var evalResponseMsg4 = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/policies/evaluate", evalReq4);
+        var evalRes4 = await evalResponseMsg4.Content.ReadFromJsonAsync<ApiResponse<PolicyEvaluateResponse>>();
+        var payload4 = JsonSerializer.Deserialize<PolicyEvaluationResult>(evalRes4!.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(payload4 != null && payload4.IsBlocked, "Device should be version-range blocked.");
+        Assert(payload4.Reason == "Vulnerable client version", "Reason should match.");
+
+        // 10. Evaluate policy with ClientVersion out of range -> unblocked
+        var evalReq5 = new PolicyEvaluateRequest
+        {
+            DeviceId = "test-device-id-hash",
+            InstallationId = installationId,
+            ClientVersion = "1.0.6"
+        };
+        var evalResponseMsg5 = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/policies/evaluate", evalReq5);
+        var evalRes5 = await evalResponseMsg5.Content.ReadFromJsonAsync<ApiResponse<PolicyEvaluateResponse>>();
+        var payload5 = JsonSerializer.Deserialize<PolicyEvaluationResult>(evalRes5!.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(payload5 != null && !payload5.IsBlocked, "Device should not be blocked.");
+
+        // 11. Revoke Global Policy
+        var revokePolicyMsg = await SendJsonAsync(client, HttpMethod.Post, $"/api/v1/admin/policies/{policyId}/revoke", new { }, csrf);
+        Assert(revokePolicyMsg.StatusCode == HttpStatusCode.OK, $"Revoke policy failed: {revokePolicyMsg.StatusCode}");
+
+        // 12. Evaluate policy with ClientVersion in range again -> unblocked
+        var evalResponseMsg6 = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/policies/evaluate", evalReq4);
+        var evalRes6 = await evalResponseMsg6.Content.ReadFromJsonAsync<ApiResponse<PolicyEvaluateResponse>>();
+        var payload6 = JsonSerializer.Deserialize<PolicyEvaluationResult>(evalRes6!.Data.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert(payload6 != null && !payload6.IsBlocked, "Device should be unblocked after policy revocation.");
+    }
+    finally
+    {
+        RestoreEnvironment(environment);
+        try
+        {
+            Directory.Delete(root, recursive: true);
+        }
+        catch
+        {
+            // Ignore clean up failures
+        }
     }
 }
 

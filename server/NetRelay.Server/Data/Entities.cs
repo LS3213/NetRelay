@@ -147,3 +147,32 @@ public sealed class Announcement
     public DateTimeOffset? RevokedAt { get; set; }
 }
 
+public sealed class DeviceBlock
+{
+    public Guid Id { get; set; }
+    public Guid? DeviceId { get; set; }
+    public Guid? InstallationId { get; set; }
+    public required string Reason { get; set; }
+    public required string Status { get; set; } // "active" | "revoked"
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+
+    public Device? Device { get; set; }
+    public DeviceInstallation? DeviceInstallation { get; set; }
+}
+
+public sealed class GlobalPolicy
+{
+    public Guid Id { get; set; }
+    public required string Type { get; set; } // "global" | "version_range"
+    public string? TargetVersionMin { get; set; }
+    public string? TargetVersionMax { get; set; }
+    public required string Reason { get; set; }
+    public bool AllowUpdate { get; set; }
+    public required string Status { get; set; } // "active" | "revoked"
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+}
+

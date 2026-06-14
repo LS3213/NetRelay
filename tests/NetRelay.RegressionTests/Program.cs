@@ -7,6 +7,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Collections.Concurrent;
+using System.Threading.Tasks;
+using System.Security.Cryptography;
+using NetRelay.Contracts;
+using NetRelay.Contracts.Security;
+using NetRelay.ViewModels;
+using NetRelay;
 
 if (args.FirstOrDefault() == "--acceptance-toggle-vmnet1")
 {
@@ -55,7 +61,9 @@ var tests = new (string Name, Action Test)[]
     ("EvidenceHasher anonymizes evidence properly", EvidenceHasherAnonymizesEvidenceProperly),
     ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable),
     ("Log packaging logic zips jsonl files properly", TestLogPackagingLogic),
-    ("Safe markdown parser parses formatting and filters unsafe protocols", TestSafeMarkdownParser)
+    ("Safe markdown parser parses formatting and filters unsafe protocols", TestSafeMarkdownParser),
+    ("Client policy restriction behaves correctly when blocked", TestClientPolicyRestriction),
+    ("Policy envelope double-signature verifies correctly", TestPolicyEnvelopeSignature)
 };
 
 var failures = new List<string>();
@@ -1639,5 +1647,179 @@ static void TestSafeMarkdownParser()
         Assert(grayRun!.Text == "Unsafe Link (file:///c:/)");
         Assert(grayRun.Foreground == System.Windows.Media.Brushes.Gray);
     });
+}
+
+static void TestClientPolicyRestriction()
+{
+    var tempDir = Path.Combine(Path.GetTempPath(), $"netrelay-client-block-test-{Guid.NewGuid():N}");
+    var oldPolicyService = App.PolicyService;
+    try
+    {
+        var configService = new ConfigurationService(tempDir);
+        
+        // Setup blocked state
+        var policyService = new PolicyService(configService);
+        typeof(PolicyService).GetProperty("IsBlocked", BindingFlags.Public | BindingFlags.Instance)!.SetValue(policyService, true);
+        typeof(PolicyService).GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)!.SetValue(policyService, "Blocked by regression test");
+        typeof(PolicyService).GetProperty("AllowUpdate", BindingFlags.Public | BindingFlags.Instance)!.SetValue(policyService, false);
+        
+        // Mock App.PolicyService
+        var appPolicyProp = typeof(App).GetProperty("PolicyService", BindingFlags.Static | BindingFlags.Public);
+        appPolicyProp!.SetValue(null, policyService);
+        
+        // Verify RuleSchedulerService timer tick is blocked (no execution logs generated)
+        var ruleId = Guid.NewGuid();
+        var adapterId = Guid.NewGuid().ToString("B");
+        var rule = new AutomationRule(
+            ruleId,
+            "Block test rule",
+            Enabled: true,
+            adapterId,
+            RuleAction.Disable,
+            new RuleTrigger.Once(DateTimeOffset.Now.AddSeconds(-10)),
+            Conditions: [],
+            PreNotifications: [],
+            Recovery: null,
+            RequireUsableBackup: false,
+            CooldownSeconds: 0);
+            
+        configService.Current.Rules.Add(rule);
+        configService.Save();
+        
+        var logDir = Path.Combine(tempDir, "logs");
+        Directory.CreateDirectory(logDir);
+        
+        var connectionService = new NativeNetworkConnectionService();
+        var connectivityService = new ConnectivityService();
+        var ruleEngine = new RuleEngine(connectionService, connectivityService, configService, logDir);
+        
+        using var scheduler = new RuleSchedulerService(ruleEngine, configService, connectivityService);
+        
+        // Manually trigger OnTimerTick
+        var onTimerTickMethod = typeof(RuleSchedulerService).GetMethod("OnTimerTick", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(onTimerTickMethod is not null);
+        onTimerTickMethod!.Invoke(scheduler, new object?[] { null });
+        
+        // Verify no execution records are generated in the logs directory
+        var logFiles = Directory.GetFiles(logDir, "*.jsonl");
+        Assert(logFiles.Length == 0);
+        
+        // Now verify manual toggle is rejected with failure message
+        RunOnSTA(() =>
+        {
+            var adapterService = new NetworkAdapterService(connectionService);
+            var logService = new LogService(logDir);
+            
+            var vm = new MainViewModel(
+                adapterService,
+                configService,
+                connectivityService,
+                ruleEngine,
+                scheduler,
+                logService);
+                
+            // Test SetSelectedAdapterEnabledAsync rejects when blocked
+            var resultTask = vm.SetSelectedAdapterEnabledAsync(connectionService, true);
+            var result = resultTask.GetAwaiter().GetResult();
+            Assert(!result.Success);
+            Assert(result.Message == "当前处于受限模式，无法启用或禁用网卡。");
+            
+            // Test RunRuleNowAsync sets error message when blocked
+            var runTask = typeof(MainViewModel).GetMethod("RunRuleNowAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert(runTask is not null);
+            
+            // Invoke RunRuleNowAsync
+            var t = (Task)runTask!.Invoke(vm, new object[] { rule })!;
+            t.GetAwaiter().GetResult();
+            
+            Assert(vm.ErrorMessage == "当前处于受限模式，无法执行规则。");
+        });
+    }
+    finally
+    {
+        var appPolicyProp = typeof(App).GetProperty("PolicyService", BindingFlags.Static | BindingFlags.Public);
+        appPolicyProp!.SetValue(null, oldPolicyService);
+        
+        if (Directory.Exists(tempDir))
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch {}
+        }
+    }
+}
+
+static void TestPolicyEnvelopeSignature()
+{
+    using var opKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    
+    using var rootKey = ECDsa.Create();
+    const string rootPrivKeyBase64 = "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg/NXpocWMQ1bT+yu5MBByIOOmU02n3b2a5R0tvedzwoOhRANCAAQi91R4JEsCFDshD0vZV3OHU93ThiX26vaTrtQ3e9u3nxsKpN6H5afJE9TwNgUtSsj9ShDWfDWNkf5vp+Xm0UVK";
+    rootKey.ImportPkcs8PrivateKey(Convert.FromBase64String(rootPrivKeyBase64), out _);
+    
+    var now = DateTimeOffset.UtcNow;
+    var cert = OperationalKeyCertificate.Create(
+        "test-op-key",
+        opKey.ExportSubjectPublicKeyInfo(),
+        new[] { "policy" },
+        now.AddMinutes(-5),
+        now.AddDays(30),
+        rootKey);
+        
+    var payloadObj = new Dictionary<string, object?>
+    {
+        ["isBlocked"] = true,
+        ["reason"] = "Signature verification regression test",
+        ["appealUrl"] = "http://localhost/appeal",
+        ["expiresAt"] = now.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+        ["allowUpdate"] = false
+    };
+    
+    var envelope = SignedEnvelope.Create(
+        "policy",
+        "nonce-signature-test",
+        now,
+        now.AddMinutes(5),
+        payloadObj,
+        opKey);
+        
+    var response = new PolicyEvaluateResponse
+    {
+        Envelope = envelope,
+        Certificate = cert
+    };
+    
+    var tempDir = Path.Combine(Path.GetTempPath(), $"netrelay-policy-sig-test-{Guid.NewGuid():N}");
+    try
+    {
+        var configService = new ConfigurationService(tempDir);
+        var policyService = new PolicyService(configService);
+        
+        Assert(policyService.VerifyStateEnvelope(response));
+        
+        var tamperedEnvelope = new SignedEnvelope
+        {
+            ProtocolVersion = envelope.ProtocolVersion,
+            Purpose = envelope.Purpose,
+            Nonce = envelope.Nonce,
+            IssuedAt = envelope.IssuedAt,
+            ExpiresAt = envelope.ExpiresAt,
+            PayloadJson = envelope.PayloadJson + " ",
+            Signature = envelope.Signature
+        };
+        
+        var tamperedResponse = new PolicyEvaluateResponse
+        {
+            Envelope = tamperedEnvelope,
+            Certificate = cert
+        };
+        
+        Assert(!policyService.VerifyStateEnvelope(tamperedResponse));
+    }
+    finally
+    {
+        if (Directory.Exists(tempDir))
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
 }
 

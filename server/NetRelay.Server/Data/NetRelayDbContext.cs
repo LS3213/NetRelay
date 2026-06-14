@@ -17,6 +17,8 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
     public DbSet<Release> Releases => Set<Release>();
     public DbSet<Feedback> Feedbacks => Set<Feedback>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
+    public DbSet<DeviceBlock> DeviceBlocks => Set<DeviceBlock>();
+    public DbSet<GlobalPolicy> GlobalPolicies => Set<GlobalPolicy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -188,6 +190,42 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.Property(item => item.Status).HasMaxLength(50);
             entity.HasIndex(item => item.Status);
             entity.HasIndex(item => item.PublishedAt);
+            entity.HasIndex(item => item.ExpiresAt);
+        });
+
+        modelBuilder.Entity<DeviceBlock>(entity =>
+        {
+            entity.ToTable("device_blocks");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.DeviceId).HasConversion(nullableGuidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.InstallationId).HasConversion(nullableGuidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.Reason).HasMaxLength(1000);
+            entity.Property(item => item.Status).HasMaxLength(50);
+            entity.HasIndex(item => item.Status);
+            entity.HasIndex(item => item.ExpiresAt);
+            entity.HasOne(item => item.Device)
+                .WithMany()
+                .HasForeignKey(item => item.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(item => item.DeviceInstallation)
+                .WithMany()
+                .HasForeignKey(item => item.InstallationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GlobalPolicy>(entity =>
+        {
+            entity.ToTable("global_policies");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasConversion(guidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.Type).HasMaxLength(50);
+            entity.Property(item => item.TargetVersionMin).HasMaxLength(50);
+            entity.Property(item => item.TargetVersionMax).HasMaxLength(50);
+            entity.Property(item => item.Reason).HasMaxLength(1000);
+            entity.Property(item => item.Status).HasMaxLength(50);
+            entity.HasIndex(item => item.Status);
+            entity.HasIndex(item => item.Type);
             entity.HasIndex(item => item.ExpiresAt);
         });
 
