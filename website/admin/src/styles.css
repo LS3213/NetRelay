@@ -390,3 +390,66 @@ select {
   color: #71809a;
   font-weight: 500;
 }
+
+.upload-progress {
+  display: grid;
+  gap: 8px;
+  min-height: 74px;
+  padding: 12px 14px;
+  border: 1px solid rgba(83, 110, 242, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.upload-progress-header,
+.upload-progress-bytes {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #52647f;
+  font-size: 12px;
+}
+
+.upload-progress-header strong {
+  color: #3157ed;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(82, 100, 127, 0.13);
+}
+
+.upload-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6382f6, #4664e8);
+  transition: width 0.18s ease;
+}
+
+.upload-progress.processing .upload-progress-fill {
+  animation: upload-processing 1.2s ease-in-out infinite alternate;
+}
+
+.upload-progress.success {
+  border-color: rgba(37, 163, 105, 0.28);
+}
+
+.upload-progress.success .upload-progress-fill {
+  background: #25a369;
+}
+
+.upload-progress.error {
+  border-color: rgba(218, 63, 83, 0.3);
+}
+
+.upload-progress.error .upload-progress-fill {
+  background: #da3f53;
+}
+
+@keyframes upload-processing {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}

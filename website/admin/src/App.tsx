@@ -40,6 +40,7 @@ import {
 } from "./api";
 
 type AuthStep = "loading" | "password" | "totp" | "authenticated";
+type ReleaseUploadState = "idle" | "uploading" | "processing" | "success" | "error";
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -155,6 +156,10 @@ export function App() {
   const [relMinVer, setRelMinVer] = useState("0.1.0");
   const [relChangelog, setRelChangelog] = useState("");
   const [relFile, setRelFile] = useState<File | null>(null);
+  const [releaseUploadState, setReleaseUploadState] = useState<ReleaseUploadState>("idle");
+  const [releaseUploadProgress, setReleaseUploadProgress] = useState(0);
+  const [releaseUploadedBytes, setReleaseUploadedBytes] = useState(0);
+  const [releaseUploadTotalBytes, setReleaseUploadTotalBytes] = useState(0);
 
   // 2. Announcement
   const [annEditingId, setAnnEditingId] = useState<string | null>(null);
@@ -301,25 +306,42 @@ export function App() {
       setError("请选择要上传的更新包文件。");
       return;
     }
+    setReleaseUploadState("uploading");
+    setReleaseUploadProgress(0);
+    setReleaseUploadedBytes(0);
+    setReleaseUploadTotalBytes(relFile.size);
     void run(async () => {
-      const formData = new FormData();
-      formData.append("version", relVersion.trim());
-      formData.append("channel", relChannel);
-      formData.append("architecture", relArch);
-      formData.append("minUpgradableVersion", relMinVer.trim());
-      formData.append("changelog", relChangelog.trim());
-      formData.append("file", relFile);
+      try {
+        const formData = new FormData();
+        formData.append("version", relVersion.trim());
+        formData.append("channel", relChannel);
+        formData.append("architecture", relArch);
+        formData.append("minUpgradableVersion", relMinVer.trim());
+        formData.append("changelog", relChangelog.trim());
+        formData.append("file", relFile);
 
-      await createRelease(formData);
-      setMessage("更新包上传草稿成功。");
-      setRelVersion("");
-      setRelChangelog("");
-      setRelFile(null);
-      // Reset file input element
-      const fileInput = document.getElementById("release-file-input") as HTMLInputElement;
-      if (fileInput) fileInput.value = "";
-      const list = await getReleases();
-      setReleasesList(list);
+        await createRelease(formData, (loaded, total) => {
+          const effectiveTotal = total || relFile.size;
+          const progress = effectiveTotal > 0 ? Math.min(100, Math.round((loaded / effectiveTotal) * 100)) : 0;
+          setReleaseUploadedBytes(loaded);
+          setReleaseUploadTotalBytes(effectiveTotal);
+          setReleaseUploadProgress(progress);
+          setReleaseUploadState(progress >= 100 ? "processing" : "uploading");
+        });
+        setReleaseUploadState("success");
+        setReleaseUploadProgress(100);
+        setMessage("更新包上传草稿成功。");
+        setRelVersion("");
+        setRelChangelog("");
+        setRelFile(null);
+        const fileInput = document.getElementById("release-file-input") as HTMLInputElement;
+        if (fileInput) fileInput.value = "";
+        const list = await getReleases();
+        setReleasesList(list);
+      } catch (caught) {
+        setReleaseUploadState("error");
+        throw caught;
+      }
     });
   }
 
@@ -752,24 +774,60 @@ export function App() {
           <article className="card form-card">
             <h2>上传更新包 (ZIP)</h2>
             <form onSubmit={submitReleaseForm}>
-              <label>版本号<input placeholder="e.g. 1.0.0" value={relVersion} onChange={(e) => setRelVersion(e.target.value)} required /></label>
+              <label>版本号<input placeholder="e.g. 1.0.0" value={relVersion} onChange={(e) => setRelVersion(e.target.value)} disabled={busy} required /></label>
               <label>更新通道
-                <select value={relChannel} onChange={(e) => setRelChannel(e.target.value)}>
+                <select value={relChannel} onChange={(e) => setRelChannel(e.target.value)} disabled={busy}>
                   <option value="stable">Stable (稳定版)</option>
                   <option value="beta">Beta (测试版)</option>
                 </select>
               </label>
               <label>平台架构
-                <select value={relArch} onChange={(e) => setRelArch(e.target.value)}>
+                <select value={relArch} onChange={(e) => setRelArch(e.target.value)} disabled={busy}>
                   <option value="win-x64">win-x64</option>
                 </select>
               </label>
-              <label>最低可升级版本<input placeholder="e.g. 0.1.0" value={relMinVer} onChange={(e) => setRelMinVer(e.target.value)} required /></label>
-              <label>更新日志 (Markdown)<textarea placeholder="描述本次更新的改进点..." value={relChangelog} onChange={(e) => setRelChangelog(e.target.value)} /></label>
+              <label>最低可升级版本<input placeholder="e.g. 0.1.0" value={relMinVer} onChange={(e) => setRelMinVer(e.target.value)} disabled={busy} required /></label>
+              <label>更新日志 (Markdown)<textarea placeholder="描述本次更新的改进点..." value={relChangelog} onChange={(e) => setRelChangelog(e.target.value)} disabled={busy} /></label>
               <label>更新包文件 (上传 build-delivery.ps1 生成的 win-x64.zip)
-                <input id="release-file-input" type="file" accept=".zip" onChange={(e) => setRelFile(e.target.files ? e.target.files[0] : null)} required />
+                <input
+                  id="release-file-input"
+                  type="file"
+                  accept=".zip"
+                  disabled={busy}
+                  onChange={(e) => {
+                    setRelFile(e.target.files ? e.target.files[0] : null);
+                    setReleaseUploadState("idle");
+                    setReleaseUploadProgress(0);
+                    setReleaseUploadedBytes(0);
+                    setReleaseUploadTotalBytes(e.target.files?.[0]?.size ?? 0);
+                  }}
+                  required
+                />
               </label>
-              <button disabled={busy}>上传草稿</button>
+              {releaseUploadState !== "idle" && (
+                <div className={`upload-progress ${releaseUploadState}`} role="status" aria-live="polite">
+                  <div className="upload-progress-header">
+                    <span>
+                      {releaseUploadState === "uploading" && "正在上传更新包"}
+                      {releaseUploadState === "processing" && "上传完成，服务器正在计算 SHA256 并保存草稿"}
+                      {releaseUploadState === "success" && "更新包上传并保存成功"}
+                      {releaseUploadState === "error" && "上传失败，请检查上方错误信息"}
+                    </span>
+                    <strong>{releaseUploadProgress}%</strong>
+                  </div>
+                  <div className="upload-progress-track">
+                    <div className="upload-progress-fill" style={{ width: `${releaseUploadProgress}%` }} />
+                  </div>
+                  <div className="upload-progress-bytes">
+                    {formatBytes(releaseUploadedBytes)} / {formatBytes(releaseUploadTotalBytes)}
+                  </div>
+                </div>
+              )}
+              <button disabled={busy}>
+                {releaseUploadState === "uploading" && `正在上传 ${releaseUploadProgress}%`}
+                {releaseUploadState === "processing" && "服务器处理中"}
+                {(releaseUploadState === "idle" || releaseUploadState === "success" || releaseUploadState === "error") && "上传草稿"}
+              </button>
             </form>
           </article>
 

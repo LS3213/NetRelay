@@ -168,13 +168,60 @@ export async function getReleases() {
   return (await request<ApiResponse<Release[]>>("/admin/releases")).data;
 }
 
-export async function createRelease(formData: FormData) {
-  return (
-    await request<ApiResponse<Release>>("/admin/releases", {
-      method: "POST",
-      body: formData,
-    })
-  ).data;
+export async function createRelease(
+  formData: FormData,
+  onProgress?: (loaded: number, total: number) => void,
+) {
+  return createReleaseWithProgress(formData, onProgress);
+}
+
+export function createReleaseWithProgress(
+  formData: FormData,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Release> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v1/admin/releases");
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("X-NetRelay-Protocol", "1");
+    if (csrfToken) {
+      xhr.setRequestHeader("X-NetRelay-Csrf", csrfToken);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      onProgress?.(event.loaded, event.lengthComputable ? event.total : 0);
+    };
+    xhr.onerror = () => reject(new ApiClientError("上传连接失败，请检查网络或服务器状态。", 0, "NETWORK_ERROR"));
+    xhr.onabort = () => reject(new ApiClientError("上传已取消。", 0, "UPLOAD_ABORTED"));
+    xhr.onload = () => {
+      let payload: ApiResponse<Release> | ApiErrorResponse | undefined;
+      try {
+        payload = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
+      } catch {
+        payload = undefined;
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const failure = payload as ApiErrorResponse | undefined;
+        reject(new ApiClientError(
+          failure?.error?.message || `请求失败（HTTP ${xhr.status}）`,
+          xhr.status,
+          failure?.error?.code || "HTTP_ERROR",
+          failure?.requestId,
+          failure?.error?.details,
+        ));
+        return;
+      }
+
+      const response = payload as ApiResponse<Release> | undefined;
+      if (!response?.data) {
+        reject(new ApiClientError("服务器未返回更新草稿信息。", xhr.status, "INVALID_RESPONSE"));
+        return;
+      }
+      resolve(response.data);
+    };
+    xhr.send(formData);
+  });
 }
 
 export async function publishRelease(id: string) {
