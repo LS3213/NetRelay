@@ -41,12 +41,28 @@ sed \
 
 systemctl daemon-reload
 systemctl enable netrelay.service
+
+if [[ -f "${install_lock_file}" ]]; then
+  if [[ ! -f "${config_root}/runtime-config.json" ]]; then
+    echo "检测到安装锁，但缺少 ${config_root}/runtime-config.json，拒绝启动以避免重新开放安装入口。" >&2
+    exit 1
+  fi
+
+  echo "检测到已安装状态，正在执行数据库迁移..."
+  systemctl stop netrelay.service >/dev/null 2>&1 || true
+  (
+    cd "${package_root}/app"
+    NETRELAY_CONFIG_DIR="${config_root}" NETRELAY_INSTALL_MODE=false ./NetRelay.Server --migrate
+  )
+  echo "数据库迁移完成。"
+fi
+
 systemctl restart netrelay.service
 
 echo
 echo "NetRelay 服务已启动。"
 if [[ -f "${install_lock_file}" ]]; then
-  echo "检测到已安装状态，安装入口保持关闭。本次已刷新并启动 systemd 服务。"
+  echo "检测到已安装状态，安装入口保持关闭。本次已刷新 systemd 服务、完成数据库迁移并重启后端。"
 else
   echo "一次性安装令牌：$(cat "${install_token_file}")"
   echo

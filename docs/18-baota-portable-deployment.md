@@ -120,8 +120,8 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 - 安装锁存在但运行配置缺失时，服务拒绝启动普通 API，不重新开放安装器。
 - 管理员密码使用现有密码哈希服务保存；TOTP Secret 使用持久化 Data Protection 密钥保护。
 - 数据库已存在管理员时安装器拒绝继续，避免接管已有环境。
-- 再次执行 `install.sh` 只刷新 systemd 服务，不重建管理员或开放安装入口。
-- 覆盖新便携包后再次执行 `install.sh` 会明确重启正在运行的后端，避免静态页面已更新但 API 仍为旧版本。
+- 再次执行 `install.sh` 只刷新 systemd 服务、执行数据库迁移并重启后端，不重建管理员或开放安装入口。
+- 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，避免静态页面已更新但 API 仍为旧版本或新代码连接旧库结构。
 
 如果安装在数据库迁移或创建管理员期间失败，应查看 `journalctl -u netrelay`。首次安装应使用空数据库；若数据库已留下不完整数据，先由维护者确认和清理该专用数据库，再重新安装。不得通过删除 `installed.lock` 绕过已安装环境的保护。
 

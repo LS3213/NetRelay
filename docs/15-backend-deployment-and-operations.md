@@ -181,7 +181,7 @@ GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供�
 2. 执行测试、格式和依赖检查。
 3. 备份数据库和必要文件。
 4. 上传新镜像或产物。
-5. 通过一次性 `--migrate` 进程运行兼容 Migration；常驻 API 默认关闭自动迁移。
+5. 通过一次性 `--migrate` 进程运行兼容 Migration；宝塔便携包升级时由 `install.sh` 自动执行该步骤，常驻 API 默认关闭自动迁移。
 6. 滚动启动 API 并检查健康端点。
 7. 发布静态官网和管理后台。
 8. 执行公开 API、管理登录和下载冒烟测试。

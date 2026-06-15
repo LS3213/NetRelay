@@ -42,8 +42,8 @@ sudo bash install.sh
 - 磁盘中的一次性 `install.token` 被删除；安装锁存在时，即使运行配置损坏也不会重新开放安装器。
 - 管理员密码与 TOTP Secret 不写入运行配置。
 - systemd 自动重启后，安装 API 不再注册。
-- 再次执行 `install.sh` 只会刷新并启动 systemd 服务，不会重新安装或重新开放安装入口。
-- 再次执行 `install.sh` 会明确重启正在运行的后端，使覆盖后的新版本立即生效。
+- 再次执行 `install.sh` 只会刷新 systemd 服务、执行数据库迁移并重启后端，不会重新安装或重新开放安装入口。
+- 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，使新版本代码和数据库结构保持一致。
 
 ## 常用命令
 
