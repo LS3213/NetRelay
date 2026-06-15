@@ -145,8 +145,11 @@ public sealed class ActivationService
 
         var now = DateTimeOffset.Now;
 
-        // 如果上次心跳在一小时内（避免频繁请求），我们直接限流，返回 true
-        if (config.LastHeartbeatTimestamp.HasValue && config.LastHeartbeatTimestamp.Value.AddHours(24) > now)
+        // Regular heartbeats are limited to once per day, but a client upgrade
+        // must be reported immediately so the admin device registry is current.
+        if (config.LastHeartbeatTimestamp.HasValue &&
+            config.LastHeartbeatTimestamp.Value.AddHours(24) > now &&
+            string.Equals(config.LastHeartbeatClientVersion, Protocol.ProductVersion, StringComparison.Ordinal))
         {
             return true;
         }
@@ -186,6 +189,7 @@ public sealed class ActivationService
         }
 
         config.LastHeartbeatTimestamp = now;
+        config.LastHeartbeatClientVersion = Protocol.ProductVersion;
         _configService.Save();
         return true;
     }

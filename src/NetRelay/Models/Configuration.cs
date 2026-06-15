@@ -59,6 +59,9 @@ public sealed class AppConfiguration
     [JsonPropertyName("lastHeartbeatTimestamp")]
     public DateTimeOffset? LastHeartbeatTimestamp { get; set; }
 
+    [JsonPropertyName("lastHeartbeatClientVersion")]
+    public string LastHeartbeatClientVersion { get; set; } = string.Empty;
+
     [JsonPropertyName("clientConfigurationVersion")]
     public int ClientConfigurationVersion { get; set; } = 0;
 

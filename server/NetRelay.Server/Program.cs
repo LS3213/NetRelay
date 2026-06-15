@@ -520,18 +520,24 @@ static async Task<IResult> DeviceHeartbeatAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "未找到相应的设备安装实例。");
     }
 
-    // 限流：24 小时仅可更新一次 last_seen_at
-    if (installation.LastSeenAt.AddHours(24) > now)
-    {
-        return Results.Ok(new ApiResponse<string>(ApiInfrastructure.GetRequestId(context), "Heartbeat throttled (already updated within 24h)."));
-    }
-
-    installation.LastSeenAt = now;
+    var shouldUpdateLastSeen = installation.LastSeenAt.AddHours(24) <= now;
     installation.ClientVersion = request.ClientVersion;
     installation.OsVersion = request.OsVersion;
 
+    // 限流：24 小时仅可更新一次 last_seen_at，但客户端版本与系统环境仍要刷新。
+    if (installation.LastSeenAt.AddHours(24) > now)
+    {
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.Ok(new ApiResponse<string>(ApiInfrastructure.GetRequestId(context), "Heartbeat throttled (already updated within 24h)."));
+    }
+
+    if (shouldUpdateLastSeen)
+    {
+        installation.LastSeenAt = now;
+    }
+
     var device = await dbContext.Devices.FindAsync(new object[] { installation.DeviceId }, cancellationToken);
-    if (device != null)
+    if (device != null && shouldUpdateLastSeen)
     {
         device.LastSeenAt = now;
     }

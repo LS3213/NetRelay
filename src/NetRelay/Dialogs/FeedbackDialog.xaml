@@ -44,6 +44,63 @@
             <Setter Property="Padding" Value="8,3"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
+        <Style x:Key="SegmentButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" CornerRadius="11" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="False"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#66FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="HistoryListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemRoot" Background="{TemplateBinding Background}" CornerRadius="10">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemRoot" Property="Background" Value="#14000000"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border Margin="15" Padding="25" CornerRadius="24" Background="#F4F8FD"
@@ -73,28 +130,18 @@
             </StackPanel>
 
             <!-- Navigation Tabs -->
-            <Border Grid.Row="1" Background="#12000000" CornerRadius="10" Padding="3" Margin="0,0,0,15">
+            <Border Grid.Row="1" Background="#12000000" CornerRadius="13" Padding="3" Margin="0,0,0,15">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Button x:Name="TabFeedbackBtn" Grid.Column="0" Content="我要反馈" Height="28" Click="TabFeedbackBtn_Click" BorderThickness="0">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource SoftButtonStyle}">
-                                <Setter Property="Background" Value="#FFFFFFFF"/>
-                                <Setter Property="FontWeight" Value="SemiBold"/>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button x:Name="TabHistoryBtn" Grid.Column="1" Content="反馈历史与进度" Height="28" Click="TabHistoryBtn_Click" BorderThickness="0">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource SoftButtonStyle}">
-                                <Setter Property="Background" Value="Transparent"/>
-                                <Setter Property="FontWeight" Value="Normal"/>
-                            </Style>
-                        </Button.Style>
-                    </Button>
+                    <Button x:Name="TabFeedbackBtn" Grid.Column="0" Content="我要反馈"
+                            Style="{StaticResource SegmentButtonStyle}" Background="#FFFFFFFF"
+                            Click="TabFeedbackBtn_Click"/>
+                    <Button x:Name="TabHistoryBtn" Grid.Column="1" Content="反馈历史与进度"
+                            Style="{StaticResource SegmentButtonStyle}" FontWeight="Normal"
+                            Click="TabHistoryBtn_Click"/>
                 </Grid>
             </Border>
 
@@ -132,21 +179,13 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="100"/>
+                    <RowDefinition Height="132"/>
                 </Grid.RowDefinitions>
 
                 <!-- History List -->
                 <ListBox x:Name="HistoryListBox" Grid.Row="0" ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         Background="Transparent" BorderThickness="0" SelectionChanged="HistoryListBox_SelectionChanged">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="Padding" Value="0"/>
-                            <Setter Property="Margin" Value="0,0,0,8"/>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
+                         Background="Transparent" BorderThickness="0" SelectionChanged="HistoryListBox_SelectionChanged"
+                         ItemContainerStyle="{StaticResource HistoryListBoxItemStyle}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border Padding="12" CornerRadius="10" Background="#80FFFFFF" BorderBrush="#15000000" BorderThickness="1">
@@ -187,7 +226,8 @@
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="反馈正文与回复" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                     <TextBox Grid.Row="1" x:Name="DetailsContentTextBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
-                             Background="#40FFFFFF" BorderBrush="#15000000" BorderThickness="1" FontSize="11" Foreground="#444444" Padding="6"
+                             Height="Auto" MinHeight="92" VerticalContentAlignment="Top"
+                             Background="#40FFFFFF" BorderBrush="#15000000" BorderThickness="1" FontSize="11" Foreground="#444444" Padding="8,6"
                              VerticalScrollBarVisibility="Auto"/>
                 </Grid>
 

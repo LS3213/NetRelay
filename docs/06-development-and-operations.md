@@ -80,6 +80,12 @@ tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.Regre
 
 项目内统一发布目录为 `artifacts/publish/win-x64/`。供用户手动验收和交付的 `NetRelay.exe` 必须放在该目录，不再发布到系统临时目录或创建多个阶段性预览目录。`bin/` 与 `obj/` 仅为编译中间产物，不作为交付位置。
 
+版本号维护纪律：
+
+- 开发阶段不得主动修改 `src/NetRelay.Contracts/Protocol.cs` 中的 `ProductVersion` 或其他对外展示、上报、更新判断使用的产品版本号。
+- 只有在维护者明确说明当前进入发布阶段后，才允许评估是否需要修改版本号。
+- 即使已经进入发布阶段，修改版本号前也必须再次取得维护者明确同意，不得把功能开发、修复、打包或验收自动等同于版本号递增授权。
+
 每次正式发布先清理该目录，再从当前 HEAD 重新生成。目录中的 `BUILD-INFO.txt` 记录 Commit、构建时间、EXE/DLL SHA256 和签名状态，作为本地发布产物追溯依据。
 
 - Debug 输出：`src/NetRelay/bin/Debug/net8.0-windows/win-x64/NetRelay.exe`
