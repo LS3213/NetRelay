@@ -1473,19 +1473,40 @@ static void EvidenceHasherAnonymizesEvidenceProperly()
 
 static void ConnectivityServiceGracefulDegradationOnBackendUnavailable()
 {
-    var listener = new HttpListener();
-    listener.Prefixes.Add("http://127.0.0.1:54321/");
+    using var listener = new TcpListener(IPAddress.Loopback, 54321);
     listener.Start();
 
-    // Start a background thread to handle a single request and return 503 Service Unavailable
+    // Handle a single request and return 503 without relying on HttpListener/HTTP.sys.
     var listenTask = Task.Run(async () =>
     {
         try
         {
-            var context = await listener.GetContextAsync();
-            context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
-            context.Response.StatusDescription = "Service Unavailable";
-            context.Response.Close();
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            var buffer = new byte[1024];
+            var request = new List<byte>();
+            while (request.Count < 16 * 1024)
+            {
+                var read = await stream.ReadAsync(buffer);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                request.AddRange(buffer.Take(read));
+                if (request.Count >= 4 &&
+                    request[^4] == (byte)'\r' &&
+                    request[^3] == (byte)'\n' &&
+                    request[^2] == (byte)'\r' &&
+                    request[^1] == (byte)'\n')
+                {
+                    break;
+                }
+            }
+
+            var responseBytes = System.Text.Encoding.ASCII.GetBytes(
+                "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            await stream.WriteAsync(responseBytes);
         }
         catch
         {
@@ -1520,8 +1541,10 @@ static void ConnectivityServiceGracefulDegradationOnBackendUnavailable()
         var success = (bool)successProp!.GetValue(attempt)!;
         var errorMsg = (string?)errorMsgProp!.GetValue(attempt);
 
-        Assert(!success);
-        Assert(errorMsg != null && errorMsg.StartsWith("BACKEND_ERROR", StringComparison.Ordinal));
+        if (success || errorMsg == null || !errorMsg.StartsWith("BACKEND_ERROR", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected BACKEND_ERROR for HTTP 503, got success={success}, error='{errorMsg}'.");
+        }
 
         // Test connection failure (e.g. no listener on port 54322)
         Environment.SetEnvironmentVariable("NETRELAY_BACKEND_URL", "http://127.0.0.1:54322");
@@ -1536,8 +1559,10 @@ static void ConnectivityServiceGracefulDegradationOnBackendUnavailable()
         var success2 = (bool)attempt2!.GetType().GetProperty("Success")!.GetValue(attempt2)!;
         var errorMsg2 = (string?)attempt2.GetType().GetProperty("ErrorMessage")!.GetValue(attempt2);
 
-        Assert(!success2);
-        Assert(errorMsg2 != null && !errorMsg2.StartsWith("BACKEND_ERROR", StringComparison.Ordinal));
+        if (success2 || errorMsg2 == null || errorMsg2.StartsWith("BACKEND_ERROR", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Expected transport failure for closed port, got success={success2}, error='{errorMsg2}'.");
+        }
     }
     finally
     {
@@ -1822,4 +1847,3 @@ static void TestPolicyEnvelopeSignature()
         }
     }
 }
-

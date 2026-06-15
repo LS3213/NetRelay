@@ -10,6 +10,7 @@ interface ApiErrorResponse {
     message?: string;
     retryable?: boolean;
     retryAfterSeconds?: number;
+    details?: any;
   };
 }
 
@@ -43,6 +44,7 @@ export class ApiClientError extends Error {
     public readonly status: number,
     public readonly code: string,
     public readonly requestId?: string,
+    public readonly details?: any,
   ) {
     super(message);
   }
@@ -78,6 +80,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       response.status,
       failure?.error?.code || "HTTP_ERROR",
       failure?.requestId,
+      failure?.error?.details,
     );
   }
 
@@ -196,10 +199,27 @@ export interface Feedback {
   status: "pending" | "resolved" | "ignored";
   createdAt: string;
   statusUpdatedAt?: string;
+  deviceIdHash?: string;
+  installationId?: string;
+  clientVersion?: string;
+  osVersion?: string;
+}
+
+export interface RegisteredDevice {
+  deviceIdHash: string;
+  installationId: string;
+  clientVersion: string;
+  osVersion: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
 }
 
 export async function getFeedbacks() {
   return (await request<ApiResponse<Feedback[]>>("/admin/feedback")).data;
+}
+
+export async function getRegisteredDevices() {
+  return (await request<ApiResponse<RegisteredDevice[]>>("/admin/devices")).data;
 }
 
 export async function updateFeedbackStatus(id: string, status: "pending" | "resolved" | "ignored") {
@@ -344,4 +364,33 @@ export async function createGlobalPolicy(data: GlobalPolicyCreateRequest) {
 
 export async function revokeGlobalPolicy(id: string) {
   return (await request<ApiResponse<unknown>>(`/admin/policies/${id}/revoke`, { method: "POST" })).data;
+}
+
+export async function downloadFile(path: string): Promise<Blob> {
+  const headers = new Headers();
+  headers.set("X-NetRelay-Protocol", "1");
+
+  const response = await fetch(`/api/v1${path}`, {
+    method: "GET",
+    credentials: "same-origin",
+    headers,
+  });
+
+  if (!response.ok) {
+    let failure: ApiErrorResponse | undefined;
+    try {
+      failure = (await response.json()) as ApiErrorResponse;
+    } catch {
+      failure = undefined;
+    }
+    throw new ApiClientError(
+      failure?.error?.message || `请求失败（HTTP ${response.status}）`,
+      response.status,
+      failure?.error?.code || "HTTP_ERROR",
+      failure?.requestId,
+      failure?.error?.details,
+    );
+  }
+
+  return await response.blob();
 }

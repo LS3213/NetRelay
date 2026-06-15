@@ -2,7 +2,7 @@
 
 [上一篇：后端 API 与共享契约规范](12-backend-api-and-contracts.md) | [返回索引](README.md)
 
-> 状态：B1 实现中。数据库以 MySQL 8.0、EF Core 与 Pomelo 为确定方案；实体、上下文和初始 Migration 正在建立。
+> 状态：B7 进行中。数据库以 MySQL 8.0、EF Core 与 Pomelo 为确定方案；实体、上下文和 Migration 持续随阶段演进维护。
 
 当前已实现的初始 Migration 位于 `server/NetRelay.Server/Data/Migrations/`，只创建 B1 管理认证基础表：
 
@@ -84,7 +84,7 @@ erDiagram
 
 | 表 | 关键字段 | 索引与约束 |
 | --- | --- | --- |
-| `feedback` | 类型、标题、正文、可选联系方式、设备/安装引用、状态、创建时间 | 状态与创建时间索引 |
+| `feedback` | 类型、标题、正文、可选联系方式、匿名设备指纹、安装实例、客户端版本、系统版本、状态、创建时间 | 状态与创建时间索引；B7 新增 `device_id_hash`、`installation_id`、`client_version`、`os_version` |
 | `feedback_attachments` | 反馈 ID、私有路径、文件名、大小、SHA256、内容类型、删除时间 | `feedback_id` 索引 |
 | `admin_accounts` | 唯一管理员、密码哈希、TOTP 密文、失败次数、锁定与更新时间 | 首版强制最多一条有效账号 |
 | `admin_login_challenges` | 管理员、创建、过期与消费时间 | 挑战 UUID 主键；过期索引 |

@@ -42,7 +42,7 @@ public sealed class AdminBootstrapService(
     {
         await using var scope = serviceProvider.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<NetRelayDbContext>();
-        if (options.Value.AutoMigrate)
+        if (options.Value.AutoMigrate && dbContext.Database.IsRelational())
         {
             await dbContext.Database.MigrateAsync(cancellationToken);
         }

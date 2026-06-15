@@ -99,7 +99,8 @@ public partial class MainWindow : Window
                 await _viewModel.LoadLogsAsync();
             }
 
-            System.Windows.MessageBox.Show(
+            ModernMessageBox.Show(
+                this,
                 result.Message,
                 result.Success ? "NetRelay 设置" : "NetRelay 设置校验失败",
                 MessageBoxButton.OK,

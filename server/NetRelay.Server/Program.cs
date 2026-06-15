@@ -141,6 +141,9 @@ adminFeedback.MapGet("/", GetFeedbacksAsync);
 adminFeedback.MapPost("/{id}/status", UpdateFeedbackStatusAsync);
 adminFeedback.MapGet("/{id}/attachment", DownloadFeedbackAttachmentAsync);
 
+var adminDevices = app.MapGroup("/api/v1/admin/devices");
+adminDevices.MapGet("/", GetRegisteredDevicesAsync);
+
 var adminAnnouncements = app.MapGroup("/api/v1/admin/announcements");
 adminAnnouncements.MapPost("/", CreateAnnouncementAsync);
 adminAnnouncements.MapGet("/", GetAnnouncementsAsync);
@@ -165,6 +168,7 @@ publicApi.MapPost("/connectivity/challenge", GetConnectivityChallengeAsync);
 publicApi.MapGet("/updates/latest", GetLatestUpdateAsync);
 publicApi.MapGet("/updates/{version}/download/{filename}", DownloadUpdatePackageAsync);
 publicApi.MapPost("/feedback", SubmitFeedbackAsync);
+publicApi.MapGet("/feedback/my", GetMyFeedbacksAsync);
 publicApi.MapGet("/announcements/active", GetActiveAnnouncementsAsync);
 publicApi.MapPost("/policies/evaluate", EvaluatePolicyAsync);
 
@@ -936,6 +940,16 @@ static async Task<IResult> SubmitFeedbackAsync(
     var title = form["title"].ToString();
     var content = form["content"].ToString();
     var contact = form["contact"].ToString();
+    var deviceId = form["deviceId"].ToString();
+    var installationIdStr = form["installationId"].ToString();
+    var clientVersion = form["clientVersion"].ToString();
+    var osVersion = form["osVersion"].ToString();
+
+    Guid? installationId = null;
+    if (Guid.TryParse(installationIdStr, out var parsedGuid))
+    {
+        installationId = parsedGuid;
+    }
 
     if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(content))
     {
@@ -986,7 +1000,11 @@ static async Task<IResult> SubmitFeedbackAsync(
         AttachmentFilename = attachmentFilename,
         AttachmentSize = attachmentSize,
         Status = "pending",
-        CreatedAt = DateTimeOffset.UtcNow
+        CreatedAt = DateTimeOffset.UtcNow,
+        DeviceIdHash = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId,
+        InstallationId = installationId,
+        ClientVersion = string.IsNullOrWhiteSpace(clientVersion) ? null : clientVersion,
+        OsVersion = string.IsNullOrWhiteSpace(osVersion) ? null : osVersion
     };
 
     dbContext.Feedbacks.Add(feedback);
@@ -1001,6 +1019,39 @@ static async Task<IResult> SubmitFeedbackAsync(
         cancellationToken: cancellationToken);
 
     return Results.Ok(new ApiResponse<Feedback>(ApiInfrastructure.GetRequestId(context), feedback));
+}
+
+static async Task<IResult> GetMyFeedbacksAsync(
+    string deviceId,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(deviceId))
+    {
+        return ApiInfrastructure.Error(
+            context,
+            StatusCodes.Status400BadRequest,
+            ErrorCodes.RequestInvalid,
+            "请求缺少设备指纹参数。");
+    }
+
+    var list = await dbContext.Feedbacks
+        .Where(f => f.DeviceIdHash == deviceId)
+        .OrderByDescending(f => f.CreatedAt)
+        .Select(f => new
+        {
+            f.Id,
+            f.Type,
+            f.Title,
+            f.Content,
+            f.Status,
+            f.CreatedAt,
+            f.StatusUpdatedAt
+        })
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<object>(ApiInfrastructure.GetRequestId(context), list));
 }
 
 static async Task<IResult> GetActiveAnnouncementsAsync(
@@ -1114,6 +1165,35 @@ static async Task<IResult> GetFeedbacksAsync(
         .ToListAsync(cancellationToken);
 
     return Results.Ok(new ApiResponse<List<Feedback>>(ApiInfrastructure.GetRequestId(context), list));
+}
+
+static async Task<IResult> GetRegisteredDevicesAsync(
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    var list = await dbContext.DeviceInstallations
+        .Include(di => di.Device)
+        .OrderByDescending(di => di.LastSeenAt)
+        .Select(di => new
+        {
+            DeviceIdHash = di.Device != null ? di.Device.DeviceIdHash : null,
+            InstallationId = di.InstallationId,
+            ClientVersion = di.ClientVersion,
+            OsVersion = di.OsVersion,
+            FirstSeenAt = di.FirstSeenAt,
+            LastSeenAt = di.LastSeenAt
+        })
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(new ApiResponse<object>(ApiInfrastructure.GetRequestId(context), list));
 }
 
 static async Task<IResult> UpdateFeedbackStatusAsync(

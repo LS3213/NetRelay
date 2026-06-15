@@ -279,35 +279,61 @@ paths:
   /feedback:
     post:
       operationId: createFeedback
-      summary: Create feedback metadata without implicit log upload
+      summary: Create feedback and optional diagnostic log attachment
       parameters:
         - $ref: "#/components/parameters/ProtocolVersion"
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/ClientVersion"
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: "#/components/schemas/FeedbackRequest"
       responses:
-        "201":
+        "200":
           description: Feedback created
           content:
             application/json:
               schema:
-                type: object
-                required: [requestId, data]
-                properties:
-                  requestId:
-                    type: string
-                  data:
-                    type: object
-                    required: [feedbackId]
-                    properties:
-                      feedbackId:
-                        type: string
-                        format: uuid
+                $ref: "#/components/schemas/FeedbackResponse"
         "429":
+          $ref: "#/components/responses/Error"
+  /feedback/my:
+    get:
+      operationId: getMyFeedbacks
+      summary: Get feedback history for the current anonymous device hash
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - $ref: "#/components/parameters/ClientVersion"
+        - name: deviceId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-F0-9]{64}$"
+      responses:
+        "200":
+          description: Feedback history for the requested device hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyFeedbackListResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+  /admin/devices:
+    get:
+      operationId: listRegisteredDevices
+      summary: List registered device installations for the administrator
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+      responses:
+        "200":
+          description: Registered device installations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisteredDeviceListResponse"
+        "401":
           $ref: "#/components/responses/Error"
 components:
   parameters:
@@ -522,23 +548,163 @@ components:
     FeedbackRequest:
       type: object
       additionalProperties: false
-      required: [type, title, content, includeLogs]
+      required: [type, title, content]
       properties:
         type:
           type: string
-          enum: [suggestion, issue, crash, other]
+          enum: [bug, suggestion, other]
         title:
           type: string
-          maxLength: 200
+          maxLength: 100
         content:
           type: string
-          maxLength: 20000
+          maxLength: 1000
         contact:
           type: string
-          maxLength: 500
-        includeLogs:
+          maxLength: 200
+        deviceId:
+          type: string
+          pattern: "^[A-F0-9]{64}$"
+        installationId:
+          type: string
+          format: uuid
+        clientVersion:
+          type: string
+          maxLength: 50
+        osVersion:
+          type: string
+          maxLength: 100
+        file:
+          type: string
+          format: binary
+          description: Optional .zip diagnostic log package. Maximum 10 MB.
+    Feedback:
+      type: object
+      additionalProperties: true
+      required: [id, type, title, content, hasAttachment, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [bug, suggestion, other]
+        title:
+          type: string
+        content:
+          type: string
+        contact:
+          type: string
+          nullable: true
+        hasAttachment:
           type: boolean
-          description: Indicates user intent only. Attachments require a separate explicit upload request.
+        attachmentFilename:
+          type: string
+          nullable: true
+        attachmentSize:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          type: string
+          enum: [pending, resolved, ignored]
+        createdAt:
+          type: string
+          format: date-time
+        statusUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deviceIdHash:
+          type: string
+          nullable: true
+          pattern: "^[A-F0-9]{64}$"
+        installationId:
+          type: string
+          format: uuid
+          nullable: true
+        clientVersion:
+          type: string
+          nullable: true
+        osVersion:
+          type: string
+          nullable: true
+    FeedbackResponse:
+      type: object
+      required: [requestId, data]
+      properties:
+        requestId:
+          type: string
+        data:
+          $ref: "#/components/schemas/Feedback"
+    MyFeedbackItem:
+      type: object
+      additionalProperties: false
+      required: [id, type, title, content, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [pending, resolved, ignored]
+        createdAt:
+          type: string
+          format: date-time
+        statusUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    MyFeedbackListResponse:
+      type: object
+      required: [requestId, data]
+      properties:
+        requestId:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyFeedbackItem"
+    RegisteredDevice:
+      type: object
+      additionalProperties: false
+      required: [installationId, firstSeenAt, lastSeenAt]
+      properties:
+        deviceIdHash:
+          type: string
+          nullable: true
+          pattern: "^[A-F0-9]{64}$"
+        installationId:
+          type: string
+          format: uuid
+        clientVersion:
+          type: string
+          nullable: true
+        osVersion:
+          type: string
+          nullable: true
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+    RegisteredDeviceListResponse:
+      type: object
+      required: [requestId, data]
+      properties:
+        requestId:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegisteredDevice"
     SignedEnvelope:
       type: object
       additionalProperties: false

@@ -60,7 +60,7 @@ public partial class PrivacyConsentDialog : Window
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show(
+            ModernMessageBox.Show(
                 $"无法打开浏览器：{ex.Message}",
                 "NetRelay",
                 MessageBoxButton.OK,

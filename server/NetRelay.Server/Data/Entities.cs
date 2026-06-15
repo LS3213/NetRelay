@@ -129,6 +129,10 @@ public sealed class Feedback
     public required string Status { get; set; } // "pending" | "resolved" | "ignored"
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? StatusUpdatedAt { get; set; }
+    public string? DeviceIdHash { get; set; }
+    public Guid? InstallationId { get; set; }
+    public string? ClientVersion { get; set; }
+    public string? OsVersion { get; set; }
 }
 
 public sealed class Announcement

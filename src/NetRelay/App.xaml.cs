@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using NetRelay.Infrastructure;
 using NetRelay.Services;
+using NetRelay.Dialogs;
 
 namespace NetRelay;
 
@@ -59,7 +60,7 @@ public partial class App : System.Windows.Application
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
                     $"设备激活过程中发生异常：{ex.InnerException?.Message ?? ex.Message}",
                     "NetRelay 激活失败",
                     MessageBoxButton.OK,
@@ -68,7 +69,7 @@ public partial class App : System.Windows.Application
 
             if (!activated)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
                     "首次使用需要联网激活，请检查您的网络连接并重试。",
                     "NetRelay 激活失败",
                     MessageBoxButton.OK,
@@ -86,7 +87,7 @@ public partial class App : System.Windows.Application
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
                     $"设备激活过程中发生异常：{ex.InnerException?.Message ?? ex.Message}",
                     "NetRelay 激活失败",
                     MessageBoxButton.OK,
@@ -95,7 +96,7 @@ public partial class App : System.Windows.Application
 
             if (!activated)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
                     "首次使用需要联网激活，请检查您的网络连接并重试。",
                     "NetRelay 激活失败",
                     MessageBoxButton.OK,
@@ -227,7 +228,7 @@ public partial class App : System.Windows.Application
             var reportPath = AdapterDiagnosticService.WriteReport(requestedPath);
             if (!quiet)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
                     $"只读网卡诊断报告已生成：\n{reportPath}",
                     "NetRelay 网卡诊断",
                     MessageBoxButton.OK,
@@ -239,7 +240,7 @@ public partial class App : System.Windows.Application
             exitCode = 1;
             if (!quiet)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
                     $"生成只读网卡诊断报告失败：\n{exception.Message}",
                     "NetRelay 网卡诊断",
                     MessageBoxButton.OK,

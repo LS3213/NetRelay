@@ -172,6 +172,10 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.Property(item => item.Contact).HasMaxLength(200);
             entity.Property(item => item.AttachmentFilename).HasMaxLength(200);
             entity.Property(item => item.Status).HasMaxLength(50);
+            entity.Property(item => item.DeviceIdHash).HasMaxLength(64);
+            entity.Property(item => item.InstallationId).HasConversion(nullableGuidConverter).HasColumnType("binary(16)");
+            entity.Property(item => item.ClientVersion).HasMaxLength(50);
+            entity.Property(item => item.OsVersion).HasMaxLength(100);
             entity.HasIndex(item => item.CreatedAt);
             entity.HasIndex(item => item.Status);
         });

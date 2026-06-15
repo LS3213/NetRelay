@@ -53,7 +53,8 @@ public partial class SettingsDialog : Window
             var result = _autoStartService.SetEnabled(autoStartEnabled);
             if (!result.Success)
             {
-                System.Windows.MessageBox.Show(
+                ModernMessageBox.Show(
+                    this,
                     $"设置开机自启失败：{result.ErrorMessage}",
                     "NetRelay",
                     MessageBoxButton.OK,

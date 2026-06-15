@@ -59,7 +59,7 @@ public partial class BlockWarningDialog : Window
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"无法打开申诉链接: {ex.Message}", "打开链接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ModernMessageBox.Show(this, $"无法打开申诉链接: {ex.Message}", "打开链接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }

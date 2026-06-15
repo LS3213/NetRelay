@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -8,6 +8,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Collections.Generic;
 using NetRelay.Contracts;
 using NetRelay.Services;
 
@@ -17,6 +22,8 @@ public partial class FeedbackDialog : Window
 {
     private CancellationTokenSource? _cts;
     private bool _isUploading;
+    private readonly CompositeDeviceFingerprintProvider _fingerprintProvider = new();
+    private List<MyFeedbackItem> _historyItems = new();
 
     public FeedbackDialog()
     {
@@ -100,14 +107,14 @@ public partial class FeedbackDialog : Window
 
         if (string.IsNullOrWhiteSpace(title))
         {
-            System.Windows.MessageBox.Show(this, "请输入反馈标题。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ModernMessageBox.Show(this, "请输入反馈标题。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
             TitleTextBox.Focus();
             return;
         }
 
         if (string.IsNullOrWhiteSpace(content))
         {
-            System.Windows.MessageBox.Show(this, "请输入问题描述或建议详情。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ModernMessageBox.Show(this, "请输入问题描述或建议详情。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
             ContentTextBox.Focus();
             return;
         }
@@ -135,6 +142,13 @@ public partial class FeedbackDialog : Window
             }
 
             // 2. Prepare HTTP Multipart Form Content
+            var fingerprintEvidence = await _fingerprintProvider.CollectAsync(token);
+            var combinedString = string.Join("|", fingerprintEvidence.Evidence
+                .OrderBy(p => p.Key, StringComparer.Ordinal)
+                .SelectMany(p => p.Value));
+            var deviceIdHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combinedString)));
+            var installationId = ConfigurationService.Instance?.Current?.InstallationId.ToString() ?? string.Empty;
+
             var multipartContent = new MultipartFormDataContent();
             multipartContent.Add(new StringContent(type), "type");
             multipartContent.Add(new StringContent(title), "title");
@@ -143,6 +157,10 @@ public partial class FeedbackDialog : Window
             {
                 multipartContent.Add(new StringContent(contact), "contact");
             }
+            multipartContent.Add(new StringContent(deviceIdHash), "deviceId");
+            multipartContent.Add(new StringContent(installationId), "installationId");
+            multipartContent.Add(new StringContent(Protocol.ProductVersion), "clientVersion");
+            multipartContent.Add(new StringContent(System.Environment.OSVersion.ToString()), "osVersion");
 
             FileStream? fileStream = null;
             if (tempZipPath != null && File.Exists(tempZipPath))
@@ -186,8 +204,17 @@ public partial class FeedbackDialog : Window
 
             if (response.IsSuccessStatusCode)
             {
-                System.Windows.MessageBox.Show(this, "感谢您的反馈，我们已收到并会认真阅读！", "提交成功", MessageBoxButton.OK, MessageBoxImage.Information);
-                DialogResult = true;
+                ModernMessageBox.Show(this, "感谢您的反馈，我们已收到并会认真阅读！", "提交成功", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                // Clear fields
+                TitleTextBox.Text = string.Empty;
+                ContentTextBox.Text = string.Empty;
+                ContactTextBox.Text = string.Empty;
+
+                SetUploadingState(false);
+
+                // Automatically switch to history tab to view progress
+                SwitchToHistoryTab();
             }
             else
             {
@@ -203,18 +230,18 @@ public partial class FeedbackDialog : Window
                 }
                 catch { }
 
-                System.Windows.MessageBox.Show(this, $"提交失败: {errorMsg}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show(this, $"提交失败: {errorMsg}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 SetUploadingState(false);
             }
         }
         catch (OperationCanceledException)
         {
-            System.Windows.MessageBox.Show(this, "已取消反馈提交与日志上传。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(this, "已取消反馈提交与日志上传。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
             SetUploadingState(false);
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show(this, $"发生错误: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show(this, $"发生错误: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             SetUploadingState(false);
         }
         finally
@@ -223,8 +250,11 @@ public partial class FeedbackDialog : Window
             {
                 try { File.Delete(tempZipPath); } catch { }
             }
-            _cts.Dispose();
-            _cts = null;
+            if (_cts != null)
+            {
+                _cts.Dispose();
+                _cts = null;
+            }
         }
     }
 
@@ -236,6 +266,8 @@ public partial class FeedbackDialog : Window
         ContentTextBox.IsEnabled = !uploading;
         ContactTextBox.IsEnabled = !uploading;
         IncludeLogsCheckBox.IsEnabled = !uploading;
+        TabFeedbackBtn.IsEnabled = !uploading;
+        TabHistoryBtn.IsEnabled = !uploading;
 
         ProgressPanel.Visibility = uploading ? Visibility.Visible : Visibility.Collapsed;
         ButtonPanel.Visibility = uploading ? Visibility.Collapsed : Visibility.Visible;
@@ -243,6 +275,143 @@ public partial class FeedbackDialog : Window
         UploadProgressBar.Value = 0;
         UploadProgressBar.IsIndeterminate = false;
         ProgressPercentTextBlock.Text = "0%";
+    }
+
+    // Tab Navigation Logic
+    private void TabFeedbackBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchToFeedbackTab();
+    }
+
+    private void TabHistoryBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SwitchToHistoryTab();
+    }
+
+    private void SwitchToFeedbackTab()
+    {
+        TabFeedbackBtn.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White);
+        TabFeedbackBtn.FontWeight = FontWeights.SemiBold;
+        TabHistoryBtn.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Transparent);
+        TabHistoryBtn.FontWeight = FontWeights.Normal;
+
+        SubmissionFormPanel.Visibility = Visibility.Visible;
+        HistoryPanel.Visibility = Visibility.Collapsed;
+        SubmitButton.Visibility = Visibility.Visible;
+    }
+
+    private async void SwitchToHistoryTab()
+    {
+        TabFeedbackBtn.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Transparent);
+        TabFeedbackBtn.FontWeight = FontWeights.Normal;
+        TabHistoryBtn.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White);
+        TabHistoryBtn.FontWeight = FontWeights.SemiBold;
+
+        SubmissionFormPanel.Visibility = Visibility.Collapsed;
+        HistoryPanel.Visibility = Visibility.Visible;
+        SubmitButton.Visibility = Visibility.Collapsed;
+
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        HistoryListBox.ItemsSource = null;
+        NoSelectionTextBlock.Visibility = Visibility.Visible;
+        DetailsGrid.Visibility = Visibility.Collapsed;
+
+        try
+        {
+            // Collect deviceIdHash
+            var fingerprintEvidence = await _fingerprintProvider.CollectAsync(CancellationToken.None);
+            var combinedString = string.Join("|", fingerprintEvidence.Evidence
+                .OrderBy(p => p.Key, StringComparer.Ordinal)
+                .SelectMany(p => p.Value));
+            var deviceIdHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combinedString)));
+
+            using var client = ActivationService.CreateHttpClient();
+            var backendUrl = ActivationService.GetBackendUrl();
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{backendUrl}/api/v1/feedback/my?deviceId={deviceIdHash}");
+            request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
+
+            var response = await client.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<List<MyFeedbackItem>>>();
+                if (apiResponse != null && apiResponse.Data != null)
+                {
+                    _historyItems = apiResponse.Data;
+                    HistoryListBox.ItemsSource = _historyItems;
+                }
+            }
+        }
+        catch
+        {
+            // Fail silently or bind empty list
+        }
+    }
+
+    private void HistoryListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (HistoryListBox.SelectedItem is MyFeedbackItem selected)
+        {
+            NoSelectionTextBlock.Visibility = Visibility.Collapsed;
+            DetailsGrid.Visibility = Visibility.Visible;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"[反馈正文]");
+            sb.AppendLine(selected.Content);
+            sb.AppendLine();
+            sb.AppendLine($"[处理进度]: {selected.StatusLabel}");
+            if (selected.StatusUpdatedAt.HasValue)
+            {
+                sb.AppendLine($"[更新时间]: {selected.StatusUpdatedAt.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+            }
+            DetailsContentTextBox.Text = sb.ToString();
+        }
+        else
+        {
+            NoSelectionTextBlock.Visibility = Visibility.Visible;
+            DetailsGrid.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    public class MyFeedbackItem
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset? StatusUpdatedAt { get; set; }
+
+        public string CreatedAtLabel => CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+
+        public string StatusLabel => Status switch
+        {
+            "pending" => "处理中",
+            "resolved" => "已解决",
+            "ignored" => "已忽略",
+            _ => "未知"
+        };
+
+        public string StatusBg => Status switch
+        {
+            "pending" => "#E0ECFF",
+            "resolved" => "#E2FBE7",
+            "ignored" => "#FEECEB",
+            _ => "#F0F0F0"
+        };
+
+        public string StatusFg => Status switch
+        {
+            "pending" => "#465fdc",
+            "resolved" => "#28a745",
+            "ignored" => "#dc3545",
+            _ => "#666666"
+        };
     }
 
     private sealed class ProgressableStreamContent : HttpContent

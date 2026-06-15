@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetRelay.Server.Data;
 
@@ -11,9 +12,11 @@ using NetRelay.Server.Data;
 namespace NetRelay.Server.Data.Migrations
 {
     [DbContext(typeof(NetRelayDbContext))]
-    partial class NetRelayDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260615024611_AddDeviceFingerprintToFeedback")]
+    partial class AddDeviceFingerprintToFeedback
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -565,11 +568,6 @@ namespace NetRelay.Server.Data.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("attachment_size");
 
-                    b.Property<string>("ClientVersion")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)")
-                        .HasColumnName("client_version");
-
                     b.Property<string>("Contact")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)")
@@ -597,11 +595,6 @@ namespace NetRelay.Server.Data.Migrations
                     b.Property<byte[]>("InstallationId")
                         .HasColumnType("binary(16)")
                         .HasColumnName("installation_id");
-
-                    b.Property<string>("OsVersion")
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)")
-                        .HasColumnName("os_version");
 
                     b.Property<string>("Status")
                         .IsRequired()
