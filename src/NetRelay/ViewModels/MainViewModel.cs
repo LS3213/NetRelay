@@ -27,6 +27,7 @@ public sealed class MainViewModel : ObservableObject
     private bool _isLoading;
     private bool _isOperating;
     private bool _isLoadingLogs;
+    private bool _isUpdating;
     private string? _operationMessage;
     private readonly DispatcherTimer _trafficTimer;
     private readonly DispatcherTimer _countdownTimer;
@@ -101,6 +102,13 @@ public sealed class MainViewModel : ObservableObject
 
         CheckUpdatesCommand = new RelayCommand(async () =>
         {
+            if (_isUpdating)
+            {
+                return;
+            }
+
+            _isUpdating = true;
+            CheckUpdatesCommand?.RaiseCanExecuteChanged();
             if (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false)
             {
                 OperationMessage = "更新功能在该受限状态下已被系统管理员禁用。";
@@ -193,7 +201,12 @@ public sealed class MainViewModel : ObservableObject
                 await Task.Delay(3000);
                 OperationMessage = null;
             }
-        });
+            finally
+            {
+                _isUpdating = false;
+                CheckUpdatesCommand?.RaiseCanExecuteChanged();
+            }
+        }, () => !_isUpdating);
 
         FeedbackCommand = new RelayCommand(() =>
         {
@@ -254,6 +267,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand FeedbackCommand { get; }
 
     public ConfigurationService ConfigService => _configService;
+    public string ProductVersionText => $"版本：v{Protocol.ProductVersion}";
 
     public bool ManualDisableProtection
     {

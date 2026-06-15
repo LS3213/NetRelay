@@ -601,25 +601,19 @@ static async Task<IResult> GetLatestUpdateAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "请求参数不能为空。");
     }
 
-    var latest = await dbContext.Releases
+    var publishedReleases = await dbContext.Releases
         .Where(r => r.Status == "published" && r.Channel == channel && r.Architecture == architecture)
-        .OrderByDescending(r => r.ReleaseDate)
-        .FirstOrDefaultAsync(cancellationToken);
+        .ToListAsync(cancellationToken);
+    var latest = publishedReleases.MaxBy(
+        release => release.Version,
+        Comparer<string>.Create(CompareReleaseVersions));
 
     if (latest is null)
     {
         return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "没有可用的更新。");
     }
 
-    // 比较版本
-    if (Version.TryParse(latest.Version, out var latestVer) && Version.TryParse(currentVersion, out var currentVer))
-    {
-        if (latestVer <= currentVer)
-        {
-            return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "当前已是最新版本。");
-        }
-    }
-    else if (string.Compare(latest.Version, currentVersion, StringComparison.OrdinalIgnoreCase) <= 0)
+    if (CompareReleaseVersions(latest.Version, currentVersion) <= 0)
     {
         return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "当前已是最新版本。");
     }
@@ -662,6 +656,25 @@ static async Task<IResult> GetLatestUpdateAsync(
     };
 
     return Results.Ok(new ApiResponse<UpdateCheckResponse>(ApiInfrastructure.GetRequestId(context), response));
+}
+
+static int CompareReleaseVersions(string? left, string? right)
+{
+    var leftIsVersion = Version.TryParse(left, out var leftVersion);
+    var rightIsVersion = Version.TryParse(right, out var rightVersion);
+    if (leftIsVersion && rightIsVersion)
+    {
+        return leftVersion!.CompareTo(rightVersion);
+    }
+    if (leftIsVersion)
+    {
+        return 1;
+    }
+    if (rightIsVersion)
+    {
+        return -1;
+    }
+    return string.Compare(left, right, StringComparison.OrdinalIgnoreCase);
 }
 
 static async Task<IResult> DownloadUpdatePackageAsync(
@@ -746,9 +759,9 @@ static async Task<IResult> CreateReleaseAsync(
 
     var existingRelease = await dbContext.Releases
         .FirstOrDefaultAsync(r => r.Version == version && r.Channel == channel && r.Architecture == architecture, cancellationToken);
-    if (existingRelease is not null && existingRelease.Status != "revoked")
+    if (existingRelease is not null)
     {
-        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "该版本更新已存在。");
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "该版本、通道和架构的更新记录已存在。撤回后也不能覆盖，请提升版本号后重新上传。");
     }
 
     var tempName = Guid.NewGuid().ToString("N") + ".zip";
@@ -784,7 +797,7 @@ static async Task<IResult> CreateReleaseAsync(
             StorageArea.Releases,
             targetPath,
             cancellationToken,
-            overwrite: existingRelease is not null);
+            overwrite: false);
     }
     catch (Exception ex)
     {
@@ -796,45 +809,27 @@ static async Task<IResult> CreateReleaseAsync(
     }
 
     var now = DateTimeOffset.UtcNow;
-    Release release;
-    if (existingRelease is null)
+    var release = new Release
     {
-        release = new Release
-        {
-            Id = Guid.NewGuid(),
-            Version = version,
-            Channel = channel,
-            Architecture = architecture,
-            MinUpgradableVersion = minUpgradableVersion,
-            PackageSize = packageSize,
-            Sha256 = sha256Hex,
-            ReleaseDate = now,
-            Changelog = changelog,
-            AssetPath = targetPath,
-            Status = "draft",
-            CreatedAt = now
-        };
-        dbContext.Releases.Add(release);
-    }
-    else
-    {
-        release = existingRelease;
-        release.MinUpgradableVersion = minUpgradableVersion;
-        release.PackageSize = packageSize;
-        release.Sha256 = sha256Hex;
-        release.ReleaseDate = now;
-        release.Changelog = changelog;
-        release.AssetPath = targetPath;
-        release.Status = "draft";
-        release.CreatedAt = now;
-        release.PublishedAt = null;
-        release.RevokedAt = null;
-    }
+        Id = Guid.NewGuid(),
+        Version = version,
+        Channel = channel,
+        Architecture = architecture,
+        MinUpgradableVersion = minUpgradableVersion,
+        PackageSize = packageSize,
+        Sha256 = sha256Hex,
+        ReleaseDate = now,
+        Changelog = changelog,
+        AssetPath = targetPath,
+        Status = "draft",
+        CreatedAt = now
+    };
+    dbContext.Releases.Add(release);
 
     await dbContext.SaveChangesAsync(cancellationToken);
 
     await auditService.WriteAsync(
-        existingRelease is null ? "release.create" : "release.recreate",
+        "release.create",
         "success",
         ApiInfrastructure.GetRequestId(context),
         release.Id,

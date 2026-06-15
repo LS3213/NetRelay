@@ -241,6 +241,7 @@ public sealed class UpdateService
         var tempDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetRelay", "updates");
         Directory.CreateDirectory(tempDirectory);
         var tempFilePath = Path.Combine(tempDirectory, $"update-{manifest.Version}.zip");
+        var downloadFilePath = Path.Combine(tempDirectory, $"update-{manifest.Version}.{Guid.NewGuid():N}.download");
 
         using var primaryClient = ActivationService.CreateHttpClient();
         primaryClient.Timeout = TimeSpan.FromMinutes(5);
@@ -276,48 +277,73 @@ public sealed class UpdateService
 
             var totalBytes = response.Content.Headers.ContentLength ?? manifest.PackageSize;
 
-            using var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var destStream = File.Create(tempFilePath);
             using var sha256 = SHA256.Create();
-
-            var buffer = new byte[81920];
-            long totalRead = 0;
-            int read;
-
-            while ((read = await sourceStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+            try
             {
-                await destStream.WriteAsync(buffer, 0, read, cancellationToken);
-                sha256.TransformBlock(buffer, 0, read, null, 0);
-
-                totalRead += read;
-                if (totalBytes > 0)
+                await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
+                await using (var destStream = new FileStream(
+                    downloadFilePath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    81920,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
-                    progressCallback?.Invoke((double)totalRead / totalBytes);
+                    var buffer = new byte[81920];
+                    long totalRead = 0;
+                    int read;
+
+                    while ((read = await sourceStream.ReadAsync(buffer, cancellationToken)) > 0)
+                    {
+                        await destStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                        sha256.TransformBlock(buffer, 0, read, null, 0);
+
+                        totalRead += read;
+                        if (totalBytes > 0)
+                        {
+                            progressCallback?.Invoke((double)totalRead / totalBytes);
+                        }
+                    }
+
+                    await destStream.FlushAsync(cancellationToken);
                 }
+
+                sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                var downloadedHash = Convert.ToHexString(sha256.Hash!).ToLower();
+
+                if (!string.Equals(downloadedHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new CryptographicException($"下载包哈希值不匹配。预期: {manifest.Sha256}，实际: {downloadedHash}");
+                }
+
+                await MoveFileWithRetryAsync(downloadFilePath, tempFilePath, cancellationToken);
+
+                var verifiedResponse = manifest.VerifiedResponse
+                    ?? throw new CryptographicException("缺少已验证的更新清单，无法启动独立更新器。");
+                var manifestPath = Path.Combine(tempDirectory, $"update-{manifest.Version}.manifest.json");
+                await File.WriteAllTextAsync(
+                    manifestPath,
+                    JsonSerializer.Serialize(verifiedResponse, new JsonSerializerOptions { WriteIndented = true }),
+                    Encoding.UTF8,
+                    cancellationToken);
+
+                return new DownloadedUpdatePackage(tempFilePath, manifestPath);
             }
-
-            sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            var downloadedHash = Convert.ToHexString(sha256.Hash!).ToLower();
-
-            if (!string.Equals(downloadedHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+            catch
             {
-                if (File.Exists(tempFilePath))
+                if (File.Exists(downloadFilePath))
                 {
-                    File.Delete(tempFilePath);
+                    try
+                    {
+                        File.Delete(downloadFilePath);
+                    }
+                    catch (IOException)
+                    {
+                        // A scanner may briefly retain the failed temporary file.
+                    }
                 }
-                throw new CryptographicException($"下载包哈希值不匹配。预期: {manifest.Sha256}，实际: {downloadedHash}");
+                throw;
             }
-
-            var verifiedResponse = manifest.VerifiedResponse
-                ?? throw new CryptographicException("缺少已验证的更新清单，无法启动独立更新器。");
-            var manifestPath = Path.Combine(tempDirectory, $"update-{manifest.Version}.manifest.json");
-            await File.WriteAllTextAsync(
-                manifestPath,
-                JsonSerializer.Serialize(verifiedResponse, new JsonSerializerOptions { WriteIndented = true }),
-                Encoding.UTF8,
-                cancellationToken);
-
-            return new DownloadedUpdatePackage(tempFilePath, manifestPath);
         }
         finally
         {
@@ -333,6 +359,23 @@ public sealed class UpdateService
         request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
         request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
         return request;
+    }
+
+    private static async Task MoveFileWithRetryAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 20;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                File.Move(sourcePath, destinationPath, overwrite: true);
+                return;
+            }
+            catch (IOException) when (attempt < maxAttempts)
+            {
+                await Task.Delay(250, cancellationToken);
+            }
+        }
     }
 
     private async Task<string> GetGitHubAssetUrlAsync(string repo, string version, string filename, CancellationToken cancellationToken)

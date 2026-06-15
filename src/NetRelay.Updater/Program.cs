@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using NetRelay.Contracts;
 using NetRelay.Contracts.Security;
 
@@ -126,7 +127,7 @@ public static class Program
                 throw new InvalidDataException($"更新包大小不匹配。预期: {manifest.PackageSize}，实际: {packageInfo.Length}");
             }
 
-            using (var packageStream = File.OpenRead(packagePath))
+            using (var packageStream = OpenPackageWithRetry(packagePath))
             {
                 var packageHash = Convert.ToHexString(SHA256.HashData(packageStream)).ToLowerInvariant();
                 if (!string.Equals(packageHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -167,7 +168,8 @@ public static class Program
 
             // 5. 解压覆盖写入文件
             Log("正在解压覆盖新版本文件...");
-            using (var zip = ZipFile.OpenRead(packagePath))
+            using (var packageStream = OpenPackageWithRetry(packagePath))
+            using (var zip = new ZipArchive(packageStream, ZipArchiveMode.Read))
             {
                 var normalizedTargetDir = Path.GetFullPath(targetDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
                 foreach (var entry in zip.Entries)
@@ -413,6 +415,28 @@ public static class Program
     {
         var firstSegment = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
         return firstSegment is "cs" or "de" or "es" or "fr" or "it" or "ja" or "ko" or "pl" or "pt-BR" or "ru" or "tr" or "zh-Hans" or "zh-Hant";
+    }
+
+    private static FileStream OpenPackageWithRetry(string packagePath)
+    {
+        const int maxAttempts = 30;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                return new FileStream(packagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+            catch (IOException ex) when (attempt < maxAttempts)
+            {
+                if (attempt == 1)
+                {
+                    Log($"更新包暂时被占用，正在等待文件释放: {ex.Message}");
+                }
+                Thread.Sleep(500);
+            }
+        }
+
+        throw new IOException($"在等待文件释放后仍无法读取更新包: {packagePath}");
     }
 
     private static void Rollback(

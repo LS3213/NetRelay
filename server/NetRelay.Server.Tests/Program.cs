@@ -1067,7 +1067,7 @@ static async Task TestUpdateApiAsync()
         var finalCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
         Assert(finalCheck.StatusCode == HttpStatusCode.NotFound, "Revoked release should not be visible");
 
-        // 12. Upload the same revoked version again -> reuse record, replace package, return to draft
+        // 12. Upload the same revoked version again -> reject to preserve immutable version URLs
         var replacementZipPath = Path.Combine(root, "win-x64-replacement.zip");
         using (var archive = ZipFile.Open(replacementZipPath, ZipArchiveMode.Create))
         {
@@ -1093,25 +1093,7 @@ static async Task TestUpdateApiAsync()
         recreateRequest.Headers.Add(Protocol.CsrfHeader, csrf);
 
         var recreateResponseMsg = await client.SendAsync(recreateRequest);
-        Assert(recreateResponseMsg.StatusCode == HttpStatusCode.OK, $"Recreate revoked release failed: {recreateResponseMsg.StatusCode}");
-        var recreateResponse = await recreateResponseMsg.Content.ReadFromJsonAsync<ApiResponse<Release>>();
-        Assert(recreateResponse?.Data.Id == releaseId, "Recreated release should reuse the revoked record");
-        Assert(recreateResponse.Data.Status == "draft", "Recreated release should return to draft");
-        Assert(recreateResponse.Data.Changelog == "Replacement changelog", "Recreated release changelog mismatch");
-        Assert(recreateResponse.Data.Sha256 != createResponse.Data.Sha256, "Recreated release should replace the package");
-
-        var republishResponseMsg = await SendJsonAsync(
-            client,
-            HttpMethod.Post,
-            $"/api/v1/admin/releases/{releaseId}/publish",
-            new { },
-            csrf);
-        Assert(republishResponseMsg.StatusCode == HttpStatusCode.OK, $"Republish recreated release failed: {republishResponseMsg.StatusCode}");
-
-        var replacementDownload = await SendGetAsync(client, "/api/v1/updates/1.3.0/download/win-x64.zip");
-        Assert(replacementDownload.StatusCode == HttpStatusCode.OK, $"Replacement package download failed: {replacementDownload.StatusCode}");
-        var replacementBytes = await replacementDownload.Content.ReadAsByteArrayAsync();
-        Assert(replacementBytes.Length == recreateResponse.Data.PackageSize, "Replacement package size mismatch");
+        Assert(recreateResponseMsg.StatusCode == HttpStatusCode.BadRequest, $"Revoked release overwrite should be rejected: {recreateResponseMsg.StatusCode}");
     }
     finally
     {

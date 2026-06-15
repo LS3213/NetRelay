@@ -41,7 +41,7 @@
 
 `config/` 和 `data/` 不得放入网站公开目录。安装完成后，磁盘中的 `install.token` 会被删除；`installed.lock` 存在时，即使 `runtime-config.json` 损坏，安装器也保持关闭并让服务失败关闭。
 
-管理后台上传的客户端更新 ZIP 保存在 `data/releases/{channel}/{version}/{architecture}.zip`。例如稳定版 `1.2.1` 的默认实际路径是 `/www/server/netrelay/data/releases/stable/1.2.1/win-x64.zip`。撤回版本不会立即删除该文件；重新上传相同版本时会覆盖原文件并将记录恢复为草稿。
+管理后台上传的客户端更新 ZIP 保存在 `data/releases/{channel}/{version}/{architecture}.zip`。例如稳定版 `1.2.1` 的默认实际路径是 `/www/server/netrelay/data/releases/stable/1.2.1/win-x64.zip`。撤回版本不会删除该文件，也不允许重新上传相同版本覆盖原文件；修复内容必须提升版本号重新发布。
 
 ## 3. 首次安装数据流
 
@@ -148,7 +148,7 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 | --- | --- |
 | 上传更新 ZIP 返回 HTTP 413 | 宝塔站点 `server` 块是否包含 `client_max_body_size 512m;`；是否存在更小的重复限制；后端是否已部署最新包 |
 | 客户端更新检查或下载返回 HTTP 404 | 更新记录是否已经发布；通道和架构是否匹配；线上后端是否支持更新包 GET/HEAD；更新文件是否实际存在 |
-| 撤回后无法重新上传相同版本 | 线上仍运行旧后端；部署最新 `baota-portable.zip` 并执行 `install.sh` |
+| 撤回后无法重新上传相同版本 | 这是预期的不可变版本保护 | 提升版本号后重新构建、上传和发布 |
 | 后端提示数据库缺少列 | 升级时跳过了 Migration；重新执行 `sudo bash /www/wwwroot/netrelay/install.sh` |
 
 常用命令：

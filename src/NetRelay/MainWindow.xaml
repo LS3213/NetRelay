@@ -772,7 +772,7 @@
                                     <!-- Application Info -->
                                     <TextBlock Text="NetRelay" FontWeight="Bold" FontSize="30" Margin="0,20,0,0" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     <TextBlock Text="原生网络自动切换与安全保护助手" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="版本：v1.2.1" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ProductVersionText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
                                     <TextBlock Text="作者：lansi" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
 
                                     <!-- Subtle Separator -->
