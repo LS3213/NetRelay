@@ -12,8 +12,10 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $deliveryRoot = Join-Path $root "artifacts\delivery\$Runtime"
 $publishRoot = Join-Path $deliveryRoot "publish"
 $installerRoot = Join-Path $deliveryRoot "installer"
+$updaterPublishRoot = Join-Path $deliveryRoot ".updater-publish"
 $updateZip = Join-Path $deliveryRoot "$Runtime.zip"
 $protocolPath = Join-Path $root "src\NetRelay.Contracts\Protocol.cs"
+$assetsSource = Join-Path $root "src\NetRelay\Assets"
 
 if (-not (Test-Path -LiteralPath $DotNetPath)) {
     throw "dotnet executable not found: $DotNetPath"
@@ -35,19 +37,36 @@ if (Test-Path -LiteralPath $deliveryRoot) {
     Remove-Item -LiteralPath $deliveryRoot -Recurse -Force
 }
 
-New-Item -ItemType Directory -Path $publishRoot, $installerRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $publishRoot, $installerRoot, $updaterPublishRoot -Force | Out-Null
 
 & $DotNetPath publish (Join-Path $root "src\NetRelay\NetRelay.csproj") `
-    -c $Configuration -r $Runtime --self-contained false --no-restore -o $publishRoot
+    -c $Configuration -r $Runtime --self-contained true --no-restore `
+    -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:EnableCompressionInSingleFile=true `
+    -p:DebugType=embedded `
+    -p:DebugSymbols=false `
+    -o $publishRoot
 if ($LASTEXITCODE -ne 0) {
     throw "NetRelay publish failed with exit code $LASTEXITCODE"
 }
 
 & $DotNetPath publish (Join-Path $root "src\NetRelay.Updater\NetRelay.Updater.csproj") `
-    -c $Configuration -r $Runtime --self-contained false --no-restore -o $publishRoot
+    -c $Configuration -r $Runtime --self-contained true --no-restore `
+    -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:EnableCompressionInSingleFile=true `
+    -p:DebugType=embedded `
+    -p:DebugSymbols=false `
+    -o $updaterPublishRoot
 if ($LASTEXITCODE -ne 0) {
     throw "NetRelay.Updater publish failed with exit code $LASTEXITCODE"
 }
+
+Get-ChildItem -LiteralPath $updaterPublishRoot -File -Filter "NetRelay.Updater.*" |
+    Copy-Item -Destination $publishRoot -Force
+Remove-Item -LiteralPath $updaterPublishRoot -Recurse -Force
+Copy-Item -LiteralPath $assetsSource -Destination (Join-Path $publishRoot "Assets") -Recurse -Force
 
 $gitCommit = (& git -c "safe.directory=$root" -C $root rev-parse HEAD).Trim()
 $gitDirty = -not [string]::IsNullOrWhiteSpace((& git -c "safe.directory=$root" -C $root status --porcelain))
@@ -66,7 +85,7 @@ $hashLines = foreach ($file in $trackedFiles) {
     "ProductVersion=$productVersion"
     "Configuration=$Configuration"
     "Runtime=$Runtime"
-    "SelfContained=false"
+    "SelfContained=true"
     "Commit=$gitCommit"
     "Dirty=$($gitDirty.ToString().ToLowerInvariant())"
     "BuildTimeUtc=$buildTime"

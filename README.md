@@ -24,13 +24,13 @@ dotnet run --project src/NetRelay/NetRelay.csproj
 发布原生 Windows EXE：
 
 ```powershell
-dotnet publish src/NetRelay/NetRelay.csproj -c Release -r win-x64 --self-contained false
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-preview.ps1
 ```
 
 输出位置：
 
 ```text
-src/NetRelay/bin/Release/net8.0-windows/win-x64/publish/NetRelay.exe
+artifacts/publish/win-x64/NetRelay.exe
 ```
 
 完整设计与维护文档见 [docs/README.md](docs/README.md)。

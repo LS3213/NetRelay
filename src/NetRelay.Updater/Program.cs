@@ -244,6 +244,8 @@ public static class Program
             if (verifySuccess)
             {
                 Log("新版本自检通过！正在清理备份并启动主程序...");
+                CleanupObsoleteRuntimeFiles(targetDir, installedFiles);
+
                 // 清理备份
                 try
                 {
@@ -291,6 +293,84 @@ public static class Program
             }
             return 3;
         }
+    }
+
+    private static void CleanupObsoleteRuntimeFiles(
+        string targetDir,
+        HashSet<string> installedFiles)
+    {
+        var normalizedTargetDir = Path.GetFullPath(targetDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var deletedFiles = 0;
+        foreach (var file in Directory.GetFiles(normalizedTargetDir, "*.*", SearchOption.AllDirectories))
+        {
+            var fullPath = Path.GetFullPath(file);
+            if (installedFiles.Contains(fullPath) || !fullPath.StartsWith(normalizedTargetDir, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var relativePath = Path.GetRelativePath(normalizedTargetDir, fullPath);
+            if (!IsObsoleteRuntimeFile(relativePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Delete(fullPath);
+                deletedFiles++;
+            }
+            catch (Exception ex)
+            {
+                Log($"警告: 删除旧版运行库文件失败: {relativePath}，错误: {ex.Message}");
+            }
+        }
+
+        var deletedDirs = 0;
+        foreach (var directory in Directory.GetDirectories(normalizedTargetDir, "*", SearchOption.AllDirectories).OrderByDescending(path => path.Length))
+        {
+            var relativePath = Path.GetRelativePath(normalizedTargetDir, directory);
+            if (!IsObsoleteRuntimeDirectory(relativePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    Directory.Delete(directory);
+                    deletedDirs++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"警告: 删除旧版空目录失败: {relativePath}，错误: {ex.Message}");
+            }
+        }
+
+        Log($"旧版散文件清理完成。删除文件 {deletedFiles} 个，删除空目录 {deletedDirs} 个。");
+    }
+
+    private static bool IsObsoleteRuntimeFile(string relativePath)
+    {
+        var fileName = Path.GetFileName(relativePath);
+        if (fileName.StartsWith("unins", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return relativePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            || relativePath.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)
+            || relativePath.EndsWith(".deps.json", StringComparison.OrdinalIgnoreCase)
+            || relativePath.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, "createdump.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsObsoleteRuntimeDirectory(string relativePath)
+    {
+        var firstSegment = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+        return firstSegment is "cs" or "de" or "es" or "fr" or "it" or "ja" or "ko" or "pl" or "pt-BR" or "ru" or "tr" or "zh-Hans" or "zh-Hant";
     }
 
     private static void Rollback(

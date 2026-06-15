@@ -38,7 +38,8 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\build-delivery.ps1 -Skip
 
 ## 安装与卸载
 
-- 安装器检测 x64 `.NET 8 Desktop Runtime`；缺失时从微软官方下载并静默安装。
+- 客户端和独立更新器均以压缩单文件 `win-x64` 自包含方式发布，目标电脑无需预装 .NET Desktop Runtime，安装器不会联网下载运行时。
+- 安装器升级安装会清理旧版展开式运行库散文件和语言资源目录，保留卸载器与用户数据。
 - 安装向导使用简体中文并始终显示安装路径选择页，默认目录为 `%ProgramFiles%\NetRelay`。
 - 安装向导允许用户选择是否创建桌面快捷方式、是否登录 Windows 后自动启动 NetRelay。
 - NetRelay 控制网络适配器，安装器和客户端均强制请求管理员权限；管理员权限不是可关闭选项。

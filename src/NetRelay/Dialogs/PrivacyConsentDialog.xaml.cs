@@ -26,7 +26,9 @@ public partial class PrivacyConsentDialog : Window
     {
         if (AcceptButton != null)
         {
-            AcceptButton.IsEnabled = AgreeCheckBox.IsChecked == true;
+            var accepted = AgreeCheckBox.IsChecked == true;
+            AcceptButton.IsEnabled = accepted;
+            AcceptButton.Content = accepted ? "同意并激活" : "请先勾选同意";
         }
     }
 

@@ -93,8 +93,8 @@ tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.Regre
 - Debug 输出：`src/NetRelay/bin/Debug/net8.0-windows/win-x64/NetRelay.exe`
 - 客户端开发预览输出：`artifacts/publish/win-x64/NetRelay.exe`
 - 客户端正式交付输入目录：`artifacts/delivery/win-x64/publish/`
-- 发布模式为 framework-dependent，目标电脑需要 .NET 8 Desktop Runtime。
-- 当前完整发布目录包含 `NetRelay.exe`、`NetRelay.Updater.exe`、相关 DLL、`.deps.json`、`.runtimeconfig.json` 与 `BUILD-INFO.txt`；程序和安装器尚未签名。
+- Windows 客户端、独立更新器、在线更新 ZIP 和安装器均使用压缩单文件 `win-x64` 自包含发布，目标电脑无需预装 .NET 8 Desktop Runtime。
+- 当前完整发布目录包含 `NetRelay.exe`、`NetRelay.Updater.exe`、`BUILD-INFO.txt` 和 `Assets/`；程序和安装器尚未签名。
 - 使用 `app.manifest` 声明管理员权限与 Windows 10/11 兼容性；Per-Monitor V2 DPI 通过 `ApplicationHighDpiMode` 项目属性配置。
 - Inno Setup 安装器脚本位于 `deploy/windows/NetRelay.iss`；正式发布前仍应增加代码签名并完成干净 Windows 10/11 虚拟机验收。
 - 安装器使用仓库内简体中文语言包，始终显示安装路径页，并让用户选择开机自启动与桌面快捷方式；管理员权限因网卡控制能力强制启用，不能作为可关闭选项。
@@ -133,7 +133,7 @@ NetRelay.exe --diagnose-adapters .\adapter-diagnostic.json --quiet
 ## 7. 部署与维护
 
 - 首版为单机安装，无服务器部署。
-- 第八阶段安装程序已实现 .NET 8 Desktop Runtime 检测与微软官方下载引导；客户端首次运行时按实际登录用户注册通知身份和 `netrelay://` 协议。
+- 第八阶段安装程序使用自包含客户端文件，不检测或下载 .NET Desktop Runtime；客户端首次运行时按实际登录用户注册通知身份和 `netrelay://` 协议。
 - 卸载时询问是否删除配置和日志，并清理 NetRelay 创建的任务计划项、通知身份和协议注册；真实干净虚拟机卸载验收仍待执行。
 - 配置损坏时将原文件重命名为带时间戳的 `config.json.corrupted-*`，随后创建不含规则的默认配置。当前没有“最近有效配置备份”恢复机制。
 - 开机自启状态不仅检查任务名称，还校验任务动作仍指向当前 EXE 且参数为 `--startup`；程序移动后旧任务会显示为未启用，用户重新勾选即可重建。

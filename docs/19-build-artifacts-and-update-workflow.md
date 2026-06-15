@@ -48,14 +48,16 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\build-preview.ps1
 artifacts/publish/win-x64/
 ├── NetRelay.exe
 ├── NetRelay.Updater.exe
-├── 运行依赖文件
+├── Assets/
 └── BUILD-INFO.txt
 ```
 
 使用规则：
 
 - 这是开发阶段预览目录，可直接运行 `artifacts/publish/win-x64/NetRelay.exe`。
+- 主程序和独立更新器均为压缩单文件 `win-x64` 自包含产物，测试机无需预装 .NET Desktop Runtime。
 - 每次构建脚本会先清理旧预览目录，避免混入旧 DLL。
+- 标准目录根部只应保留主程序、独立更新器、`BUILD-INFO.txt` 和必要资源目录；不得重新引入展开式运行库散文件。
 - `BUILD-INFO.txt` 记录产品版本、Commit、工作区是否脏、构建时间和关键文件 SHA256。
 - 此目录不得上传到管理后台，不得提供给正式用户，也不得代替安装器。
 
@@ -113,7 +115,8 @@ artifacts/delivery/win-x64/
 
 - 中文安装向导。
 - 用户可选择安装路径、开机自启动和桌面快捷方式。
-- 自动检测并引导安装 .NET 8 Desktop Runtime。
+- 携带运行所需的 .NET 组件，目标电脑无需预装或联网下载 .NET Desktop Runtime。
+- 安装目录根部只应包含 `NetRelay.exe`、`NetRelay.Updater.exe`、`BUILD-INFO.txt`、`Assets/`、卸载器及必要安装元数据；升级安装会清理旧版展开式运行库散文件和语言资源目录。
 - 因 NetRelay 需要控制网卡，安装器和客户端强制要求管理员权限。
 - 正常卸载时询问是否删除配置、日志、诊断报告和更新缓存；静默卸载默认保留用户数据。
 
