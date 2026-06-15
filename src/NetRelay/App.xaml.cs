@@ -18,6 +18,12 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         SmoothScrollBehavior.Enable();
 
+        if (TryConfigureAutoStart(e.Args, out var autoStartExitCode))
+        {
+            Shutdown(autoStartExitCode);
+            return;
+        }
+
         if (TryRunUpdateVerification(e.Args, out var verifyExitCode))
         {
             Shutdown(verifyExitCode);
@@ -278,6 +284,52 @@ public partial class App : System.Windows.Application
         catch
         {
             exitCode = 1;
+        }
+
+        return true;
+    }
+
+    private static bool TryConfigureAutoStart(IReadOnlyList<string> args, out int exitCode)
+    {
+        exitCode = 0;
+        var optionIndex = -1;
+        for (var index = 0; index < args.Count; index++)
+        {
+            if (string.Equals(args[index], "--configure-autostart", StringComparison.OrdinalIgnoreCase))
+            {
+                optionIndex = index;
+                break;
+            }
+        }
+
+        if (optionIndex < 0)
+        {
+            return false;
+        }
+
+        if (optionIndex + 1 >= args.Count
+            || !bool.TryParse(args[optionIndex + 1], out var enabled))
+        {
+            exitCode = 1;
+            return true;
+        }
+
+        var result = new AutoStartService().SetEnabled(enabled);
+        if (!result.Success)
+        {
+            exitCode = 2;
+            return true;
+        }
+
+        try
+        {
+            var configService = new ConfigurationService();
+            configService.Current.AutoStart = enabled;
+            configService.Save();
+        }
+        catch
+        {
+            exitCode = 3;
         }
 
         return true;

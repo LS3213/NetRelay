@@ -2,7 +2,7 @@
 
 [上一篇：后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md) | [返回索引](README.md)
 
-> 状态：B7 进行中。`NetRelay.Contracts` 与后端基础已全部实现；实现变化需同步更新本文和 OpenAPI。
+> 状态：B7 已通过。`NetRelay.Contracts` 与后端基础已全部实现；实现变化需同步更新本文和 OpenAPI。
 
 OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件当前定义了公开客户端核心接口及管理 API。
 
@@ -27,7 +27,7 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
 - **B5 封锁与受限模式**：
   - `/api/v1/policies/evaluate`（设备及全局封锁策略评估，双重签名信封下发）。
   - 管理端 `/api/v1/admin/device-blocks` 与 `/api/v1/admin/policies`（封锁规则/全局限制的发布与撤销，带 CSRF/Re-auth 安全验证并计入 AuditLog）。
-- **B7 反馈强化与设备库扩展（进行中）**：
+- **B7 反馈强化与设备库扩展（已通过）**：
   - `/api/v1/feedback` 继续使用 `multipart/form-data` 创建反馈，可携带匿名 `deviceId`、`installationId`、`clientVersion` 和 `osVersion`。
   - `/api/v1/feedback/my?deviceId=...` 允许客户端按本机匿名设备指纹查询自身反馈历史，仅返回标题、正文、状态和时间，不返回联系方式、附件下载链接或其他设备数据。
   - 管理端 `/api/v1/admin/devices` 返回已注册安装实例的匿名设备指纹、安装实例、版本、OS 和最近活跃时间，用于管理后台设备库和一键封锁联动。

@@ -2,7 +2,7 @@
 
 [上一篇：后端 API 与共享契约规范](12-backend-api-and-contracts.md) | [返回索引](README.md)
 
-> 状态：B7 进行中。数据库以 MySQL 8.0、EF Core 与 Pomelo 为确定方案；实体、上下文和 Migration 持续随阶段演进维护。
+> 状态：B7 已通过。数据库以 MySQL 8.0、EF Core 与 Pomelo 为确定方案；实体、上下文和 Migration 持续随阶段演进维护。
 
 当前已实现的初始 Migration 位于 `server/NetRelay.Server/Data/Migrations/`，只创建 B1 管理认证基础表：
 

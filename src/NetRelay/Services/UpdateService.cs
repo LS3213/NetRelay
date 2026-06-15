@@ -14,6 +14,8 @@ using NetRelay.Contracts.Security;
 
 namespace NetRelay.Services;
 
+public sealed record DownloadedUpdatePackage(string PackagePath, string ManifestPath);
+
 public sealed class UpdateService
 {
     private readonly ConfigurationService _configService;
@@ -219,10 +221,14 @@ public sealed class UpdateService
 
         // 3. Extract UpdateManifest payload
         var manifest = JsonSerializer.Deserialize<UpdateManifest>(checkResponse.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (manifest != null)
+        {
+            manifest.VerifiedResponse = checkResponse;
+        }
         return manifest;
     }
 
-    public async Task<string> DownloadPackageAsync(
+    public async Task<DownloadedUpdatePackage> DownloadPackageAsync(
         UpdateManifest manifest,
         Action<double>? progressCallback,
         CancellationToken cancellationToken)
@@ -317,7 +323,16 @@ public sealed class UpdateService
             throw new CryptographicException($"下载包哈希值不匹配。预期: {manifest.Sha256}，实际: {downloadedHash}");
         }
 
-        return tempFilePath;
+        var verifiedResponse = manifest.VerifiedResponse
+            ?? throw new CryptographicException("缺少已验证的更新清单，无法启动独立更新器。");
+        var manifestPath = Path.Combine(tempDirectory, $"update-{manifest.Version}.manifest.json");
+        await File.WriteAllTextAsync(
+            manifestPath,
+            JsonSerializer.Serialize(verifiedResponse, new JsonSerializerOptions { WriteIndented = true }),
+            Encoding.UTF8,
+            cancellationToken);
+
+        return new DownloadedUpdatePackage(tempFilePath, manifestPath);
     }
 
     private async Task<string> GetGitHubAssetUrlAsync(string repo, string version, string filename, CancellationToken cancellationToken)

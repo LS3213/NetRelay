@@ -760,12 +760,11 @@ export function App() {
               <label>平台架构
                 <select value={relArch} onChange={(e) => setRelArch(e.target.value)}>
                   <option value="win-x64">win-x64</option>
-                  <option value="linux-x64">linux-x64</option>
                 </select>
               </label>
               <label>最低可升级版本<input placeholder="e.g. 0.1.0" value={relMinVer} onChange={(e) => setRelMinVer(e.target.value)} required /></label>
               <label>更新日志 (Markdown)<textarea placeholder="描述本次更新的改进点..." value={relChangelog} onChange={(e) => setRelChangelog(e.target.value)} /></label>
-              <label>更新包文件 (仅限 ZIP)
+              <label>更新包文件 (上传 build-delivery.ps1 生成的 win-x64.zip)
                 <input id="release-file-input" type="file" accept=".zip" onChange={(e) => setRelFile(e.target.files ? e.target.files[0] : null)} required />
               </label>
               <button disabled={busy}>上传草稿</button>

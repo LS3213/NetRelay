@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using NetRelay.Contracts;
 using NetRelay.Infrastructure;
 using NetRelay.Models;
 using NetRelay.Services;
@@ -111,17 +112,17 @@ public sealed class MainViewModel : ObservableObject
             OperationMessage = "正在检查更新...";
             try
             {
-                var manifest = await _updateService.CheckForUpdatesAsync("1.2.0", CancellationToken.None);
+                var manifest = await _updateService.CheckForUpdatesAsync(Protocol.ProductVersion, CancellationToken.None);
                 if (manifest == null)
                 {
-                    OperationMessage = "当前已是最新版本 (v1.2.0)";
+                    OperationMessage = $"当前已是最新版本 (v{Protocol.ProductVersion})";
                     await Task.Delay(2000);
                     OperationMessage = null;
                     return;
                 }
 
                 OperationMessage = $"检测到新版本 v{manifest.Version}，正在下载更新包...";
-                var packagePath = await _updateService.DownloadPackageAsync(manifest, progress =>
+                var downloadedPackage = await _updateService.DownloadPackageAsync(manifest, progress =>
                 {
                     OperationMessage = $"正在下载更新包 ({progress:P0})...";
                 }, CancellationToken.None);
@@ -137,9 +138,27 @@ public sealed class MainViewModel : ObservableObject
                     throw new FileNotFoundException("未找到独立更新器程序 (NetRelay.Updater.exe)。", updaterPath);
                 }
 
+                var updaterRunDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "NetRelay",
+                    "updates",
+                    "updater-run");
+                Directory.CreateDirectory(updaterRunDir);
+                foreach (var sourcePath in Directory.EnumerateFiles(updaterDir, "NetRelay.Updater*"))
+                {
+                    File.Copy(sourcePath, Path.Combine(updaterRunDir, Path.GetFileName(sourcePath)), overwrite: true);
+                }
+
+                var contractsPath = Path.Combine(updaterDir, "NetRelay.Contracts.dll");
+                if (File.Exists(contractsPath))
+                {
+                    File.Copy(contractsPath, Path.Combine(updaterRunDir, Path.GetFileName(contractsPath)), overwrite: true);
+                }
+
+                updaterPath = Path.Combine(updaterRunDir, "NetRelay.Updater.exe");
                 var targetDir = AppDomain.CurrentDomain.BaseDirectory;
                 var parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
-                var arguments = $"--package \"{packagePath}\" --target-dir \"{targetDir}\" --parent-pid {parentPid} --executable NetRelay.exe";
+                var arguments = $"--package \"{downloadedPackage.PackagePath}\" --manifest \"{downloadedPackage.ManifestPath}\" --target-dir \"{targetDir}\" --parent-pid {parentPid} --executable NetRelay.exe";
 
                 var startInfo = new System.Diagnostics.ProcessStartInfo
                 {

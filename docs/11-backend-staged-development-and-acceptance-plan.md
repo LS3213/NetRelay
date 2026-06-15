@@ -69,9 +69,9 @@
 | B4 | 反馈、日志上传与公告 | 已通过 | B1、B2 已通过 | 维护者确认反馈附件大小流式上传受限、Re-auth 权限下载保护、以及客户端 Root-Key 公告双重签名验签与白名单富文本渲染组件均通过验收 |
 | B5 | 封锁与受限模式 | 已通过 | B2、B3 已通过 | 维护者确认策略评估、客户端受限模式以及封锁撤销业务流已通过自动测试和回归验证 |
 | B6 | 正式部署与综合验收 | 已通过 | B0-B5 已通过 | 维护者确认生产构建、静态部署配置审查、运维脚本加固和文档同步已全部完成，通过 B6 验收 |
-| B7 | 反馈强化与设备指纹库扩展 | 开发完成，待验收 | B6 已通过 | 反馈环境信息、客户端反馈历史、管理端筛选分页、设备指纹库和附件下载加固已实现并通过自动构建测试；仍需手工 UI 与真实部署验收。 |
+| B7 | 反馈强化与设备指纹库扩展 | 已通过 | B6 已通过 | 反馈环境信息、客户端反馈历史、管理端筛选分页、设备指纹库和附件下载加固已实现；自动测试、手工 UI、真实 MySQL 迁移和生产包升级均通过验收。 |
 
-后端平台 B6 阶段已通过，B7 阶段已完成当前代码实现和自动化验收，等待手工 UI 与真实部署验收确认。
+后端平台 B0-B7 阶段均已通过验收。
 
 
 ## 3. 阶段依赖与交付路径
@@ -650,6 +650,7 @@ npm --prefix website/admin audit --audit-level=moderate
 | `14-backend-security-signing-and-privacy.md` | 威胁模型、签名、密钥、隐私、封锁安全 | 安全、身份、隐私行为变化 |
 | `15-backend-deployment-and-operations.md` | Ubuntu 部署、配置、备份、恢复和监控 | 部署或运维方式变化 |
 | `18-baota-portable-deployment.md` | 宝塔便携包、首次安装向导和无 Docker 部署边界 | 宝塔部署、安装接口或目录边界变化 |
+| `19-build-artifacts-and-update-workflow.md` | 客户端预览、更新包、安装器、后端包和标准更新流程 | 构建入口、产物用途或发布流程变化 |
 
 `12` 至 `15` 文档将在 B0 创建；创建前不得在索引中标记为已存在。
 
@@ -698,6 +699,7 @@ npm --prefix website/admin audit --audit-level=moderate
 | 2026-06-14 | 完成 B6 正式部署与综合验收发布，加固 deploy/scripts 下的 deploy/migrate/backup/restore 脚本自检，发布客户端 win-x64 包及 BUILD-INFO.txt | 已通过 |
 | 2026-06-14 | 开启 B7 阶段，制定反馈详情弹窗、一键封锁及注册设备指纹库详细改造设计方案 | 进行中 |
 | 2026-06-15 | 接手中断的 B7 半成品开发，完成反馈环境信息、客户端反馈历史、ModernMessageBox、管理端筛选分页与附件下载加固，并同步 API、数据库、安全与验收文档 | 开发完成，待验收 |
+| 2026-06-15 | 维护者确认管理后台、WPF 客户端、真实 MySQL 迁移、附件下载重认证和生产包升级均正常，B7 正式结束 | 已通过 |
 
 ## 15. B7：反馈强化与设备指纹库扩展
 
@@ -705,13 +707,13 @@ npm --prefix website/admin audit --audit-level=moderate
 
 | 项目 | 当前值 |
 | --- | --- |
-| 状态 | 开发完成，待验收 |
+| 状态 | 已通过 |
 | 前置条件 | B6 已通过 |
 | 开始日期 | 2026-06-14 |
 | 开发完成日期 | 2026-06-15 |
-| 验收日期 | 待手工 UI 与真实部署验收 |
-| 相关 Commit | 待提交 |
-| 阻塞项 | 无；仍需浏览器/客户端界面手工验收和真实 MySQL 迁移验证 |
+| 验收日期 | 2026-06-15 |
+| 相关 Commit | `3813e59`、`fd505f8`、`6d02216` |
+| 阻塞项 | 无 |
 
 ### 15.1 任务规划
 
@@ -751,13 +753,14 @@ npm --prefix website/admin audit --audit-level=moderate
 | --- | --- | --- | --- | --- | --- |
 | 2026-06-15 | 接手验收/修复 | B7 中断半成品 | 失败后修复 | 初始检查发现管理后台 JSX 编译失败、服务端异常响应携带堆栈详情、客户端回归测试在当前环境下因 `HttpListener` 失败；随后分别修复 JSX 结构、移除对外堆栈详情、改用本地 TCP 503 测试夹具，并恢复 `AutoMigrate` 默认关闭策略。 | 需重新执行完整质量门槛 |
 | 2026-06-15 | 自动验收 | B7 当前实现 | 开发完成，待验收 | `dotnet build NetRelay.sln -c Release --no-restore` 通过，0 错误，测试项目仍有 32 个 nullable/重复 using 警告；`dotnet run --project server/NetRelay.Server.Tests/NetRelay.Server.Tests.csproj -c Release --no-build --no-restore` 25 项通过；`dotnet run --project tests/NetRelay.RegressionTests/NetRelay.RegressionTests.csproj -c Release --no-restore` 43 项通过；`npm.cmd run build` 通过；OpenAPI 与 API、数据库、隐私文档已同步。 | 管理后台浏览器实测、WPF 弹窗视觉验收、真实 MySQL Migration、生产包构建待执行 |
+| 2026-06-15 | 最终验收 | B7 完整交付 | 已通过 | 维护者确认管理后台交互、WPF 客户端 UI、真实 MySQL Migration、附件下载重认证和生产包升级均正常。 | 无 |
 
-### 15.3 待验收项
+### 15.3 最终验收项
 
 | 验收项 | 通过标准 | 当前状态 |
 | --- | --- | --- |
-| 管理后台 UI | 五个列表筛选、分页、反馈详情和附件下载在浏览器中交互正常 | 待手工验收 |
-| WPF 客户端 UI | `ModernMessageBox`、反馈历史切换、历史详情显示在真实客户端中表现正常 | 待手工验收 |
-| 数据库迁移 | 真实 MySQL 环境从 B6 Schema 迁移到 B7 Schema，重复执行安全 | 待部署验收 |
-| 隐私边界 | `/feedback/my` 只返回本设备公开历史，不返回附件下载链接和其他设备数据 | 自动审查通过，待接口实测 |
-| 附件下载重认证 | 二次认证过期时，管理端 Blob 下载能进入统一重新认证流程 | 前端构建通过，待浏览器实测 |
+| 管理后台 UI | 五个列表筛选、分页、反馈详情和附件下载在浏览器中交互正常 | 已通过 |
+| WPF 客户端 UI | `ModernMessageBox`、反馈历史切换、历史详情显示在真实客户端中表现正常 | 已通过 |
+| 数据库迁移 | 真实 MySQL 环境从 B6 Schema 迁移到 B7 Schema，重复执行安全 | 已通过 |
+| 隐私边界 | `/feedback/my` 只返回本设备公开历史，不返回附件下载链接和其他设备数据 | 已通过 |
+| 附件下载重认证 | 二次认证过期时，管理端 Blob 下载能进入统一重新认证流程 | 已通过 |

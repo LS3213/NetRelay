@@ -206,6 +206,18 @@ Nginx 将 `/admin` 重定向到 `/admin/`，管理后台使用同源 `/api/v1`�
 
 更新包发布与服务器部署是不同流程。更新包必须在上传主服务器和 GitHub 前完成签名。
 
+第八阶段客户端交付统一使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-delivery.ps1
+```
+
+管理后台“更新包文件”应上传脚本生成的 `artifacts/delivery/win-x64/win-x64.zip`。服务端保存草稿时计算 ZIP 的大小与 SHA256，发布后在更新检查响应中返回签名清单；客户端下载签名清单 sidecar，独立更新器再次验证证书链、清单签名、包大小与 SHA256 后才覆盖安装目录。不得手工把 `manifest.json` 塞进 ZIP，否则会引入包哈希自引用问题。
+
+当前实现仍由服务端在线操作密钥动态签名 `update-manifest`，尚不满足本规范的离线发布密钥要求。该链路只能作为第八阶段开发与联调候选，不得视为正式公开发布流程；正式验收前必须改为上传并验证离线签名清单，确保主服务器与 GitHub 分发完全相同的签名清单。
+
+客户端开发预览、在线更新包、安装器和后端宝塔便携包的唯一构建入口及标准更新步骤统一见 [构建产物与更新流程规范](19-build-artifacts-and-update-workflow.md)。
+
 ## 8. 备份与恢复
 
 初始策略：

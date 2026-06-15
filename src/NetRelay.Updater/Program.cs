@@ -25,6 +25,7 @@ public static class Program
 
         // 1. 参数解析
         string? packagePath = null;
+        string? manifestPath = null;
         string? targetDir = null;
         int parentPid = -1;
         string? executable = null;
@@ -34,6 +35,10 @@ public static class Program
             if (string.Equals(args[i], "--package", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
                 packagePath = args[++i];
+            }
+            else if (string.Equals(args[i], "--manifest", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                manifestPath = args[++i];
             }
             else if (string.Equals(args[i], "--target-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
@@ -52,12 +57,14 @@ public static class Program
             }
         }
 
-        if (string.IsNullOrEmpty(packagePath) || string.IsNullOrEmpty(targetDir) || parentPid == -1 || string.IsNullOrEmpty(executable))
+        if (string.IsNullOrEmpty(packagePath) || string.IsNullOrEmpty(manifestPath) || string.IsNullOrEmpty(targetDir) || parentPid == -1 || string.IsNullOrEmpty(executable))
         {
-            Log("错误: 缺失必要参数 (--package, --target-dir, --parent-pid, --executable)。");
+            Log("错误: 缺失必要参数 (--package, --manifest, --target-dir, --parent-pid, --executable)。");
             return 1;
         }
 
+        var backupMap = new List<(string Source, string Backup)>();
+        var installedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
             // 2. 等待父进程退出
@@ -76,53 +83,56 @@ public static class Program
                 Log("父进程已提前退出。");
             }
 
-            // 3. 安全性自检：解压并验证 zip 包里的 manifest.json 签名
-            Log("开始验证更新包签名...");
+            // 3. 安全性自检：验证服务端签名清单及更新 ZIP 哈希
+            Log("开始验证更新清单签名和更新包哈希...");
             if (!File.Exists(packagePath))
             {
                 throw new FileNotFoundException($"找不到更新包文件: {packagePath}");
             }
 
-            UpdateManifest manifest;
-            using (var zip = ZipFile.OpenRead(packagePath))
+            if (!File.Exists(manifestPath))
             {
-                var manifestEntry = zip.GetEntry("manifest.json");
-                if (manifestEntry == null)
-                {
-                    throw new FileNotFoundException("更新包内未找到 manifest.json 配置文件。");
-                }
-
-                using var stream = manifestEntry.Open();
-                using var reader = new StreamReader(stream, Encoding.UTF8);
-                var manifestJson = reader.ReadToEnd();
-                var checkResponse = JsonSerializer.Deserialize<UpdateCheckResponse>(manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (checkResponse == null)
-                {
-                    throw new InvalidDataException("无法反序列化更新包内的 manifest.json。");
-                }
-
-                // 验签
-                var now = DateTimeOffset.UtcNow;
-                using var rootKey = ECDsa.Create();
-                rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(RootPublicKey), out _);
-
-                if (!checkResponse.Certificate.Verify(now, rootKey, "update-manifest"))
-                {
-                    throw new CryptographicException("更新包内置证书链验证失败。");
-                }
-
-                using var operationalKey = ECDsa.Create();
-                operationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(checkResponse.Certificate.PublicKey), out _);
-
-                if (!checkResponse.Envelope.Verify("update-manifest", checkResponse.Envelope.Nonce, now, operationalKey))
-                {
-                    throw new CryptographicException("更新包签名校验失败，文件可能已被篡改。");
-                }
-
-                manifest = JsonSerializer.Deserialize<UpdateManifest>(checkResponse.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                    ?? throw new InvalidDataException("更新包内的清单载荷损坏。");
+                throw new FileNotFoundException($"找不到更新清单文件: {manifestPath}");
             }
-            Log($"签名验证成功。目标版本: v{manifest.Version}");
+
+            var manifestJson = File.ReadAllText(manifestPath, Encoding.UTF8);
+            var checkResponse = JsonSerializer.Deserialize<UpdateCheckResponse>(manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidDataException("无法反序列化更新清单。");
+            var now = DateTimeOffset.UtcNow;
+            using var rootKey = ECDsa.Create();
+            rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(RootPublicKey), out _);
+
+            if (!checkResponse.Certificate.Verify(now, rootKey, "update-manifest"))
+            {
+                throw new CryptographicException("更新清单证书链验证失败。");
+            }
+
+            using var operationalKey = ECDsa.Create();
+            operationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(checkResponse.Certificate.PublicKey), out _);
+
+            if (!checkResponse.Envelope.Verify("update-manifest", checkResponse.Envelope.Nonce, now, operationalKey))
+            {
+                throw new CryptographicException("更新清单签名校验失败。");
+            }
+
+            var manifest = JsonSerializer.Deserialize<UpdateManifest>(checkResponse.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidDataException("更新清单载荷损坏。");
+            var packageInfo = new FileInfo(packagePath);
+            if (manifest.PackageSize != packageInfo.Length)
+            {
+                throw new InvalidDataException($"更新包大小不匹配。预期: {manifest.PackageSize}，实际: {packageInfo.Length}");
+            }
+
+            using (var packageStream = File.OpenRead(packagePath))
+            {
+                var packageHash = Convert.ToHexString(SHA256.HashData(packageStream)).ToLowerInvariant();
+                if (!string.Equals(packageHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new CryptographicException($"更新包哈希不匹配。预期: {manifest.Sha256}，实际: {packageHash}");
+                }
+            }
+
+            Log($"签名和哈希验证成功。目标版本: v{manifest.Version}");
 
             // 4. 备份旧文件
             Log("正在准备文件备份...");
@@ -130,8 +140,6 @@ public static class Program
             Directory.CreateDirectory(backupRoot);
 
             var filesToBackup = Directory.GetFiles(targetDir, "*.*", SearchOption.AllDirectories);
-            var backupMap = new List<(string Source, string Backup)>();
-
             foreach (var file in filesToBackup)
             {
                 var relativePath = Path.GetRelativePath(targetDir, file);
@@ -158,16 +166,11 @@ public static class Program
             Log("正在解压覆盖新版本文件...");
             using (var zip = ZipFile.OpenRead(packagePath))
             {
+                var normalizedTargetDir = Path.GetFullPath(targetDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
                 foreach (var entry in zip.Entries)
                 {
-                    // 排除 manifest.json 避免它释放到目标目录
-                    if (string.Equals(entry.FullName, "manifest.json", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    var destinationPath = Path.GetFullPath(Path.Combine(targetDir, entry.FullName));
-                    if (!destinationPath.StartsWith(targetDir, StringComparison.OrdinalIgnoreCase))
+                    var destinationPath = Path.GetFullPath(Path.Combine(normalizedTargetDir, entry.FullName));
+                    if (!destinationPath.StartsWith(normalizedTargetDir, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidOperationException("解压路径越界。");
                     }
@@ -185,6 +188,7 @@ public static class Program
                         {
                             Directory.CreateDirectory(parentDir);
                         }
+                        installedFiles.Add(destinationPath);
                         entry.ExtractToFile(destinationPath, overwrite: true);
                     }
                 }
@@ -264,7 +268,7 @@ public static class Program
             {
                 // 自检失败，执行回滚
                 Log("警告: 新版本自检失败！正在执行文件自动回滚恢复...");
-                Rollback(backupMap);
+                Rollback(backupMap, installedFiles);
 
                 // 启动旧版本
                 Process.Start(new ProcessStartInfo
@@ -280,13 +284,37 @@ public static class Program
         catch (Exception ex)
         {
             Log($"严重错误: 更新过程中发生异常: {ex.Message}\n{ex.StackTrace}");
-            // 如果已经备份了文件，进行万能回滚
+            if (backupMap.Count > 0)
+            {
+                Log("正在回滚异常发生前已修改的文件...");
+                Rollback(backupMap, installedFiles);
+            }
             return 3;
         }
     }
 
-    private static void Rollback(List<(string Source, string Backup)> backupMap)
+    private static void Rollback(
+        List<(string Source, string Backup)> backupMap,
+        HashSet<string> installedFiles)
     {
+        var originalFiles = backupMap
+            .Select(pair => pair.Source)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var installedFile in installedFiles.Where(path => !originalFiles.Contains(path)))
+        {
+            try
+            {
+                if (File.Exists(installedFile))
+                {
+                    File.Delete(installedFile);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"删除更新新增文件失败: {installedFile}，错误: {ex.Message}");
+            }
+        }
+
         foreach (var pair in backupMap)
         {
             try

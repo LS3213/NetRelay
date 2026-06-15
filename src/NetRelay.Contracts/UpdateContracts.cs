@@ -29,6 +29,9 @@ public sealed class UpdateManifest
 
     [JsonPropertyName("changelog")]
     public string Changelog { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public UpdateCheckResponse? VerifiedResponse { get; set; }
 }
 
 public sealed class UpdateCheckResponse

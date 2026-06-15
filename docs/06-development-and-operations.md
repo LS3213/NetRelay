@@ -54,7 +54,9 @@ NetRelay/
 dotnet build NetRelay.sln
 dotnet run --project src/NetRelay/NetRelay.csproj
 dotnet run --project tests/NetRelay.RegressionTests/NetRelay.RegressionTests.csproj -c Release
-dotnet publish src/NetRelay/NetRelay.csproj -c Release -r win-x64 --self-contained false
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-preview.ps1
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-delivery.ps1
+powershell -ExecutionPolicy Bypass -File deploy\baota\build-package.ps1
 ```
 
 在沙箱无法读取用户级 NuGet 配置时，可在首次还原后使用：
@@ -78,7 +80,7 @@ tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.Regre
 
 ## 4. 构建与发布
 
-项目内统一发布目录为 `artifacts/publish/win-x64/`。供用户手动验收和交付的 `NetRelay.exe` 必须放在该目录，不再发布到系统临时目录或创建多个阶段性预览目录。`bin/` 与 `obj/` 仅为编译中间产物，不作为交付位置。
+第八阶段开始后，客户端开发预览统一使用 `deploy/windows/build-preview.ps1`，输出到 `artifacts/publish/win-x64/`；客户端正式交付统一使用 `deploy/windows/build-delivery.ps1`，输出到 `artifacts/delivery/win-x64/`，并生成管理后台应上传的 `win-x64.zip` 与 Inno Setup 安装器 `NetRelaySetup.exe`。后端统一使用 `deploy/baota/build-package.ps1` 生成 `artifacts/baota-portable.zip`。四类产物不得互相替代，完整操作标准见 [构建产物与更新流程规范](19-build-artifacts-and-update-workflow.md)。`bin/` 与 `obj/` 仅为编译中间产物。
 
 版本号维护纪律：
 
@@ -86,14 +88,16 @@ tests\NetRelay.RegressionTests\bin\Release\net8.0-windows\win-x64\NetRelay.Regre
 - 只有在维护者明确说明当前进入发布阶段后，才允许评估是否需要修改版本号。
 - 即使已经进入发布阶段，修改版本号前也必须再次取得维护者明确同意，不得把功能开发、修复、打包或验收自动等同于版本号递增授权。
 
-每次正式发布先清理该目录，再从当前 HEAD 重新生成。目录中的 `BUILD-INFO.txt` 记录 Commit、构建时间、EXE/DLL SHA256 和签名状态，作为本地发布产物追溯依据。
+每次运行标准构建脚本时会先清理对应输出目录，再从当前工作区重新生成。目录中的 `BUILD-INFO.txt` 记录 Commit、工作区 Dirty 状态、构建时间、EXE/DLL SHA256 和签名状态，作为本地产物追溯依据。
 
 - Debug 输出：`src/NetRelay/bin/Debug/net8.0-windows/win-x64/NetRelay.exe`
-- Release 发布输出：`src/NetRelay/bin/Release/net8.0-windows/win-x64/publish/NetRelay.exe`
+- 客户端开发预览输出：`artifacts/publish/win-x64/NetRelay.exe`
+- 客户端正式交付输入目录：`artifacts/delivery/win-x64/publish/`
 - 发布模式为 framework-dependent，目标电脑需要 .NET 8 Desktop Runtime。
-- 当前发布目录包含 `NetRelay.exe`、`NetRelay.dll`、`.deps.json` 与 `.runtimeconfig.json`；程序尚未签名。
+- 当前完整发布目录包含 `NetRelay.exe`、`NetRelay.Updater.exe`、相关 DLL、`.deps.json`、`.runtimeconfig.json` 与 `BUILD-INFO.txt`；程序和安装器尚未签名。
 - 使用 `app.manifest` 声明管理员权限与 Windows 10/11 兼容性；Per-Monitor V2 DPI 通过 `ApplicationHighDpiMode` 项目属性配置。
-- 正式发布前应增加代码签名和安装包。
+- Inno Setup 安装器脚本位于 `deploy/windows/NetRelay.iss`；正式发布前仍应增加代码签名并完成干净 Windows 10/11 虚拟机验收。
+- 安装器使用仓库内简体中文语言包，始终显示安装路径页，并让用户选择开机自启动与桌面快捷方式；管理员权限因网卡控制能力强制启用，不能作为可关闭选项。
 
 ## 5. UI 与 Windows 集成
 
@@ -129,8 +133,8 @@ NetRelay.exe --diagnose-adapters .\adapter-diagnostic.json --quiet
 ## 7. 部署与维护
 
 - 首版为单机安装，无服务器部署。
-- 后续安装程序负责检查 .NET 8 Desktop Runtime、注册通知身份和卸载信息。
-- 卸载时应询问是否删除配置和日志，并清理 NetRelay 创建的任务计划项。
+- 第八阶段安装程序已实现 .NET 8 Desktop Runtime 检测与微软官方下载引导；客户端首次运行时按实际登录用户注册通知身份和 `netrelay://` 协议。
+- 卸载时询问是否删除配置和日志，并清理 NetRelay 创建的任务计划项、通知身份和协议注册；真实干净虚拟机卸载验收仍待执行。
 - 配置损坏时将原文件重命名为带时间戳的 `config.json.corrupted-*`，随后创建不含规则的默认配置。当前没有“最近有效配置备份”恢复机制。
 - 开机自启状态不仅检查任务名称，还校验任务动作仍指向当前 EXE 且参数为 `--startup`；程序移动后旧任务会显示为未启用，用户重新勾选即可重建。
 
