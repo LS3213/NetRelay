@@ -60,7 +60,13 @@ public sealed class RequestIdentityMiddleware(RequestDelegate next)
         context.Items[ApiInfrastructure.RequestIdItemKey] = requestId;
         context.Response.Headers[Protocol.RequestIdHeader] = requestId;
 
+        var isLegacyUpdatePackageRequest =
+            (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
+            context.Request.Path.StartsWithSegments("/api/v1/updates") &&
+            context.Request.Path.Value?.Contains("/download/", StringComparison.OrdinalIgnoreCase) == true;
+
         if (context.Request.Path.StartsWithSegments("/api/v1") &&
+            !isLegacyUpdatePackageRequest &&
             (!int.TryParse(context.Request.Headers[Protocol.VersionHeader], out var protocolVersion) ||
              protocolVersion != Protocol.CurrentVersion))
         {

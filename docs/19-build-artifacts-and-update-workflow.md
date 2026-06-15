@@ -99,6 +99,24 @@ artifacts/delivery/win-x64/
 | 更新日志 | 清晰描述用户可感知变化和重要修复 |
 | 更新包文件 | 只能上传 `artifacts/delivery/win-x64/win-x64.zip` |
 
+上传大小限制：
+
+- 服务端 Kestrel 与随包 Nginx/宝塔配置片段统一允许最大 `512MB` 请求体。
+- 当前自包含 `win-x64.zip` 通常约 `100MB`，若上传时报 HTTP 413，应优先确认生产站点 Nginx 是否已经包含 `client_max_body_size 512m;`，并确认后端已更新到包含该限制的服务包。
+
+下载兼容要求：
+
+- 生产后端必须允许 `GET` 与 `HEAD` 访问 `/api/v1/updates/{version}/download/win-x64.zip`。
+- 已交付的旧客户端会先用无协议头 `HEAD` 探测主站更新包，再用无协议头 `GET` 正式下载。生产后端必须兼容这两个请求；若 HEAD 不兼容，客户端可能误回退到 GitHub 并显示 HTTP 404；若 GET 不兼容，主站正式下载会失败。
+
+服务端存储与撤回规则：
+
+- 宝塔标准部署将更新包保存为 `/www/server/netrelay/data/releases/{channel}/{version}/{architecture}.zip`，例如稳定版 `1.2.1` 的实际路径为 `/www/server/netrelay/data/releases/stable/1.2.1/win-x64.zip`。
+- 上传时先写入受控 `staging` 目录，完成 SHA256 计算后移动到 `releases` 目录；这些目录均不得由 Nginx 直接公开。
+- 撤回版本会保留数据库记录和审计历史，并禁止客户端下载。重新上传相同版本、通道和架构时，服务端复用已撤回记录、覆盖原 ZIP 并恢复为草稿，管理员核对后可再次发布。
+- 同版本覆盖重发只用于尚未交付给用户的开发联调或受控测试。若该版本曾经公开发布，或无法确认是否已有客户端安装，必须提升版本号后重新构建和发布，禁止让同一版本号对应不同二进制内容。
+- 管理后台更新列表的“详情”入口用于核对更新日志、最低可升级版本、包大小、SHA256、相对存储路径及上传、发布、撤回时间。
+
 禁止事项：
 
 - 不得上传 `NetRelaySetup.exe` 作为更新包。
@@ -187,7 +205,39 @@ journalctl -u netrelay -n 100 --no-pager
 
 当前服务端仍使用在线操作密钥动态签名 `update-manifest`，尚未满足离线发布密钥规范。因此以上流程当前只允许用于 B8 开发联调和受控验收，在离线签名清单链路完成前不得进行正式公开发布。
 
-### 6.3 后端升级
+### 6.3 更新发布验收与故障判断
+
+发布前按顺序确认：
+
+1. 管理后台记录中的版本、通道和架构与客户端一致。
+2. 更新包必须处于“已发布”状态；草稿和已撤回版本不会被客户端发现或下载。
+3. 点击“详情”核对更新日志、包大小、SHA256 和存储相对路径。
+4. 生产 Nginx 包含 `client_max_body_size 512m;`，且后端已经部署对应便携包并重启。
+5. 使用旧版本客户端执行一次真实检查、下载、安装和启动验证。
+
+常见错误：
+
+| 现象 | 优先判断 | 处理 |
+| --- | --- | --- |
+| 后台上传返回 HTTP 413 | Nginx 或 Kestrel 请求体限制仍过小 | 检查宝塔站点 `server` 块中的 `client_max_body_size 512m;`，部署最新后端并重载 Nginx、重启 `netrelay` |
+| 客户端检查更新没有发现新版本 | 记录仍是草稿、已撤回，或版本/通道/架构不匹配 | 在后台核对并发布正确记录 |
+| 客户端显示 HTTP 404 并回退 GitHub | 主站更新包 `HEAD` 探测失败，或 GitHub 没有对应 Release | 确认后端同时支持更新包无协议头 `GET`/`HEAD`，并已部署最新后端 |
+| 下载完成后主程序退出，更新器终端一闪而过，版本未变化 | 旧客户端使用字符串拼接更新器参数，目标目录结尾反斜杠破坏引号并导致更新器缺少参数 | 查看 `%LOCALAPPDATA%\NetRelay\logs\updater-YYYY-MM-DD.log`；对受影响的旧版本一次性手工替换新版 `NetRelay.Updater.exe` 或使用新版安装器重装 |
+| 撤回后同版本上传提示已存在 | 线上后端仍是旧版本 | 部署最新 `baota-portable.zip` 并执行 `install.sh` |
+| 后端查询出现 Unknown column | 新代码已部署但数据库 Migration 未执行 | 使用宝塔便携包执行 `install.sh`，不得仅替换可执行文件 |
+
+更新器启动参数必须通过 `ProcessStartInfo.ArgumentList` 逐项传递，不得手工拼接带引号的命令行字符串。目标目录通常以反斜杠结尾，手工拼接会在 Windows 参数解析中破坏闭合引号。更新器保留对已交付旧客户端畸形参数的兼容恢复逻辑，但该恢复逻辑只有在目标电脑已经拥有新版更新器后才生效；旧主程序和旧更新器同时存在时，必须执行一次桥接替换或重新安装。
+
+服务器侧核对命令：
+
+```bash
+systemctl status netrelay
+journalctl -u netrelay -n 200 --no-pager
+find /www/server/netrelay/data/releases -maxdepth 4 -type f -ls
+nginx -t
+```
+
+### 6.4 后端升级
 
 1. 运行服务端测试和管理后台构建。
 2. 运行 `deploy/baota/build-package.ps1`。

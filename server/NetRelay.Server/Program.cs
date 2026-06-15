@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NetRelay.Contracts;
@@ -13,12 +14,17 @@ using NetRelay.Server.Security;
 using NetRelay.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+const long MaxUploadBodySize = 512L * 1024 * 1024;
 var installationState = new InstallationState();
 if (installationState.IsInstalled)
 {
     builder.Configuration.AddJsonFile(installationState.RuntimeConfigPath, optional: false, reloadOnChange: false);
 }
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 1024 * 1024);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = MaxUploadBodySize);
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = MaxUploadBodySize;
+});
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole(options =>
 {
@@ -166,7 +172,7 @@ publicApi.MapPost("/devices/activate", ActivateDeviceAsync);
 publicApi.MapPost("/devices/heartbeat", DeviceHeartbeatAsync);
 publicApi.MapPost("/connectivity/challenge", GetConnectivityChallengeAsync);
 publicApi.MapGet("/updates/latest", GetLatestUpdateAsync);
-publicApi.MapGet("/updates/{version}/download/{filename}", DownloadUpdatePackageAsync);
+publicApi.MapMethods("/updates/{version}/download/{filename}", [HttpMethods.Get, HttpMethods.Head], DownloadUpdatePackageAsync);
 publicApi.MapPost("/feedback", SubmitFeedbackAsync);
 publicApi.MapGet("/feedback/my", GetMyFeedbacksAsync);
 publicApi.MapGet("/announcements/active", GetActiveAnnouncementsAsync);
@@ -738,8 +744,9 @@ static async Task<IResult> CreateReleaseAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "更新包文件缺失。");
     }
 
-    var exists = await dbContext.Releases.AnyAsync(r => r.Version == version && r.Channel == channel && r.Architecture == architecture, cancellationToken);
-    if (exists)
+    var existingRelease = await dbContext.Releases
+        .FirstOrDefaultAsync(r => r.Version == version && r.Channel == channel && r.Architecture == architecture, cancellationToken);
+    if (existingRelease is not null && existingRelease.Status != "revoked")
     {
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "该版本更新已存在。");
     }
@@ -772,7 +779,12 @@ static async Task<IResult> CreateReleaseAsync(
     var targetPath = $"{channel}/{version}/{architecture}.zip";
     try
     {
-        await storage.MoveFromStagingAsync(tempName, StorageArea.Releases, targetPath, cancellationToken);
+        await storage.MoveFromStagingAsync(
+            tempName,
+            StorageArea.Releases,
+            targetPath,
+            cancellationToken,
+            overwrite: existingRelease is not null);
     }
     catch (Exception ex)
     {
@@ -783,27 +795,46 @@ static async Task<IResult> CreateReleaseAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status500InternalServerError, ErrorCodes.ServiceTemporarilyUnavailable, $"保存更新文件失败: {ex.Message}");
     }
 
-    var release = new Release
+    var now = DateTimeOffset.UtcNow;
+    Release release;
+    if (existingRelease is null)
     {
-        Id = Guid.NewGuid(),
-        Version = version,
-        Channel = channel,
-        Architecture = architecture,
-        MinUpgradableVersion = minUpgradableVersion,
-        PackageSize = packageSize,
-        Sha256 = sha256Hex,
-        ReleaseDate = DateTimeOffset.UtcNow,
-        Changelog = changelog,
-        AssetPath = targetPath,
-        Status = "draft",
-        CreatedAt = DateTimeOffset.UtcNow
-    };
+        release = new Release
+        {
+            Id = Guid.NewGuid(),
+            Version = version,
+            Channel = channel,
+            Architecture = architecture,
+            MinUpgradableVersion = minUpgradableVersion,
+            PackageSize = packageSize,
+            Sha256 = sha256Hex,
+            ReleaseDate = now,
+            Changelog = changelog,
+            AssetPath = targetPath,
+            Status = "draft",
+            CreatedAt = now
+        };
+        dbContext.Releases.Add(release);
+    }
+    else
+    {
+        release = existingRelease;
+        release.MinUpgradableVersion = minUpgradableVersion;
+        release.PackageSize = packageSize;
+        release.Sha256 = sha256Hex;
+        release.ReleaseDate = now;
+        release.Changelog = changelog;
+        release.AssetPath = targetPath;
+        release.Status = "draft";
+        release.CreatedAt = now;
+        release.PublishedAt = null;
+        release.RevokedAt = null;
+    }
 
-    dbContext.Releases.Add(release);
     await dbContext.SaveChangesAsync(cancellationToken);
 
     await auditService.WriteAsync(
-        "release.create",
+        existingRelease is null ? "release.create" : "release.recreate",
         "success",
         ApiInfrastructure.GetRequestId(context),
         release.Id,

@@ -4,63 +4,6 @@
         Title="用户隐私与服务同意" Width="520" Height="470"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="True">
-    <Window.Resources>
-        <Style x:Key="ConsentPrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="38"/>
-            <Setter Property="Padding" Value="18,0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background">
-                <Setter.Value>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#637CFF" Offset="0"/>
-                        <GradientStop Color="#4A65E6" Offset="1"/>
-                    </LinearGradientBrush>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="BorderBrush" Value="#50FFFFFF"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" CornerRadius="13"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.24" Color="#4A65E6"/>
-                            </Border.Effect>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.94"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.76"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#6E7A99"/>
-                                <Setter Property="Cursor" Value="Arrow"/>
-                                <Setter TargetName="Root" Property="Background" Value="#DCE4F8"/>
-                                <Setter TargetName="Root" Property="BorderBrush" Value="#EFFFFFFF"/>
-                                <Setter TargetName="Root" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.06" Color="#273753"/>
-                                    </Setter.Value>
-                                </Setter>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
 
     <Border Margin="12" Padding="24" CornerRadius="22" Background="#F4F8FD"
             BorderBrush="#FFFFFFFF" BorderThickness="1">
@@ -121,7 +64,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}" Click="RejectButton_Click" Content="不同意并退出" Height="38"/>
-                <Button Grid.Column="2" x:Name="AcceptButton" Style="{StaticResource ConsentPrimaryButtonStyle}" Click="AcceptButton_Click" Content="请先勾选同意" IsEnabled="False"/>
+                <Button Grid.Column="2" x:Name="AcceptButton" Style="{StaticResource PrimaryButtonStyle}" Click="AcceptButton_Click" Content="请先勾选同意" Height="38" IsEnabled="False"/>
             </Grid>
         </Grid>
     </Border>

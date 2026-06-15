@@ -158,14 +158,22 @@ public sealed class MainViewModel : ObservableObject
                 updaterPath = Path.Combine(updaterRunDir, "NetRelay.Updater.exe");
                 var targetDir = AppDomain.CurrentDomain.BaseDirectory;
                 var parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
-                var arguments = $"--package \"{downloadedPackage.PackagePath}\" --manifest \"{downloadedPackage.ManifestPath}\" --target-dir \"{targetDir}\" --parent-pid {parentPid} --executable NetRelay.exe";
 
                 var startInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = updaterPath,
-                    Arguments = arguments,
                     UseShellExecute = true
                 };
+                startInfo.ArgumentList.Add("--package");
+                startInfo.ArgumentList.Add(downloadedPackage.PackagePath);
+                startInfo.ArgumentList.Add("--manifest");
+                startInfo.ArgumentList.Add(downloadedPackage.ManifestPath);
+                startInfo.ArgumentList.Add("--target-dir");
+                startInfo.ArgumentList.Add(targetDir);
+                startInfo.ArgumentList.Add("--parent-pid");
+                startInfo.ArgumentList.Add(parentPid.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                startInfo.ArgumentList.Add("--executable");
+                startInfo.ArgumentList.Add("NetRelay.exe");
 
                 if (IsDirectoryWritable(targetDir))
                 {

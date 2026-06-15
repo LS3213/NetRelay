@@ -68,7 +68,8 @@ public sealed class ManagedFileStorage
         string stagingRelativePath,
         StorageArea destinationArea,
         string destinationRelativePath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool overwrite = false)
     {
         if (destinationArea is StorageArea.Staging)
         {
@@ -82,7 +83,7 @@ public sealed class ManagedFileStorage
             throw new InvalidOperationException("Destination directory is unavailable.");
         Directory.CreateDirectory(destinationDirectory);
 
-        await Task.Run(() => File.Move(source, destination, overwrite: false), cancellationToken);
+        await Task.Run(() => File.Move(source, destination, overwrite), cancellationToken);
     }
 
     private static string NormalizeRoot(string path) =>

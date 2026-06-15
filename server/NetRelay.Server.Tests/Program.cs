@@ -1040,6 +1040,12 @@ static async Task TestUpdateApiAsync()
         var bytes = await downloadResult.Content.ReadAsByteArrayAsync();
         Assert(bytes.Length == createResponse.Data.PackageSize, "Downloaded package size mismatch");
 
+        var headResult = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/api/v1/updates/1.3.0/download/win-x64.zip"));
+        Assert(headResult.StatusCode == HttpStatusCode.OK, $"HEAD package probe failed: {headResult.StatusCode}");
+
+        var legacyDownloadResult = await client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/v1/updates/1.3.0/download/win-x64.zip"));
+        Assert(legacyDownloadResult.StatusCode == HttpStatusCode.OK, $"Legacy package download without protocol header failed: {legacyDownloadResult.StatusCode}");
+
         // 10. Reauthenticate and Revoke Release
         var reauthResponseMsg2 = await SendJsonAsync(
             client,
@@ -1060,6 +1066,52 @@ static async Task TestUpdateApiAsync()
         // 11. Check latest updates -> expect 404 UpdateNotAvailable
         var finalCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
         Assert(finalCheck.StatusCode == HttpStatusCode.NotFound, "Revoked release should not be visible");
+
+        // 12. Upload the same revoked version again -> reuse record, replace package, return to draft
+        var replacementZipPath = Path.Combine(root, "win-x64-replacement.zip");
+        using (var archive = ZipFile.Open(replacementZipPath, ZipArchiveMode.Create))
+        {
+            var entry = archive.CreateEntry("replacement.txt");
+            using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync("replacement update package");
+        }
+
+        using var replacementStream = File.OpenRead(replacementZipPath);
+        using var replacementForm = new MultipartFormDataContent();
+        replacementForm.Add(new StringContent("1.3.0"), "version");
+        replacementForm.Add(new StringContent("stable"), "channel");
+        replacementForm.Add(new StringContent("win-x64"), "architecture");
+        replacementForm.Add(new StringContent("1.1.0"), "minUpgradableVersion");
+        replacementForm.Add(new StringContent("Replacement changelog"), "changelog");
+        replacementForm.Add(new StreamContent(replacementStream), "file", "win-x64.zip");
+
+        var recreateRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/releases")
+        {
+            Content = replacementForm
+        };
+        recreateRequest.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+        recreateRequest.Headers.Add(Protocol.CsrfHeader, csrf);
+
+        var recreateResponseMsg = await client.SendAsync(recreateRequest);
+        Assert(recreateResponseMsg.StatusCode == HttpStatusCode.OK, $"Recreate revoked release failed: {recreateResponseMsg.StatusCode}");
+        var recreateResponse = await recreateResponseMsg.Content.ReadFromJsonAsync<ApiResponse<Release>>();
+        Assert(recreateResponse?.Data.Id == releaseId, "Recreated release should reuse the revoked record");
+        Assert(recreateResponse.Data.Status == "draft", "Recreated release should return to draft");
+        Assert(recreateResponse.Data.Changelog == "Replacement changelog", "Recreated release changelog mismatch");
+        Assert(recreateResponse.Data.Sha256 != createResponse.Data.Sha256, "Recreated release should replace the package");
+
+        var republishResponseMsg = await SendJsonAsync(
+            client,
+            HttpMethod.Post,
+            $"/api/v1/admin/releases/{releaseId}/publish",
+            new { },
+            csrf);
+        Assert(republishResponseMsg.StatusCode == HttpStatusCode.OK, $"Republish recreated release failed: {republishResponseMsg.StatusCode}");
+
+        var replacementDownload = await SendGetAsync(client, "/api/v1/updates/1.3.0/download/win-x64.zip");
+        Assert(replacementDownload.StatusCode == HttpStatusCode.OK, $"Replacement package download failed: {replacementDownload.StatusCode}");
+        var replacementBytes = await replacementDownload.Content.ReadAsByteArrayAsync();
+        Assert(replacementBytes.Length == recreateResponse.Data.PackageSize, "Replacement package size mismatch");
     }
     finally
     {
@@ -1649,4 +1701,3 @@ sealed class InstallServerFactory : WebApplicationFactory<ServerApplication>
         throw new DirectoryNotFoundException("NetRelay.Server project directory was not found.");
     }
 }
-

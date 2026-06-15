@@ -154,9 +154,12 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
 | 方法与路径 | 用途 |
 | --- | --- |
 | `GET /api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=...` | 获取签名更新清单 |
-| `GET /api/v1/updates/{version}/download/{assetId}` | 下载服务器主源更新包 |
+| `GET /api/v1/updates/{version}/download/{filename}` | 下载服务器主源更新包 |
+| `HEAD /api/v1/updates/{version}/download/{filename}` | 供已安装客户端在正式下载前探测主源更新包是否可用 |
 
 更新清单载荷至少包含版本、通道、架构、最低升级版本、包大小、SHA256、签名、发布日期和发布说明摘要。主源不可用时客户端直接调用 GitHub Releases API，不经后端代理。
+
+更新包 `GET` 与 `HEAD` 必须兼容已经交付的旧客户端，允许下载请求缺少协议版本头，但只返回已发布且文件名匹配的更新包；更新检查和其他 API 仍执行协议版本校验。管理端上传创建草稿，发布后才允许公开检查和下载；撤回后禁止公开下载。同版本、通道和架构的已撤回记录可通过再次上传恢复为草稿，并复用记录以保留审计历史。
 
 ### 5.3 客户端部署配置
 

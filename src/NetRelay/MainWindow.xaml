@@ -84,20 +84,23 @@
         <Style x:Key="TabButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinHeight" Value="42"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bg" CornerRadius="12"
+                        <Border x:Name="Bg" CornerRadius="20"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="20,8">
+                                Padding="22,10">
                             <Grid>
-                                <Border x:Name="HoverOverlay" CornerRadius="11" Background="#0C536EF2" Visibility="Collapsed" Margin="-20,-8"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="19" Background="#14FFFFFF" Visibility="Collapsed" Margin="-22,-10"/>
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -105,6 +108,15 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
                                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#B8FFFFFF"/>
+                                <Setter TargetName="Bg" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.08" Color="#243653"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.82"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -245,13 +257,27 @@
                     </StackPanel>
 
                     <!-- Compact title-bar navigation -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="54,0,0,0"
-                                VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Button x:Name="TabOverviewBtn" Style="{StaticResource TabButtonStyle}" Click="TabOverviewButton_Click" Content="网络概览"/>
-                        <Button x:Name="TabRulesBtn" Style="{StaticResource TabButtonStyle}" Click="TabRulesButton_Click" Content="自动化规则"/>
-                        <Button x:Name="TabLogsBtn" Style="{StaticResource TabButtonStyle}" Click="TabLogsButton_Click" Content="执行历史"/>
-                        <Button x:Name="TabAboutBtn" Style="{StaticResource TabButtonStyle}" Click="TabAboutButton_Click" Content="关于"/>
-                    </StackPanel>
+                    <Grid x:Name="TabNavigationHost" Grid.Column="1" Margin="54,0,0,0"
+                          VerticalAlignment="Center" HorizontalAlignment="Left"
+                          shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Border x:Name="TabSelectionIndicator"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Stretch"
+                                CornerRadius="20"
+                                BorderThickness="1"
+                                IsHitTestVisible="False"
+                                Opacity="0">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="TabSelectionTransform"/>
+                            </Border.RenderTransform>
+                        </Border>
+                        <StackPanel x:Name="TabButtonsPanel" Orientation="Horizontal">
+                            <Button x:Name="TabOverviewBtn" Style="{StaticResource TabButtonStyle}" Click="TabOverviewButton_Click" Content="网络概览"/>
+                            <Button x:Name="TabRulesBtn" Style="{StaticResource TabButtonStyle}" Click="TabRulesButton_Click" Content="自动化规则"/>
+                            <Button x:Name="TabLogsBtn" Style="{StaticResource TabButtonStyle}" Click="TabLogsButton_Click" Content="执行历史"/>
+                            <Button x:Name="TabAboutBtn" Style="{StaticResource TabButtonStyle}" Click="TabAboutButton_Click" Content="关于"/>
+                        </StackPanel>
+                    </Grid>
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button Style="{StaticResource CaptionButtonStyle}" Click="SettingsButton_Click" ToolTip="程序设置">
@@ -465,10 +491,20 @@
                                                     </Grid.ColumnDefinitions>
                                                     <Button Grid.Column="0" Style="{StaticResource SoftButtonStyle}"
                                                             IsEnabled="{Binding CanOperateSelectedAdapter}"
-                                                            Click="EnableAdapterButton_Click" Content="启用网卡"/>
+                                                            Click="EnableAdapterButton_Click">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="&#xE839;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                            <TextBlock Text="启用网卡" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Button>
                                                     <Button Grid.Column="2" Style="{StaticResource DangerButtonStyle}"
                                                             IsEnabled="{Binding CanOperateSelectedAdapter}"
-                                                            Click="DisableAdapterButton_Click" Content="禁用网卡"/>
+                                                            Click="DisableAdapterButton_Click">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="&#xE839;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource DangerAccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                            <TextBlock Text="禁用网卡" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Button>
                                                 </Grid>
                                             </StackPanel>
                                         </Grid>
@@ -618,9 +654,24 @@
                                 <TextBlock Text="运行执行日志" FontWeight="Bold" FontSize="40" Margin="0,6,0,0"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding RefreshLogsCommand}" Margin="0,0,10,0" Padding="15,9" Content="刷新日志"/>
-                                <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding ExportLogsCommand}" Margin="0,0,10,0" Padding="15,9" Content="导出日志"/>
-                                <Button Style="{StaticResource DangerButtonStyle}" Command="{Binding ClearLogsCommand}" Padding="15,9" Content="清空历史"/>
+                                <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding RefreshLogsCommand}" Margin="0,0,10,0" Padding="15,9">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="刷新日志" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding ExportLogsCommand}" Margin="0,0,10,0" Padding="15,9">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="导出日志" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Style="{StaticResource DangerButtonStyle}" Command="{Binding ClearLogsCommand}" Padding="15,9">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource DangerAccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="清空历史" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Grid>
 
@@ -721,7 +772,7 @@
                                     <!-- Application Info -->
                                     <TextBlock Text="NetRelay" FontWeight="Bold" FontSize="30" Margin="0,20,0,0" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     <TextBlock Text="原生网络自动切换与安全保护助手" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="版本：v1.2.0" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="版本：v1.2.1" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
                                     <TextBlock Text="作者：lansi" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
 
                                     <!-- Subtle Separator -->

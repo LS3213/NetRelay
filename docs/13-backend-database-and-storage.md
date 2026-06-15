@@ -80,6 +80,8 @@ erDiagram
 
 更新文件允许通过受控下载端点公开下载；数据库中的路径不得直接作为 URL。
 
+`releases` 使用 `(version, channel, architecture)` 唯一约束。撤回更新时保留数据库记录、审计记录和发布文件；重新上传相同组合时复用已撤回记录、覆盖受控发布文件并恢复为草稿。该能力用于开发联调和受控测试；无法确认是否已有用户安装的公开版本不得同版本覆盖重发。
+
 ### 3.4 反馈、管理和审计
 
 | 表 | 关键字段 | 索引与约束 |
@@ -107,6 +109,14 @@ Ubuntu 计划目录：
 ├── staging/                   # 上传暂存，验证后原子移动
 └── quarantine/                # 拒绝或待检查附件
 ```
+
+宝塔标准部署的更新包实际路径为：
+
+```text
+/www/server/netrelay/data/releases/{channel}/{version}/{architecture}.zip
+```
+
+上传文件先进入 `staging/`，计算大小和 SHA256 后再原子移动到 `releases/`。`releases/` 不由 Nginx 直接公开，客户端必须通过后端的已发布版本下载端点访问。
 
 要求：
 

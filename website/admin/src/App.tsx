@@ -87,6 +87,7 @@ export function App() {
   const [deviceBlocksList, setDeviceBlocksList] = useState<DeviceBlock[]>([]);
   const [globalPoliciesList, setGlobalPoliciesList] = useState<GlobalPolicy[]>([]);
   const [registeredDevicesList, setRegisteredDevicesList] = useState<RegisteredDevice[]>([]);
+  const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
 
   // Search, Filter and Pagination states
@@ -704,6 +705,7 @@ export function App() {
                         <td>{formatTime(rel.createdAt)}</td>
                         <td>
                           <div className="action-btn-group">
+                            <button className="action-btn secondary" onClick={() => setSelectedRelease(rel)}>详情</button>
                             {rel.status === "draft" && (
                               <button className="action-btn success" disabled={busy} onClick={() => run(async () => {
                                 await publishRelease(rel.id);
@@ -770,6 +772,61 @@ export function App() {
               <button disabled={busy}>上传草稿</button>
             </form>
           </article>
+
+          {selectedRelease && (
+            <div className="modal-overlay" onClick={() => setSelectedRelease(null)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3>更新版本详情</h3>
+                  <button className="modal-close" onClick={() => setSelectedRelease(null)}>×</button>
+                </div>
+                <div className="modal-body">
+                  <div>
+                    <label>版本与状态</label>
+                    <div style={{ marginTop: "4px", display: "flex", gap: "8px", alignItems: "center" }}>
+                      <strong style={{ fontSize: "18px" }}>{selectedRelease.version}</strong>
+                      <span className={`badge ${selectedRelease.status}`}>
+                        {selectedRelease.status === "draft" && "草稿"}
+                        {selectedRelease.status === "published" && "已发布"}
+                        {selectedRelease.status === "revoked" && "已撤回"}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label>发布目标</label>
+                    <div style={{ marginTop: "4px" }}>
+                      {selectedRelease.channel === "stable" ? "稳定版" : "测试版"} / {selectedRelease.architecture}
+                    </div>
+                  </div>
+                  <div>
+                    <label>最低可升级版本</label>
+                    <div style={{ marginTop: "4px" }}>{selectedRelease.minUpgradableVersion}</div>
+                  </div>
+                  <div>
+                    <label>更新日志</label>
+                    <pre style={{ marginTop: "4px" }}>{selectedRelease.changelog || "未填写更新日志"}</pre>
+                  </div>
+                  <div>
+                    <label>更新包</label>
+                    <div style={{ marginTop: "4px" }}>{formatBytes(selectedRelease.packageSize)}</div>
+                    <code className="detail-code">{selectedRelease.assetPath}</code>
+                  </div>
+                  <div>
+                    <label>SHA256</label>
+                    <code className="detail-code">{selectedRelease.sha256}</code>
+                  </div>
+                  <div>
+                    <label>时间记录</label>
+                    <div style={{ marginTop: "4px", display: "grid", gap: "4px" }}>
+                      <span>上传：{formatTime(selectedRelease.createdAt)}</span>
+                      {selectedRelease.publishedAt && <span>发布：{formatTime(selectedRelease.publishedAt)}</span>}
+                      {selectedRelease.revokedAt && <span>撤回：{formatTime(selectedRelease.revokedAt)}</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

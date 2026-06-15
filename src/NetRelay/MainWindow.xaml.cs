@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using NetRelay.Dialogs;
 using NetRelay.Native;
 using NetRelay.Services;
@@ -20,6 +21,7 @@ public partial class MainWindow : Window
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
     private readonly bool _startMinimized;
+    private bool _tabSelectionIndicatorInitialized;
 
     public MainWindow() : this(new ConfigurationService())
     {
@@ -382,14 +384,12 @@ public partial class MainWindow : Window
             StartPoint = new System.Windows.Point(0, 0),
             EndPoint = new System.Windows.Point(0, 1)
         };
-        // Top specular highlight reflection (white gloss, 92% opacity)
-        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(235, 0xFF, 0xFF, 0xFF), 0.0));
-        // Soft water blue reflection (72% opacity, gives it a distinct but clean color)
-        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(185, 0xE2, 0xEE, 0xFF), 0.35));
-        // Transition white (50% opacity)
-        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(128, 0xFF, 0xFF, 0xFF), 0.65));
-        // Translucent bottom (30% opacity white)
-        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(76, 0xFF, 0xFF, 0xFF), 1.0));
+        // Top specular highlight reflection (white gloss, 96% opacity)
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(245, 0xFF, 0xFF, 0xFF), 0.0));
+        // Soft water-blue reflection without becoming a solid color block
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(150, 0xEA, 0xF4, 0xFF), 0.42));
+        // Translucent glass bottom
+        activeBrush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(118, 0xFF, 0xFF, 0xFF), 1.0));
 
         // Edge refraction gradient border (simulates light reflection on glass edge)
         var activeBorder = new LinearGradientBrush
@@ -397,21 +397,17 @@ public partial class MainWindow : Window
             StartPoint = new System.Windows.Point(0, 0),
             EndPoint = new System.Windows.Point(0, 1)
         };
-        // Bright top highlight (96% opacity white)
-        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(245, 0xFF, 0xFF, 0xFF), 0.0));
-        // Soft middle transition (60% opacity white)
-        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(150, 0xFF, 0xFF, 0xFF), 0.5));
-        // Soft bottom edge (40% opacity white)
-        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(100, 0xFF, 0xFF, 0xFF), 1.0));
+        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(250, 0xFF, 0xFF, 0xFF), 0.0));
+        activeBorder.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb(145, 0xC7, 0xD5, 0xEE), 1.0));
 
         var activeText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x43, 0x5E, 0xEE));
 
         // Ultra-soft, lightweight dark shadow to prevent muddy glass center
         var activeShadow = new System.Windows.Media.Effects.DropShadowEffect
         {
-            BlurRadius = 10,
-            ShadowDepth = 1.2,
-            Opacity = 0.08,
+            BlurRadius = 18,
+            ShadowDepth = 3,
+            Opacity = 0.10,
             Color = System.Windows.Media.Color.FromRgb(0x18, 0x22, 0x36)
         };
 
@@ -422,41 +418,77 @@ public partial class MainWindow : Window
         // Keep BorderThickness constant at 1.0 to prevent 1px text layout shift/shaking on selection
         var uniformBorderThickness = new Thickness(1);
 
-        if (TabOverviewBtn != null)
+        SetTabButtonState(TabOverviewBtn, tabIndex == 0, inactiveBrush, inactiveBorder, activeText, inactiveText, uniformBorderThickness);
+        SetTabButtonState(TabRulesBtn, tabIndex == 1, inactiveBrush, inactiveBorder, activeText, inactiveText, uniformBorderThickness);
+        SetTabButtonState(TabLogsBtn, tabIndex == 2, inactiveBrush, inactiveBorder, activeText, inactiveText, uniformBorderThickness);
+        SetTabButtonState(TabAboutBtn, tabIndex == 3, inactiveBrush, inactiveBorder, activeText, inactiveText, uniformBorderThickness);
+
+        TabSelectionIndicator.Background = activeBrush;
+        TabSelectionIndicator.BorderBrush = activeBorder;
+        TabSelectionIndicator.Effect = activeShadow;
+
+        var targetButton = GetTabButton(tabIndex);
+        if (targetButton.ActualWidth <= 0 || TabNavigationHost.ActualWidth <= 0)
         {
-            TabOverviewBtn.Background = tabIndex == 0 ? activeBrush : inactiveBrush;
-            TabOverviewBtn.BorderBrush = tabIndex == 0 ? activeBorder : inactiveBorder;
-            TabOverviewBtn.BorderThickness = uniformBorderThickness;
-            TabOverviewBtn.Foreground = tabIndex == 0 ? activeText : inactiveText;
-            TabOverviewBtn.Effect = tabIndex == 0 ? activeShadow : null;
+            Dispatcher.BeginInvoke(new Action(() => UpdateTabSelection(tabIndex)), System.Windows.Threading.DispatcherPriority.Loaded);
+            return;
         }
 
-        if (TabRulesBtn != null)
+        var targetX = targetButton.TranslatePoint(new System.Windows.Point(0, 0), TabNavigationHost).X;
+        MoveTabSelectionIndicator(targetX, targetButton.ActualWidth);
+    }
+
+    private static void SetTabButtonState(
+        System.Windows.Controls.Button button,
+        bool isActive,
+        System.Windows.Media.Brush inactiveBrush,
+        System.Windows.Media.Brush inactiveBorder,
+        System.Windows.Media.Brush activeText,
+        System.Windows.Media.Brush inactiveText,
+        Thickness uniformBorderThickness)
+    {
+        button.Background = inactiveBrush;
+        button.BorderBrush = inactiveBorder;
+        button.BorderThickness = uniformBorderThickness;
+        button.Foreground = isActive ? activeText : inactiveText;
+        button.Effect = null;
+    }
+
+    private System.Windows.Controls.Button GetTabButton(int tabIndex)
+    {
+        return tabIndex switch
         {
-            TabRulesBtn.Background = tabIndex == 1 ? activeBrush : inactiveBrush;
-            TabRulesBtn.BorderBrush = tabIndex == 1 ? activeBorder : inactiveBorder;
-            TabRulesBtn.BorderThickness = uniformBorderThickness;
-            TabRulesBtn.Foreground = tabIndex == 1 ? activeText : inactiveText;
-            TabRulesBtn.Effect = tabIndex == 1 ? activeShadow : null;
+            0 => TabOverviewBtn,
+            1 => TabRulesBtn,
+            2 => TabLogsBtn,
+            3 => TabAboutBtn,
+            _ => TabOverviewBtn
+        };
+    }
+
+    private void MoveTabSelectionIndicator(double targetX, double targetWidth)
+    {
+        if (!_tabSelectionIndicatorInitialized)
+        {
+            TabSelectionIndicator.Width = targetWidth;
+            TabSelectionTransform.X = targetX;
+            TabSelectionIndicator.Opacity = 1;
+            _tabSelectionIndicatorInitialized = true;
+            return;
         }
 
-        if (TabLogsBtn != null)
-        {
-            TabLogsBtn.Background = tabIndex == 2 ? activeBrush : inactiveBrush;
-            TabLogsBtn.BorderBrush = tabIndex == 2 ? activeBorder : inactiveBorder;
-            TabLogsBtn.BorderThickness = uniformBorderThickness;
-            TabLogsBtn.Foreground = tabIndex == 2 ? activeText : inactiveText;
-            TabLogsBtn.Effect = tabIndex == 2 ? activeShadow : null;
-        }
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(210);
 
-        if (TabAboutBtn != null)
-        {
-            TabAboutBtn.Background = tabIndex == 3 ? activeBrush : inactiveBrush;
-            TabAboutBtn.BorderBrush = tabIndex == 3 ? activeBorder : inactiveBorder;
-            TabAboutBtn.BorderThickness = uniformBorderThickness;
-            TabAboutBtn.Foreground = tabIndex == 3 ? activeText : inactiveText;
-            TabAboutBtn.Effect = tabIndex == 3 ? activeShadow : null;
-        }
+        TabSelectionTransform.BeginAnimation(
+            TranslateTransform.XProperty,
+            new DoubleAnimation(targetX, duration) { EasingFunction = ease });
+        TabSelectionIndicator.BeginAnimation(
+            WidthProperty,
+            new DoubleAnimation(targetWidth, duration) { EasingFunction = ease });
+        TabSelectionIndicator.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(1, TimeSpan.FromMilliseconds(110)) { EasingFunction = ease });
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

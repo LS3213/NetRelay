@@ -235,104 +235,104 @@ public sealed class UpdateService
     {
         var config = _configService.Current;
         var filename = "win-x64.zip"; // standard package filename
-        string downloadUrl;
-
-        // Determine download URL (try primary first)
-        bool useGithub = false;
-        try
-        {
-            using var client = ActivationService.CreateHttpClient();
-            client.Timeout = TimeSpan.FromSeconds(5);
-            var headUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
-            var headRequest = new HttpRequestMessage(HttpMethod.Head, headUrl);
-            var headResponse = await client.SendAsync(headRequest, cancellationToken);
-            if (headResponse.IsSuccessStatusCode)
-            {
-                downloadUrl = headUrl;
-            }
-            else
-            {
-                useGithub = true;
-            }
-        }
-        catch
-        {
-            useGithub = true;
-        }
-
-        if (useGithub)
-        {
-            // Retrieve download URL from GitHub release assets
-            if (string.IsNullOrWhiteSpace(config.GithubRepository))
-            {
-                throw new InvalidOperationException("未配置备用 GitHub 仓库，无法完成下载。");
-            }
-            downloadUrl = await GetGitHubAssetUrlAsync(config.GithubRepository, manifest.Version, filename, cancellationToken);
-        }
-        else
-        {
-            downloadUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
-        }
+        var primaryUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
 
         // Execute download with progress reporting and SHA256 hashing
         var tempDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetRelay", "updates");
         Directory.CreateDirectory(tempDirectory);
         var tempFilePath = Path.Combine(tempDirectory, $"update-{manifest.Version}.zip");
 
-        using var httpClient = ActivationService.CreateHttpClient();
-        httpClient.Timeout = TimeSpan.FromMinutes(5);
-        if (useGithub)
-        {
-            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("NetRelay-Client");
-        }
-
-        using var response = await httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var totalBytes = response.Content.Headers.ContentLength ?? manifest.PackageSize;
-
-        using var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var destStream = File.Create(tempFilePath);
-        using var sha256 = SHA256.Create();
-
-        var buffer = new byte[81920];
-        long totalRead = 0;
-        int read;
-
-        while ((read = await sourceStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
-        {
-            await destStream.WriteAsync(buffer, 0, read, cancellationToken);
-            sha256.TransformBlock(buffer, 0, read, null, 0);
-
-            totalRead += read;
-            if (totalBytes > 0)
-            {
-                progressCallback?.Invoke((double)totalRead / totalBytes);
-            }
-        }
-
-        sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-        var downloadedHash = Convert.ToHexString(sha256.Hash!).ToLower();
-
-        if (!string.Equals(downloadedHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            if (File.Exists(tempFilePath))
-            {
-                File.Delete(tempFilePath);
-            }
-            throw new CryptographicException($"下载包哈希值不匹配。预期: {manifest.Sha256}，实际: {downloadedHash}");
-        }
-
-        var verifiedResponse = manifest.VerifiedResponse
-            ?? throw new CryptographicException("缺少已验证的更新清单，无法启动独立更新器。");
-        var manifestPath = Path.Combine(tempDirectory, $"update-{manifest.Version}.manifest.json");
-        await File.WriteAllTextAsync(
-            manifestPath,
-            JsonSerializer.Serialize(verifiedResponse, new JsonSerializerOptions { WriteIndented = true }),
-            Encoding.UTF8,
+        using var primaryClient = ActivationService.CreateHttpClient();
+        primaryClient.Timeout = TimeSpan.FromMinutes(5);
+        using var primaryRequest = CreatePrimaryDownloadRequest(primaryUrl);
+        using var primaryResponse = await primaryClient.SendAsync(
+            primaryRequest,
+            HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
 
-        return new DownloadedUpdatePackage(tempFilePath, manifestPath);
+        HttpResponseMessage response = primaryResponse;
+        HttpClient? fallbackClient = null;
+        HttpResponseMessage? fallbackResponse = null;
+        if (!primaryResponse.IsSuccessStatusCode)
+        {
+            if (!config.AllowGithubFallback || string.IsNullOrWhiteSpace(config.GithubRepository))
+            {
+                throw new HttpRequestException(
+                    $"主更新源下载失败（HTTP {(int)primaryResponse.StatusCode} {primaryResponse.ReasonPhrase}），且未启用可用的 GitHub 备用源。",
+                    null,
+                    primaryResponse.StatusCode);
+            }
+
+            var githubUrl = await GetGitHubAssetUrlAsync(config.GithubRepository, manifest.Version, filename, cancellationToken);
+            fallbackClient = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+            fallbackClient.DefaultRequestHeaders.UserAgent.ParseAdd("NetRelay-Client");
+            fallbackResponse = await fallbackClient.GetAsync(githubUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response = fallbackResponse;
+        }
+
+        try
+        {
+            response.EnsureSuccessStatusCode();
+
+            var totalBytes = response.Content.Headers.ContentLength ?? manifest.PackageSize;
+
+            using var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var destStream = File.Create(tempFilePath);
+            using var sha256 = SHA256.Create();
+
+            var buffer = new byte[81920];
+            long totalRead = 0;
+            int read;
+
+            while ((read = await sourceStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+            {
+                await destStream.WriteAsync(buffer, 0, read, cancellationToken);
+                sha256.TransformBlock(buffer, 0, read, null, 0);
+
+                totalRead += read;
+                if (totalBytes > 0)
+                {
+                    progressCallback?.Invoke((double)totalRead / totalBytes);
+                }
+            }
+
+            sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            var downloadedHash = Convert.ToHexString(sha256.Hash!).ToLower();
+
+            if (!string.Equals(downloadedHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                if (File.Exists(tempFilePath))
+                {
+                    File.Delete(tempFilePath);
+                }
+                throw new CryptographicException($"下载包哈希值不匹配。预期: {manifest.Sha256}，实际: {downloadedHash}");
+            }
+
+            var verifiedResponse = manifest.VerifiedResponse
+                ?? throw new CryptographicException("缺少已验证的更新清单，无法启动独立更新器。");
+            var manifestPath = Path.Combine(tempDirectory, $"update-{manifest.Version}.manifest.json");
+            await File.WriteAllTextAsync(
+                manifestPath,
+                JsonSerializer.Serialize(verifiedResponse, new JsonSerializerOptions { WriteIndented = true }),
+                Encoding.UTF8,
+                cancellationToken);
+
+            return new DownloadedUpdatePackage(tempFilePath, manifestPath);
+        }
+        finally
+        {
+            fallbackResponse?.Dispose();
+            fallbackClient?.Dispose();
+        }
+    }
+
+    private static HttpRequestMessage CreatePrimaryDownloadRequest(string url)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+        request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
+        request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
+        return request;
     }
 
     private async Task<string> GetGitHubAssetUrlAsync(string repo, string version, string filename, CancellationToken cancellationToken)

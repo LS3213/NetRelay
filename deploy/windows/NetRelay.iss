@@ -11,12 +11,17 @@
 #define AppName "NetRelay"
 #define AppPublisher "lansi"
 #define AppExeName "NetRelay.exe"
+#define AppFileVersion AppVersion + ".0"
 
 [Setup]
 AppId={{30D70777-CECF-49AA-AD6E-706EBF03C3A8}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+VersionInfoVersion={#AppFileVersion}
+VersionInfoCompany={#AppPublisher}
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#AppVersion}
 DefaultDirName={autopf}\NetRelay
 DefaultGroupName=NetRelay
 DisableProgramGroupPage=yes

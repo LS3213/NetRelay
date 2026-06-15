@@ -7,6 +7,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using NetRelay.Contracts;
 using NetRelay.Contracts.Security;
 
@@ -56,6 +57,8 @@ public static class Program
                 executable = args[++i];
             }
         }
+
+        RecoverLegacyMalformedTargetArguments(args, ref targetDir, ref parentPid, ref executable);
 
         if (string.IsNullOrEmpty(packagePath) || string.IsNullOrEmpty(manifestPath) || string.IsNullOrEmpty(targetDir) || parentPid == -1 || string.IsNullOrEmpty(executable))
         {
@@ -293,6 +296,45 @@ public static class Program
             }
             return 3;
         }
+    }
+
+    private static void RecoverLegacyMalformedTargetArguments(
+        IReadOnlyList<string> args,
+        ref string? targetDir,
+        ref int parentPid,
+        ref string? executable)
+    {
+        if (string.IsNullOrWhiteSpace(targetDir) || (parentPid != -1 && !string.IsNullOrWhiteSpace(executable)))
+        {
+            return;
+        }
+
+        var targetIndex = -1;
+        for (var index = 0; index < args.Count; index++)
+        {
+            if (string.Equals(args[index], "--target-dir", StringComparison.OrdinalIgnoreCase))
+            {
+                targetIndex = index;
+                break;
+            }
+        }
+
+        var malformedTail = targetIndex >= 0 && targetIndex + 1 < args.Count
+            ? string.Join(" ", args.Skip(targetIndex + 1))
+            : targetDir;
+        var match = Regex.Match(
+            malformedTail,
+            "^(?<target>.+?)\"?\\s+--parent-pid\\s+(?<pid>\\d+)\\s+--executable\\s+(?<executable>.+)$",
+            RegexOptions.CultureInvariant);
+        if (!match.Success || !int.TryParse(match.Groups["pid"].Value, out var recoveredPid))
+        {
+            return;
+        }
+
+        targetDir = match.Groups["target"].Value.TrimEnd('"');
+        parentPid = recoveredPid;
+        executable = match.Groups["executable"].Value.Trim().Trim('"');
+        Log("检测到旧客户端产生的畸形更新器参数，已完成兼容恢复。");
     }
 
     private static void CleanupObsoleteRuntimeFiles(

@@ -41,6 +41,8 @@
 
 `config/` 和 `data/` 不得放入网站公开目录。安装完成后，磁盘中的 `install.token` 会被删除；`installed.lock` 存在时，即使 `runtime-config.json` 损坏，安装器也保持关闭并让服务失败关闭。
 
+管理后台上传的客户端更新 ZIP 保存在 `data/releases/{channel}/{version}/{architecture}.zip`。例如稳定版 `1.2.1` 的默认实际路径是 `/www/server/netrelay/data/releases/stable/1.2.1/win-x64.zip`。撤回版本不会立即删除该文件；重新上传相同版本时会覆盖原文件并将记录恢复为草稿。
+
 ## 3. 首次安装数据流
 
 ```mermaid
@@ -138,7 +140,28 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 | `deploy/baota/netrelay.service` | 后端 systemd 服务模板 |
 | `deploy/baota/nginx-location.conf` | 宝塔 Nginx 路由片段 |
 
-## 8. 当前验证与未确认项
+`nginx-location.conf` 包含 `client_max_body_size 512m;`，用于允许管理后台上传 Windows 在线更新 ZIP。若宝塔站点配置中已有更小的 `client_max_body_size`，应移除或改为不小于 `512m`，否则上传 `win-x64.zip` 会在反向代理层返回 HTTP 413。
+
+## 8. 更新发布故障速查
+
+| 现象 | 检查重点 |
+| --- | --- |
+| 上传更新 ZIP 返回 HTTP 413 | 宝塔站点 `server` 块是否包含 `client_max_body_size 512m;`；是否存在更小的重复限制；后端是否已部署最新包 |
+| 客户端更新检查或下载返回 HTTP 404 | 更新记录是否已经发布；通道和架构是否匹配；线上后端是否支持更新包 GET/HEAD；更新文件是否实际存在 |
+| 撤回后无法重新上传相同版本 | 线上仍运行旧后端；部署最新 `baota-portable.zip` 并执行 `install.sh` |
+| 后端提示数据库缺少列 | 升级时跳过了 Migration；重新执行 `sudo bash /www/wwwroot/netrelay/install.sh` |
+
+常用命令：
+
+```bash
+systemctl status netrelay
+journalctl -u netrelay -n 200 --no-pager
+find /www/server/netrelay/data/releases -maxdepth 4 -type f -ls
+nginx -t
+systemctl reload nginx
+```
+
+## 9. 当前验证与未确认项
 
 已自动验证：
 

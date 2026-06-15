@@ -327,6 +327,16 @@ select {
   margin: 0;
 }
 
+.detail-code {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  color: #425575;
+  overflow-wrap: anywhere;
+}
+
 /* Filter Bar and Pagination styles */
 .filter-bar {
   display: flex;
@@ -380,4 +390,3 @@ select {
   color: #71809a;
   font-weight: 500;
 }
-
