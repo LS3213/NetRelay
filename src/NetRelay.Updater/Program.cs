@@ -18,12 +18,16 @@ public static class Program
 {
     private static string _logFilePath = string.Empty;
     private static readonly string RootPublicKey = OperationalKeyCertificate.DefaultRootPublicKeyBase64;
+    private static UpdaterProgressUi? _progressUi;
 
+    [STAThread]
     public static int Main(string[] args)
     {
         InitializeLogFile();
         Log("=========================================");
         Log($"独立更新器启动，命令行参数: {string.Join(" ", args)}");
+        _progressUi = UpdaterProgressUi.Start();
+        _progressUi.Report("正在更新 NetRelay", "正在启动独立更新器...", 3);
 
         // 1. 参数解析
         string? packagePath = null;
@@ -64,6 +68,7 @@ public static class Program
         if (string.IsNullOrEmpty(packagePath) || string.IsNullOrEmpty(manifestPath) || string.IsNullOrEmpty(targetDir) || parentPid == -1 || string.IsNullOrEmpty(executable))
         {
             Log("错误: 缺失必要参数 (--package, --manifest, --target-dir, --parent-pid, --executable)。");
+            _progressUi.Fail("更新器启动失败", "缺少必要启动参数。请重新打开 NetRelay 后再检查更新。");
             return 1;
         }
 
@@ -73,6 +78,7 @@ public static class Program
         {
             // 2. 等待父进程退出
             Log($"等待父进程 (PID: {parentPid}) 退出...");
+            _progressUi.Report("正在准备更新", "正在等待 NetRelay 退出...", 8);
             try
             {
                 var parentProcess = Process.GetProcessById(parentPid);
@@ -89,6 +95,7 @@ public static class Program
 
             // 3. 安全性自检：验证服务端签名清单及更新 ZIP 哈希
             Log("开始验证更新清单签名和更新包哈希...");
+            _progressUi.Report("正在校验更新包", "正在验证更新清单签名和文件完整性...", 18);
             if (!File.Exists(packagePath))
             {
                 throw new FileNotFoundException($"找不到更新包文件: {packagePath}");
@@ -137,9 +144,11 @@ public static class Program
             }
 
             Log($"签名和哈希验证成功。目标版本: v{manifest.Version}");
+            _progressUi.Report("更新包校验通过", $"目标版本 v{manifest.Version}，正在准备安装...", 30);
 
             // 4. 备份旧文件
             Log("正在准备文件备份...");
+            _progressUi.Report("正在备份旧版本", "正在保存当前版本文件，便于失败时自动回滚...", 38);
             var backupRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetRelay", "updates", "backup-" + DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss"));
             Directory.CreateDirectory(backupRoot);
 
@@ -165,13 +174,17 @@ public static class Program
                 backupMap.Add((file, backupPath));
             }
             Log($"备份完成。共备份了 {backupMap.Count} 个文件，备份目录: {backupRoot}");
+            _progressUi.Report("旧版本备份完成", $"已备份 {backupMap.Count} 个文件。", 50);
 
             // 5. 解压覆盖写入文件
             Log("正在解压覆盖新版本文件...");
+            _progressUi.Report("正在安装新版本", "正在写入更新文件...", 56);
             using (var packageStream = OpenPackageWithRetry(packagePath))
             using (var zip = new ZipArchive(packageStream, ZipArchiveMode.Read))
             {
                 var normalizedTargetDir = Path.GetFullPath(targetDir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                var totalFileEntries = Math.Max(1, zip.Entries.Count(entry => !string.IsNullOrEmpty(entry.Name)));
+                var processedFileEntries = 0;
                 foreach (var entry in zip.Entries)
                 {
                     var destinationPath = Path.GetFullPath(Path.Combine(normalizedTargetDir, entry.FullName));
@@ -195,13 +208,18 @@ public static class Program
                         }
                         installedFiles.Add(destinationPath);
                         entry.ExtractToFile(destinationPath, overwrite: true);
+                        processedFileEntries++;
+                        var progress = 56 + (int)Math.Round(processedFileEntries * 24.0 / totalFileEntries);
+                        _progressUi.Report("正在安装新版本", $"正在写入文件 {processedFileEntries}/{totalFileEntries}", progress);
                     }
                 }
             }
             Log("文件解压覆盖成功。");
+            _progressUi.Report("新版本文件写入完成", "正在启动自检...", 82);
 
             // 6. 验证新版本
             Log("正在对新版本进行运行自检...");
+            _progressUi.Report("正在验证新版本", "正在进行启动自检，确认更新可用...", 88);
             var verifyExePath = Path.Combine(targetDir, executable);
             if (!File.Exists(verifyExePath))
             {
@@ -249,6 +267,7 @@ public static class Program
             if (verifySuccess)
             {
                 Log("新版本自检通过！正在清理备份并启动主程序...");
+                _progressUi.Report("新版本自检通过", "正在清理旧版运行文件...", 94);
                 CleanupObsoleteRuntimeFiles(targetDir, installedFiles);
 
                 // 清理备份
@@ -269,12 +288,14 @@ public static class Program
                 });
 
                 Log("更新完成，独立更新器退出。");
+                _progressUi.Complete("更新完成", $"NetRelay 已更新到 v{manifest.Version}，正在启动新版本。");
                 return 0;
             }
             else
             {
                 // 自检失败，执行回滚
                 Log("警告: 新版本自检失败！正在执行文件自动回滚恢复...");
+                _progressUi.Report("正在回滚", "新版本自检失败，正在恢复旧版本文件...", 92);
                 Rollback(backupMap, installedFiles);
 
                 // 启动旧版本
@@ -285,6 +306,7 @@ public static class Program
                 });
 
                 Log("回滚已完成，原旧版本已被成功拉起。更新器退出。");
+                _progressUi.Fail("更新未完成", "新版本自检失败，已回滚并重新启动旧版本。");
                 return 2;
             }
         }
@@ -294,9 +316,15 @@ public static class Program
             if (backupMap.Count > 0)
             {
                 Log("正在回滚异常发生前已修改的文件...");
+                _progressUi?.Report("正在回滚", "更新过程中发生错误，正在恢复旧版本文件...", 90);
                 Rollback(backupMap, installedFiles);
             }
+            _progressUi?.Fail("更新失败", "已尝试回滚。请重新打开 NetRelay 后再检查更新，或导出诊断日志。");
             return 3;
+        }
+        finally
+        {
+            _progressUi?.Dispose();
         }
     }
 

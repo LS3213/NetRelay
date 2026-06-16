@@ -57,6 +57,7 @@ public partial class MainWindow : Window
             _ruleScheduler,
             logService);
         DataContext = _viewModel;
+        Loaded += async (_, _) => await _viewModel.CheckForUpdatesOnStartupAsync();
 
         // Listen to events
         _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;

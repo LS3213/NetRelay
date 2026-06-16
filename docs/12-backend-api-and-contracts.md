@@ -154,10 +154,13 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
 | 方法与路径 | 用途 |
 | --- | --- |
 | `GET /api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=...` | 获取签名更新清单 |
+| `GET /api/v1/updates/history?channel=stable&architecture=win-x64` | 获取当前通道仍处于已发布状态的更新历史 |
 | `GET /api/v1/updates/{version}/download/{filename}` | 下载服务器主源更新包 |
 | `HEAD /api/v1/updates/{version}/download/{filename}` | 供已安装客户端在正式下载前探测主源更新包是否可用 |
 
-更新清单载荷至少包含版本、通道、架构、最低升级版本、包大小、SHA256、签名、发布日期和发布说明摘要。主源不可用时客户端直接调用 GitHub Releases API，不经后端代理。
+更新清单载荷至少包含版本、通道、架构、最低升级版本、包大小、SHA256、签名、发布日期、发布说明摘要和 `isMandatory` 强制更新标志。主源不可用时客户端直接调用 GitHub Releases API，不经后端代理。
+
+更新历史接口仅返回公开发布信息，不返回下载路径、SHA256、草稿或已撤回记录。客户端启动检查在无新版时静默；发现新版时展示更新日志确认窗口。关于页的手动检查复用同一窗口，关于页更新历史通过公开历史接口读取。
 
 更新包 `GET` 与 `HEAD` 必须兼容已经交付的旧客户端，允许下载请求缺少协议版本头，但只返回已发布且文件名匹配的更新包；更新检查和其他 API 仍执行协议版本校验。管理端上传创建草稿，发布后才允许公开检查和下载；撤回后禁止公开下载。相同版本、通道和架构的记录一旦创建即不可覆盖，撤回后仍保留记录和审计历史，修复内容必须提升版本号重新发布。
 

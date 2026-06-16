@@ -16,6 +16,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        _ = new DiagnosticLogService().InfoAsync("startup", "application", "started", detail: $"version={NetRelay.Contracts.Protocol.ProductVersion}; args={e.Args.Length}");
         SmoothScrollBehavior.Enable();
 
         if (TryConfigureAutoStart(e.Args, out var autoStartExitCode))
@@ -196,6 +197,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _ = new DiagnosticLogService().InfoAsync("startup", "application", "exited", detail: $"exitCode={e.ApplicationExitCode}");
         _singleInstanceService?.Dispose();
         base.OnExit(e);
     }

@@ -19,6 +19,7 @@ public sealed record DownloadedUpdatePackage(string PackagePath, string Manifest
 public sealed class UpdateService
 {
     private readonly ConfigurationService _configService;
+    private readonly DiagnosticLogService _diagnosticLog = new();
     private static readonly string RootPublicKey = OperationalKeyCertificate.DefaultRootPublicKeyBase64;
 
     public UpdateService(ConfigurationService configService)
@@ -66,6 +67,7 @@ public sealed class UpdateService
     {
         var config = _configService.Current;
         var now = DateTimeOffset.UtcNow;
+        await _diagnosticLog.InfoAsync("update", "check", "started", detail: $"source=primary; channel={config.UpdateChannel}; currentVersion={currentVersion}");
 
         // Try primary source first
         try
@@ -73,13 +75,14 @@ public sealed class UpdateService
             var manifest = await CheckPrimarySourceAsync(config.PrimaryApiBaseUrl, config.UpdateChannel, currentVersion, now, cancellationToken);
             if (manifest != null)
             {
+                await _diagnosticLog.InfoAsync("update", "check", "available", detail: $"version={manifest.Version}; mandatory={manifest.IsMandatory}");
                 return manifest;
             }
         }
         catch (Exception ex)
         {
             // Logging or tracing can be done here, now we proceed to fallback
-            System.Diagnostics.Debug.WriteLine($"Primary update source failed: {ex.Message}");
+            await _diagnosticLog.ErrorAsync("update", "check-primary", ex);
         }
 
         // Fallback to GitHub source if enabled
@@ -87,14 +90,17 @@ public sealed class UpdateService
         {
             try
             {
-                return await CheckGitHubSourceAsync(config.GithubRepository, currentVersion, now, cancellationToken);
+                var manifest = await CheckGitHubSourceAsync(config.GithubRepository, currentVersion, now, cancellationToken);
+                await _diagnosticLog.InfoAsync("update", "check-fallback", manifest is null ? "not-available" : "available");
+                return manifest;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"GitHub update fallback failed: {ex.Message}");
+                await _diagnosticLog.ErrorAsync("update", "check-fallback", ex);
             }
         }
 
+        await _diagnosticLog.InfoAsync("update", "check", "not-available");
         return null;
     }
 
@@ -112,13 +118,16 @@ public sealed class UpdateService
         var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
         request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
         request.Headers.Add(Protocol.ClientVersionHeader, currentVersion);
-        request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
+        var requestId = Guid.NewGuid().ToString("N");
+        request.Headers.Add(Protocol.RequestIdHeader, requestId);
 
         var response = await client.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            await _diagnosticLog.InfoAsync("update", "check-primary-response", "not-success", requestId, (int)response.StatusCode);
             return null;
         }
+        await _diagnosticLog.InfoAsync("update", "check-primary-response", "success", requestId, (int)response.StatusCode);
 
         var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<UpdateCheckResponse>>(
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, 
@@ -130,6 +139,36 @@ public sealed class UpdateService
         }
 
         return VerifyAndExtractManifest(apiResponse.Data, now);
+    }
+
+    public async Task<IReadOnlyList<UpdateHistoryItem>> GetHistoryAsync(CancellationToken cancellationToken)
+    {
+        var config = _configService.Current;
+        using var client = ActivationService.CreateHttpClient();
+        client.Timeout = TimeSpan.FromSeconds(10);
+        var requestId = Guid.NewGuid().ToString("N");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/history?channel={Uri.EscapeDataString(config.UpdateChannel)}&architecture=win-x64");
+        request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+        request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
+        request.Headers.Add(Protocol.RequestIdHeader, requestId);
+
+        try
+        {
+            using var response = await client.SendAsync(request, cancellationToken);
+            await _diagnosticLog.InfoAsync("update", "history-response", response.IsSuccessStatusCode ? "success" : "not-success", requestId, (int)response.StatusCode);
+            response.EnsureSuccessStatusCode();
+            var payload = await response.Content.ReadFromJsonAsync<ApiResponse<List<UpdateHistoryItem>>>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                cancellationToken);
+            return payload?.Data ?? [];
+        }
+        catch (Exception exception)
+        {
+            await _diagnosticLog.ErrorAsync("update", "history", exception, requestId: requestId);
+            throw;
+        }
     }
 
     private async Task<UpdateManifest?> CheckGitHubSourceAsync(
@@ -236,6 +275,7 @@ public sealed class UpdateService
         var config = _configService.Current;
         var filename = "win-x64.zip"; // standard package filename
         var primaryUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
+        await _diagnosticLog.InfoAsync("update", "download", "started", detail: $"version={manifest.Version}; expectedBytes={manifest.PackageSize}");
 
         // Execute download with progress reporting and SHA256 hashing
         var tempDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetRelay", "updates");
@@ -278,6 +318,7 @@ public sealed class UpdateService
             var totalBytes = response.Content.Headers.ContentLength ?? manifest.PackageSize;
 
             using var sha256 = SHA256.Create();
+            long totalRead = 0;
             try
             {
                 await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
@@ -290,7 +331,6 @@ public sealed class UpdateService
                     FileOptions.Asynchronous | FileOptions.SequentialScan))
                 {
                     var buffer = new byte[81920];
-                    long totalRead = 0;
                     int read;
 
                     while ((read = await sourceStream.ReadAsync(buffer, cancellationToken)) > 0)
@@ -313,6 +353,7 @@ public sealed class UpdateService
 
                 if (!string.Equals(downloadedHash, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
+                    await _diagnosticLog.InfoAsync("update", "download-verify", "hash-mismatch", bytes: totalRead);
                     throw new CryptographicException($"下载包哈希值不匹配。预期: {manifest.Sha256}，实际: {downloadedHash}");
                 }
 
@@ -327,9 +368,10 @@ public sealed class UpdateService
                     Encoding.UTF8,
                     cancellationToken);
 
+                await _diagnosticLog.InfoAsync("update", "download", "completed", bytes: totalRead, detail: $"version={manifest.Version}");
                 return new DownloadedUpdatePackage(tempFilePath, manifestPath);
             }
-            catch
+            catch (Exception exception)
             {
                 if (File.Exists(downloadFilePath))
                 {
@@ -342,6 +384,11 @@ public sealed class UpdateService
                         // A scanner may briefly retain the failed temporary file.
                     }
                 }
+                await _diagnosticLog.ErrorAsync(
+                    "update",
+                    "download",
+                    exception,
+                    bytes: File.Exists(downloadFilePath) ? new FileInfo(downloadFilePath).Length : null);
                 throw;
             }
         }

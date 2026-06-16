@@ -781,6 +781,7 @@
                                     <!-- Action Buttons -->
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                         <Button Style="{StaticResource PrimaryButtonStyle}" Content="检查更新" Command="{Binding CheckUpdatesCommand}" Margin="0,0,16,0" Padding="24,11"/>
+                                        <Button Style="{StaticResource SoftButtonStyle}" Content="更新历史" Command="{Binding UpdateHistoryCommand}" Margin="0,0,16,0" Padding="24,11"/>
                                         <Button Style="{StaticResource SoftButtonStyle}" Content="建议与反馈" Command="{Binding FeedbackCommand}" Padding="24,11"/>
                                     </StackPanel>
                                 </StackPanel>

@@ -126,6 +126,7 @@ app.MapGet("/openapi/v1.yaml", async (CancellationToken cancellationToken) =>
         await File.ReadAllBytesAsync(path, cancellationToken),
         "application/yaml; charset=utf-8");
 });
+app.MapGet("/api/v1/updates/history", GetUpdateHistoryAsync);
 
 var adminAuth = app.MapGroup("/api/v1/admin/auth");
 adminAuth.MapPost("/login", LoginAsync).RequireRateLimiting("admin-login");
@@ -627,7 +628,8 @@ static async Task<IResult> GetLatestUpdateAsync(
         PackageSize = latest.PackageSize,
         Sha256 = latest.Sha256,
         ReleaseDate = latest.ReleaseDate,
-        Changelog = latest.Changelog
+        Changelog = latest.Changelog,
+        IsMandatory = latest.IsMandatory
     };
 
     var payload = new Dictionary<string, object?>
@@ -639,7 +641,8 @@ static async Task<IResult> GetLatestUpdateAsync(
         ["packageSize"] = manifest.PackageSize,
         ["sha256"] = manifest.Sha256,
         ["releaseDate"] = manifest.ReleaseDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-        ["changelog"] = manifest.Changelog
+        ["changelog"] = manifest.Changelog,
+        ["isMandatory"] = manifest.IsMandatory
     };
 
     var envelope = keyManagementService.Sign(
@@ -656,6 +659,35 @@ static async Task<IResult> GetLatestUpdateAsync(
     };
 
     return Results.Ok(new ApiResponse<UpdateCheckResponse>(ApiInfrastructure.GetRequestId(context), response));
+}
+
+static async Task<IResult> GetUpdateHistoryAsync(
+    string channel,
+    string architecture,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(channel) || string.IsNullOrWhiteSpace(architecture))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "更新通道和架构不能为空。");
+    }
+
+    var releases = await dbContext.Releases
+        .Where(r => r.Status == "published" && r.Channel == channel && r.Architecture == architecture)
+        .Select(r => new UpdateHistoryItem
+        {
+            Version = r.Version,
+            Channel = r.Channel,
+            Architecture = r.Architecture,
+            ReleaseDate = r.ReleaseDate,
+            Changelog = r.Changelog,
+            IsMandatory = r.IsMandatory
+        })
+        .ToListAsync(cancellationToken);
+
+    releases.Sort((left, right) => CompareReleaseVersions(right.Version, left.Version));
+    return Results.Ok(new ApiResponse<List<UpdateHistoryItem>>(ApiInfrastructure.GetRequestId(context), releases));
 }
 
 static int CompareReleaseVersions(string? left, string? right)
@@ -744,6 +776,7 @@ static async Task<IResult> CreateReleaseAsync(
     var architecture = form["architecture"].ToString();
     var minUpgradableVersion = form["minUpgradableVersion"].ToString();
     var changelog = form["changelog"].ToString();
+    var isMandatory = bool.TryParse(form["isMandatory"].ToString(), out var mandatory) && mandatory;
 
     if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(channel) ||
         string.IsNullOrWhiteSpace(architecture) || string.IsNullOrWhiteSpace(minUpgradableVersion))
@@ -820,6 +853,7 @@ static async Task<IResult> CreateReleaseAsync(
         Sha256 = sha256Hex,
         ReleaseDate = now,
         Changelog = changelog,
+        IsMandatory = isMandatory,
         AssetPath = targetPath,
         Status = "draft",
         CreatedAt = now
@@ -833,7 +867,7 @@ static async Task<IResult> CreateReleaseAsync(
         "success",
         ApiInfrastructure.GetRequestId(context),
         release.Id,
-        details: new { version, channel, architecture },
+        details: new { version, channel, architecture, isMandatory },
         cancellationToken: cancellationToken);
 
     return Results.Ok(new ApiResponse<Release>(ApiInfrastructure.GetRequestId(context), release));

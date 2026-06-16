@@ -970,6 +970,7 @@ static async Task TestUpdateApiAsync()
         form.Add(new StringContent("win-x64"), "architecture");
         form.Add(new StringContent("1.0.0"), "minUpgradableVersion");
         form.Add(new StringContent("Changelog message"), "changelog");
+        form.Add(new StringContent("true"), "isMandatory");
         
         var streamContent = new StreamContent(fileStream);
         streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
@@ -989,6 +990,7 @@ static async Task TestUpdateApiAsync()
         Assert(createResponse != null && createResponse.Data != null, "Create release response null");
         var releaseId = createResponse.Data.Id;
         Assert(createResponse.Data.Status == "draft", "Status should be draft");
+        Assert(createResponse.Data.IsMandatory, "Mandatory release flag should be stored");
 
         // 5. Check latest updates -> expect 404 (draft releases should not be visible to clients)
         var draftCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
@@ -1032,6 +1034,12 @@ static async Task TestUpdateApiAsync()
         Assert(manifest != null, "Manifest deserialization failed");
         Assert(manifest.Version == "1.3.0", "Version mismatch");
         Assert(manifest.Sha256 == createResponse.Data.Sha256, "Sha256 hash mismatch");
+        Assert(manifest.IsMandatory, "Signed update manifest should carry mandatory release flag");
+
+        var historyResult = await SendGetAsync(client, "/api/v1/updates/history?channel=stable&architecture=win-x64");
+        Assert(historyResult.StatusCode == HttpStatusCode.OK, $"Published history failed: {historyResult.StatusCode}");
+        var history = await historyResult.Content.ReadFromJsonAsync<ApiResponse<List<UpdateHistoryItem>>>();
+        Assert(history?.Data.Count == 1 && history.Data[0].Version == "1.3.0", "Published release should appear in update history");
 
         // 9. Download package
         var downloadResult = await SendGetAsync(client, "/api/v1/updates/1.3.0/download/win-x64.zip");
@@ -1066,6 +1074,9 @@ static async Task TestUpdateApiAsync()
         // 11. Check latest updates -> expect 404 UpdateNotAvailable
         var finalCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=1.0.0");
         Assert(finalCheck.StatusCode == HttpStatusCode.NotFound, "Revoked release should not be visible");
+        var revokedHistoryResult = await SendGetAsync(client, "/api/v1/updates/history?channel=stable&architecture=win-x64");
+        var revokedHistory = await revokedHistoryResult.Content.ReadFromJsonAsync<ApiResponse<List<UpdateHistoryItem>>>();
+        Assert(revokedHistory?.Data.Count == 0, "Revoked release must not appear in update history");
 
         // 12. Upload the same revoked version again -> reject to preserve immutable version URLs
         var replacementZipPath = Path.Combine(root, "win-x64-replacement.zip");

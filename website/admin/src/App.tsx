@@ -155,6 +155,7 @@ export function App() {
   const [relArch, setRelArch] = useState("win-x64");
   const [relMinVer, setRelMinVer] = useState("0.1.0");
   const [relChangelog, setRelChangelog] = useState("");
+  const [relMandatory, setRelMandatory] = useState(false);
   const [relFile, setRelFile] = useState<File | null>(null);
   const [releaseUploadState, setReleaseUploadState] = useState<ReleaseUploadState>("idle");
   const [releaseUploadProgress, setReleaseUploadProgress] = useState(0);
@@ -318,6 +319,7 @@ export function App() {
         formData.append("architecture", relArch);
         formData.append("minUpgradableVersion", relMinVer.trim());
         formData.append("changelog", relChangelog.trim());
+        formData.append("isMandatory", String(relMandatory));
         formData.append("file", relFile);
 
         await createRelease(formData, (loaded, total) => {
@@ -333,6 +335,7 @@ export function App() {
         setMessage("更新包上传草稿成功。");
         setRelVersion("");
         setRelChangelog("");
+        setRelMandatory(false);
         setRelFile(null);
         const fileInput = document.getElementById("release-file-input") as HTMLInputElement;
         if (fileInput) fileInput.value = "";
@@ -723,6 +726,7 @@ export function App() {
                             {rel.status === "published" && "已发布"}
                             {rel.status === "revoked" && "已撤回"}
                           </span>
+                          {rel.isMandatory && <span className="badge revoked" style={{ marginLeft: "6px" }}>强制</span>}
                         </td>
                         <td>{formatTime(rel.createdAt)}</td>
                         <td>
@@ -788,6 +792,10 @@ export function App() {
               </label>
               <label>最低可升级版本<input placeholder="e.g. 0.1.0" value={relMinVer} onChange={(e) => setRelMinVer(e.target.value)} disabled={busy} required /></label>
               <label>更新日志 (Markdown)<textarea placeholder="描述本次更新的改进点..." value={relChangelog} onChange={(e) => setRelChangelog(e.target.value)} disabled={busy} /></label>
+              <label className="checkbox-label">
+                <input type="checkbox" checked={relMandatory} onChange={(e) => setRelMandatory(e.target.checked)} disabled={busy} />
+                强制更新（客户端检测到后不可取消）
+              </label>
               <label>更新包文件 (上传 build-delivery.ps1 生成的 win-x64.zip)
                 <input
                   id="release-file-input"
@@ -859,6 +867,10 @@ export function App() {
                   <div>
                     <label>最低可升级版本</label>
                     <div style={{ marginTop: "4px" }}>{selectedRelease.minUpgradableVersion}</div>
+                  </div>
+                  <div>
+                    <label>更新策略</label>
+                    <div style={{ marginTop: "4px" }}>{selectedRelease.isMandatory ? "强制更新" : "可选更新"}</div>
                   </div>
                   <div>
                     <label>更新日志</label>

@@ -157,6 +157,7 @@ export interface Release {
   sha256: string;
   releaseDate: string;
   changelog: string;
+  isMandatory: boolean;
   assetPath: string;
   status: "draft" | "published" | "revoked";
   createdAt: string;

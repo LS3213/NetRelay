@@ -109,6 +109,7 @@ public sealed class Release
     public required string Sha256 { get; set; }
     public DateTimeOffset ReleaseDate { get; set; }
     public required string Changelog { get; set; }
+    public bool IsMandatory { get; set; }
     public required string AssetPath { get; set; }
     public required string Status { get; set; } // "draft" | "published" | "revoked"
     public DateTimeOffset CreatedAt { get; set; }
@@ -179,4 +180,3 @@ public sealed class GlobalPolicy
     public DateTimeOffset? ExpiresAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
 }
-

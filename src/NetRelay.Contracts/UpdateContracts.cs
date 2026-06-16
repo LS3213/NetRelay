@@ -30,8 +30,32 @@ public sealed class UpdateManifest
     [JsonPropertyName("changelog")]
     public string Changelog { get; set; } = string.Empty;
 
+    [JsonPropertyName("isMandatory")]
+    public bool IsMandatory { get; set; }
+
     [JsonIgnore]
     public UpdateCheckResponse? VerifiedResponse { get; set; }
+}
+
+public sealed class UpdateHistoryItem
+{
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = string.Empty;
+
+    [JsonPropertyName("channel")]
+    public string Channel { get; set; } = string.Empty;
+
+    [JsonPropertyName("architecture")]
+    public string Architecture { get; set; } = string.Empty;
+
+    [JsonPropertyName("releaseDate")]
+    public DateTimeOffset ReleaseDate { get; set; }
+
+    [JsonPropertyName("changelog")]
+    public string Changelog { get; set; } = string.Empty;
+
+    [JsonPropertyName("isMandatory")]
+    public bool IsMandatory { get; set; }
 }
 
 public sealed class UpdateCheckResponse

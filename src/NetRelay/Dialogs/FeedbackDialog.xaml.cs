@@ -194,9 +194,17 @@ public partial class FeedbackDialog : Window
             };
             request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
             request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
-            request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
+            var requestId = Guid.NewGuid().ToString("N");
+            request.Headers.Add(Protocol.RequestIdHeader, requestId);
 
             var response = await client.SendAsync(request, token);
+            await new DiagnosticLogService().InfoAsync(
+                "feedback",
+                "submit-response",
+                response.IsSuccessStatusCode ? "success" : "not-success",
+                requestId,
+                (int)response.StatusCode,
+                tempZipPath is not null && File.Exists(tempZipPath) ? new FileInfo(tempZipPath).Length : null);
             if (fileStream != null)
             {
                 await fileStream.DisposeAsync();
@@ -236,11 +244,13 @@ public partial class FeedbackDialog : Window
         }
         catch (OperationCanceledException)
         {
+            await new DiagnosticLogService().InfoAsync("feedback", "submit", "cancelled");
             ModernMessageBox.Show(this, "已取消反馈提交与日志上传。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
             SetUploadingState(false);
         }
         catch (Exception ex)
         {
+            await new DiagnosticLogService().ErrorAsync("feedback", "submit", ex);
             ModernMessageBox.Show(this, $"发生错误: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             SetUploadingState(false);
         }

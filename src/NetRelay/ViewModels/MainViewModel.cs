@@ -28,6 +28,8 @@ public sealed class MainViewModel : ObservableObject
     private bool _isOperating;
     private bool _isLoadingLogs;
     private bool _isUpdating;
+    private UpdateManifest? _pendingUpdateManifest;
+    private bool _activeUpdateWasMandatory;
     private string? _operationMessage;
     private readonly DispatcherTimer _trafficTimer;
     private readonly DispatcherTimer _countdownTimer;
@@ -114,13 +116,16 @@ public sealed class MainViewModel : ObservableObject
                 OperationMessage = "更新功能在该受限状态下已被系统管理员禁用。";
                 await Task.Delay(2550);
                 OperationMessage = null;
+                _isUpdating = false;
+                CheckUpdatesCommand?.RaiseCanExecuteChanged();
                 return;
             }
 
             OperationMessage = "正在检查更新...";
             try
             {
-                var manifest = await _updateService.CheckForUpdatesAsync(Protocol.ProductVersion, CancellationToken.None);
+                var manifest = _pendingUpdateManifest ?? await _updateService.CheckForUpdatesAsync(Protocol.ProductVersion, CancellationToken.None);
+                _pendingUpdateManifest = null;
                 if (manifest == null)
                 {
                     OperationMessage = $"当前已是最新版本 (v{Protocol.ProductVersion})";
@@ -130,6 +135,17 @@ public sealed class MainViewModel : ObservableObject
                 }
 
                 OperationMessage = $"检测到新版本 v{manifest.Version}，正在下载更新包...";
+                _activeUpdateWasMandatory = manifest.IsMandatory;
+                OperationMessage = null;
+                var updateDialog = new NetRelay.Dialogs.UpdateAvailableDialog(manifest)
+                {
+                    Owner = System.Windows.Application.Current.MainWindow
+                };
+                if (updateDialog.ShowDialog() != true)
+                {
+                    return;
+                }
+
                 var downloadedPackage = await _updateService.DownloadPackageAsync(manifest, progress =>
                 {
                     OperationMessage = $"正在下载更新包 ({progress:P0})...";
@@ -197,12 +213,19 @@ public sealed class MainViewModel : ObservableObject
             }
             catch (Exception ex)
             {
+                await new DiagnosticLogService().ErrorAsync("update", "apply", ex);
                 OperationMessage = $"更新失败: {ex.Message}";
                 await Task.Delay(3000);
                 OperationMessage = null;
+                if (_activeUpdateWasMandatory)
+                {
+                    NetRelay.Dialogs.ModernMessageBox.Show("强制更新未完成，应用将退出。请检查网络后重新启动并重试。", "必须更新", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    System.Windows.Application.Current.Shutdown();
+                }
             }
             finally
             {
+                _activeUpdateWasMandatory = false;
                 _isUpdating = false;
                 CheckUpdatesCommand?.RaiseCanExecuteChanged();
             }
@@ -215,6 +238,22 @@ public sealed class MainViewModel : ObservableObject
                 Owner = System.Windows.Application.Current.MainWindow
             };
             dialog.ShowDialog();
+        });
+        UpdateHistoryCommand = new RelayCommand(async () =>
+        {
+            try
+            {
+                var items = await _updateService.GetHistoryAsync(CancellationToken.None);
+                new NetRelay.Dialogs.UpdateHistoryDialog(items)
+                {
+                    Owner = System.Windows.Application.Current.MainWindow
+                }.ShowDialog();
+            }
+            catch (Exception exception)
+            {
+                await new DiagnosticLogService().ErrorAsync("update", "history-dialog", exception);
+                NetRelay.Dialogs.ModernMessageBox.Show("无法加载更新历史，请稍后重试。", "更新历史", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
         });
 
         // Bind Scheduler Events
@@ -265,6 +304,31 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand CancelPendingCommand { get; }
     public RelayCommand CheckUpdatesCommand { get; }
     public RelayCommand FeedbackCommand { get; }
+    public RelayCommand UpdateHistoryCommand { get; }
+
+    public async Task CheckForUpdatesOnStartupAsync()
+    {
+        if (_isUpdating || (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false))
+        {
+            return;
+        }
+
+        try
+        {
+            var manifest = await _updateService.CheckForUpdatesAsync(Protocol.ProductVersion, CancellationToken.None);
+            if (manifest is null)
+            {
+                return;
+            }
+
+            _pendingUpdateManifest = manifest;
+            CheckUpdatesCommand.Execute(null);
+        }
+        catch (Exception exception)
+        {
+            await new DiagnosticLogService().ErrorAsync("startup", "update-check", exception);
+        }
+    }
 
     public ConfigurationService ConfigService => _configService;
     public string ProductVersionText => $"版本：v{Protocol.ProductVersion}";
@@ -513,13 +577,18 @@ public sealed class MainViewModel : ObservableObject
 
                     try
                     {
-                        // 1. Copy config file
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                        var configPath = Path.Combine(appData, "NetRelay", "config.json");
-                        if (File.Exists(configPath))
-                        {
-                            File.Copy(configPath, Path.Combine(tempDir, "config.json"), true);
-                        }
+                        // 1. Write a safe runtime summary. Never export raw configuration or credentials.
+                        File.WriteAllText(
+                            Path.Combine(tempDir, "runtime-summary.json"),
+                            System.Text.Json.JsonSerializer.Serialize(new
+                            {
+                                ProductVersion = Protocol.ProductVersion,
+                                OsVersion = Environment.OSVersion.ToString(),
+                                Architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+                                AutomationEnabled = _configService.IsAutomationEnabled,
+                                RuleCount = _configService.Current.Rules.Count,
+                                LogKeepDays = _configService.Current.KeepDays
+                            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
 
                         // 2. Copy execution logs
                         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -528,11 +597,20 @@ public sealed class MainViewModel : ObservableObject
                         if (Directory.Exists(logsDir))
                         {
                             Directory.CreateDirectory(logsDestDir);
-                            var logFiles = Directory.GetFiles(logsDir, "execution-*.jsonl");
+                            var logFiles = Directory.GetFiles(logsDir)
+                                .Where(file => file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
+                                    || Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase));
                             foreach (var file in logFiles)
                             {
                                 var destFile = Path.Combine(logsDestDir, Path.GetFileName(file));
-                                File.Copy(file, destFile, true);
+                                if (Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    File.WriteAllText(destFile, DiagnosticLogService.Sanitize(File.ReadAllText(file)));
+                                }
+                                else
+                                {
+                                    File.Copy(file, destFile, true);
+                                }
                             }
                         }
 

@@ -258,6 +258,29 @@ paths:
                 $ref: "#/components/schemas/SignedEnvelope"
         "404":
           $ref: "#/components/responses/Error"
+  /updates/history:
+    get:
+      operationId: getUpdateHistory
+      summary: Get published update history for a channel and architecture
+      parameters:
+        - $ref: "#/components/parameters/ProtocolVersion"
+        - name: channel
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: architecture
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Published update history; draft and revoked releases are excluded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateHistoryResponse"
   /announcements:
     get:
       operationId: getAnnouncements
@@ -373,6 +396,34 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    UpdateHistoryItem:
+      type: object
+      additionalProperties: false
+      required: [version, channel, architecture, releaseDate, changelog, isMandatory]
+      properties:
+        version:
+          type: string
+        channel:
+          type: string
+        architecture:
+          type: string
+        releaseDate:
+          type: string
+          format: date-time
+        changelog:
+          type: string
+        isMandatory:
+          type: boolean
+    UpdateHistoryResponse:
+      type: object
+      required: [requestId, data]
+      properties:
+        requestId:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UpdateHistoryItem"
     AdminLoginRequest:
       type: object
       additionalProperties: false

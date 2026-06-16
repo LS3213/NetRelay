@@ -61,6 +61,7 @@ var tests = new (string Name, Action Test)[]
     ("EvidenceHasher anonymizes evidence properly", EvidenceHasherAnonymizesEvidenceProperly),
     ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable),
     ("Log packaging logic zips jsonl files properly", TestLogPackagingLogic),
+    ("Diagnostic logs redact sensitive values", TestDiagnosticLogRedaction),
     ("Safe markdown parser parses formatting and filters unsafe protocols", TestSafeMarkdownParser),
     ("Client policy restriction behaves correctly when blocked", TestClientPolicyRestriction),
     ("Policy envelope double-signature verifies correctly", TestPolicyEnvelopeSignature)
@@ -1581,10 +1582,14 @@ static void TestLogPackagingLogic()
     {
         var file1 = Path.Combine(tempDir, "execution-20260613.jsonl");
         var file2 = Path.Combine(tempDir, "execution-20260614.jsonl");
+        var diagnosticFile = Path.Combine(tempDir, "diagnostic-20260614.jsonl");
+        var updaterFile = Path.Combine(tempDir, "updater-2026-06-14.log");
         var file3 = Path.Combine(tempDir, "other.txt");
 
         File.WriteAllText(file1, "line1\nline2");
         File.WriteAllText(file2, "line3\nline4");
+        File.WriteAllText(diagnosticFile, "diagnostic");
+        File.WriteAllText(updaterFile, "token=should-not-leak");
         File.WriteAllText(file3, "ignored");
 
         var logService = new LogService(tempDir);
@@ -1594,11 +1599,15 @@ static void TestLogPackagingLogic()
 
         using (var archive = System.IO.Compression.ZipFile.OpenRead(zipPath))
         {
-            Assert(archive.Entries.Count == 2);
+            Assert(archive.Entries.Count == 4);
             var entryNames = archive.Entries.Select(e => e.Name).ToList();
             Assert(entryNames.Contains("execution-20260613.jsonl"));
             Assert(entryNames.Contains("execution-20260614.jsonl"));
+            Assert(entryNames.Contains("diagnostic-20260614.jsonl"));
+            Assert(entryNames.Contains("updater-2026-06-14.log"));
             Assert(!entryNames.Contains("other.txt"));
+            using var updaterReader = new StreamReader(archive.GetEntry("updater-2026-06-14.log")!.Open());
+            Assert(!updaterReader.ReadToEnd().Contains("should-not-leak", StringComparison.Ordinal));
         }
     }
     finally
@@ -1606,6 +1615,15 @@ static void TestLogPackagingLogic()
         try { Directory.Delete(tempDir, true); } catch {}
         try { File.Delete(zipPath); } catch {}
     }
+}
+
+static void TestDiagnosticLogRedaction()
+{
+    var value = DiagnosticLogService.Sanitize("token=abc123 https://example.test/path?secret=hidden 0123456789abcdef0123456789abcdef0123456789abcdef");
+    Assert(value is not null);
+    Assert(!value.Contains("abc123", StringComparison.Ordinal));
+    Assert(!value.Contains("secret=hidden", StringComparison.Ordinal));
+    Assert(!value.Contains("0123456789abcdef0123456789abcdef0123456789abcdef", StringComparison.Ordinal));
 }
 
 static void RunOnSTA(Action action)

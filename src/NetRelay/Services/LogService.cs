@@ -104,7 +104,9 @@ public sealed class LogService
             {
                 if (Directory.Exists(_logDirectory))
                 {
-                    var files = Directory.GetFiles(_logDirectory, "execution-*.jsonl");
+                    var files = Directory.GetFiles(_logDirectory)
+                        .Where(file => file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
+                            || Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase));
                     foreach (var file in files)
                     {
                         try
@@ -137,7 +139,9 @@ public sealed class LogService
                     return;
                 }
 
-                var logFiles = Directory.GetFiles(_logDirectory, "execution-*.jsonl");
+                var logFiles = Directory.GetFiles(_logDirectory)
+                    .Where(file => file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
+                        || Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase));
                 var cutoffDate = DateTime.Today.AddDays(-validatedKeepDays);
 
                 foreach (var file in logFiles)
@@ -145,7 +149,7 @@ public sealed class LogService
                     try
                     {
                         var filename = Path.GetFileNameWithoutExtension(file);
-                        var dateStr = filename.Replace("execution-", "");
+                        var dateStr = filename.Replace("execution-", "").Replace("diagnostic-", "").Replace("updater-", "");
                         if (DateTime.TryParse(dateStr, out var date))
                         {
                             if (date < cutoffDate)
@@ -185,16 +189,26 @@ public sealed class LogService
             using var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create);
             if (Directory.Exists(_logDirectory))
             {
-                var files = Directory.GetFiles(_logDirectory, "execution-*.jsonl");
+                var files = Directory.GetFiles(_logDirectory)
+                    .Where(file => file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
+                        || Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase));
                 foreach (var file in files)
                 {
                     try
                     {
                         var entryName = Path.GetFileName(file);
-                        using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                         var entry = zip.CreateEntry(entryName);
                         using var entryStream = entry.Open();
-                        fileStream.CopyTo(entryStream);
+                        if (entryName.StartsWith("updater-", StringComparison.OrdinalIgnoreCase))
+                        {
+                            using var writer = new StreamWriter(entryStream);
+                            writer.Write(DiagnosticLogService.Sanitize(File.ReadAllText(file)));
+                        }
+                        else
+                        {
+                            using var fileStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                            fileStream.CopyTo(entryStream);
+                        }
                     }
                     catch
                     {
