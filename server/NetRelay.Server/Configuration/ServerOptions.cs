@@ -12,6 +12,19 @@ public sealed record class ServerOptions
     [Required]
     public string GithubRepository { get; init; } = string.Empty;
 
+    public bool GithubSyncEnabled { get; init; }
+
+    public string GithubToken { get; init; } = string.Empty;
+
+    [Required]
+    public string GithubPagesBranch { get; init; } = "gh-pages";
+
+    [Required]
+    public string GithubReleaseTagPrefix { get; init; } = "v";
+
+    [Required]
+    public string GithubAssetName { get; init; } = "win-x64.zip";
+
     [Required]
     public string ReleasesRoot { get; init; } = string.Empty;
 
@@ -75,6 +88,21 @@ public static class ServerOptionsValidator
             string.Equals(options.GithubRepository, "owner/repository", StringComparison.OrdinalIgnoreCase))
         {
             return "NetRelay:GithubRepository must use owner/repository format.";
+        }
+
+        if (options.GithubSyncEnabled && string.IsNullOrWhiteSpace(options.GithubToken))
+        {
+            return "NetRelay:GithubToken is required when GitHub sync is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(options.GithubPagesBranch))
+        {
+            return "NetRelay:GithubPagesBranch is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(options.GithubAssetName))
+        {
+            return "NetRelay:GithubAssetName is required.";
         }
 
         string[] storageRoots;

@@ -15,7 +15,6 @@ using NetRelay.Contracts;
 using NetRelay.Server;
 using System.IO;
 using System.IO.Compression;
-using NetRelay.Server.Services;
 
 using NetRelay.Server.Configuration;
 using NetRelay.Server.Data;
@@ -939,6 +938,12 @@ static async Task TestUpdateApiAsync()
         var initCheckResponse = await initCheck.Content.ReadFromJsonAsync<ApiErrorResponse>();
         Assert(initCheckResponse != null && initCheckResponse.Error != null && initCheckResponse.Error.Code == ErrorCodes.UpdateNotAvailable, "Error code should be UPDATE_NOT_AVAILABLE");
 
+        var betaCheck = await SendGetAsync(client, "/api/v1/updates/latest?channel=beta&architecture=win-x64&currentVersion=1.0.0");
+        Assert(betaCheck.StatusCode == HttpStatusCode.NotFound, $"Beta channel should be unavailable: {betaCheck.StatusCode}");
+
+        var betaHistory = await SendGetAsync(client, "/api/v1/updates/history?channel=beta&architecture=win-x64");
+        Assert(betaHistory.StatusCode == HttpStatusCode.NotFound, $"Beta history should be unavailable: {betaHistory.StatusCode}");
+
         // 2. Perform admin login
         var loginResponseMsg = await SendJsonAsync(client, HttpMethod.Post, "/api/v1/admin/auth/login", new AdminLoginRequest("admin", password));
         Assert(loginResponseMsg.StatusCode == HttpStatusCode.OK, "Login failed");
@@ -960,6 +965,26 @@ static async Task TestUpdateApiAsync()
             var entry = archive.CreateEntry("test.txt");
             using var writer = new StreamWriter(entry.Open());
             await writer.WriteAsync("hello update");
+        }
+
+        using (var invalidBetaStream = File.OpenRead(dummyZipPath))
+        using (var invalidBetaForm = new MultipartFormDataContent())
+        {
+            invalidBetaForm.Add(new StringContent("1.2.9"), "version");
+            invalidBetaForm.Add(new StringContent("beta"), "channel");
+            invalidBetaForm.Add(new StringContent("win-x64"), "architecture");
+            invalidBetaForm.Add(new StringContent("1.0.0"), "minUpgradableVersion");
+            invalidBetaForm.Add(new StreamContent(invalidBetaStream), "file", "win-x64.zip");
+
+            var invalidBetaRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/releases")
+            {
+                Content = invalidBetaForm
+            };
+            invalidBetaRequest.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
+            invalidBetaRequest.Headers.Add(Protocol.CsrfHeader, csrf);
+
+            var invalidBetaResponse = await client.SendAsync(invalidBetaRequest);
+            Assert(invalidBetaResponse.StatusCode == HttpStatusCode.BadRequest, $"Beta release creation should be rejected: {invalidBetaResponse.StatusCode}");
         }
 
         // 4. Create Release (draft)

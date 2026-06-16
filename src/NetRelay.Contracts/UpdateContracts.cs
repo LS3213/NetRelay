@@ -58,6 +58,14 @@ public sealed class UpdateHistoryItem
     public bool IsMandatory { get; set; }
 }
 
+public sealed record ReleaseCleanupRequest(int KeepLatestPublished);
+
+public sealed record ReleaseCleanupResponse(
+    int Scanned,
+    int DeletedFiles,
+    long FreedBytes,
+    IReadOnlyList<string> DeletedVersions);
+
 public sealed class UpdateCheckResponse
 {
     [JsonPropertyName("envelope")]

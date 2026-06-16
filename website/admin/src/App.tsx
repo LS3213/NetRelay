@@ -15,6 +15,7 @@ import {
   createRelease,
   publishRelease,
   revokeRelease,
+  cleanupReleasePackages,
   getFeedbacks,
   updateFeedbackStatus,
   getAnnouncements,
@@ -107,7 +108,6 @@ export function App() {
   const [announcementPage, setAnnouncementPage] = useState(1);
 
   const [releaseSearch, setReleaseSearch] = useState("");
-  const [releaseChannelFilter, setReleaseChannelFilter] = useState("all");
   const [releaseStatusFilter, setReleaseStatusFilter] = useState("all");
   const [releasePage, setReleasePage] = useState(1);
 
@@ -151,7 +151,6 @@ export function App() {
   // Form states
   // 1. Release
   const [relVersion, setRelVersion] = useState("");
-  const [relChannel, setRelChannel] = useState("stable");
   const [relArch, setRelArch] = useState("win-x64");
   const [relMinVer, setRelMinVer] = useState("0.1.0");
   const [relChangelog, setRelChangelog] = useState("");
@@ -161,6 +160,19 @@ export function App() {
   const [releaseUploadProgress, setReleaseUploadProgress] = useState(0);
   const [releaseUploadedBytes, setReleaseUploadedBytes] = useState(0);
   const [releaseUploadTotalBytes, setReleaseUploadTotalBytes] = useState(0);
+
+  const cleanupOldReleasePackages = () => {
+    if (!window.confirm("将保留 stable / win-x64 最新 3 个已发布更新包，并清理更旧版本的 ZIP 文件。版本记录和更新历史会保留。是否继续？")) {
+      return;
+    }
+
+    void run(async () => {
+      const result = await cleanupReleasePackages(3);
+      setMessage(`清理完成：删除 ${result.deletedFiles} 个更新包，释放 ${formatBytes(result.freedBytes)}。`);
+      const list = await getReleases();
+      setReleasesList(list);
+    });
+  };
 
   // 2. Announcement
   const [annEditingId, setAnnEditingId] = useState<string | null>(null);
@@ -315,7 +327,7 @@ export function App() {
       try {
         const formData = new FormData();
         formData.append("version", relVersion.trim());
-        formData.append("channel", relChannel);
+        formData.append("channel", "stable");
         formData.append("architecture", relArch);
         formData.append("minUpgradableVersion", relMinVer.trim());
         formData.append("changelog", relChangelog.trim());
@@ -510,9 +522,8 @@ export function App() {
     const matchSearch = !term ||
       rel.version.toLowerCase().includes(term) ||
       rel.changelog.toLowerCase().includes(term);
-    const matchChannel = releaseChannelFilter === "all" || rel.channel === releaseChannelFilter;
     const matchStatus = releaseStatusFilter === "all" || rel.status === releaseStatusFilter;
-    return matchSearch && matchChannel && matchStatus;
+    return matchSearch && matchStatus;
   });
   const totalReleasePages = Math.ceil(filteredReleases.length / 8) || 1;
   const paginatedReleases = filteredReleases.slice((releasePage - 1) * 8, releasePage * 8);
@@ -536,7 +547,8 @@ export function App() {
       (dev.deviceIdHash && dev.deviceIdHash.toLowerCase().includes(term)) ||
       dev.installationId.toLowerCase().includes(term) ||
       dev.clientVersion.toLowerCase().includes(term) ||
-      dev.osVersion.toLowerCase().includes(term);
+      dev.osVersion.toLowerCase().includes(term) ||
+      String(dev.installationCount).includes(term);
     let matchStatus = true;
     if (deviceStatusFilter === "active") {
       matchStatus = isDeviceActive(dev.lastSeenAt);
@@ -674,15 +686,6 @@ export function App() {
                 className="search-input"
               />
               <select
-                value={releaseChannelFilter}
-                onChange={(e) => { setReleaseChannelFilter(e.target.value); setReleasePage(1); }}
-                className="filter-select"
-              >
-                <option value="all">所有渠道</option>
-                <option value="stable">稳定版</option>
-                <option value="beta">测试版</option>
-              </select>
-              <select
                 value={releaseStatusFilter}
                 onChange={(e) => { setReleaseStatusFilter(e.target.value); setReleasePage(1); }}
                 className="filter-select"
@@ -692,13 +695,15 @@ export function App() {
                 <option value="published">已发布</option>
                 <option value="revoked">已撤回</option>
               </select>
+              <button type="button" className="ghost compact" disabled={busy} onClick={cleanupOldReleasePackages}>
+                清理旧包
+              </button>
             </div>
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
                     <th>版本</th>
-                    <th>通道</th>
                     <th>架构</th>
                     <th>文件大小</th>
                     <th>状态</th>
@@ -708,18 +713,18 @@ export function App() {
                 </thead>
                 <tbody>
                   {paginatedReleases.length === 0 ? (
-                    <tr><td colSpan={7} className="muted" style={{ textAlign: "center" }}>暂无上传记录</td></tr>
+                    <tr><td colSpan={6} className="muted" style={{ textAlign: "center" }}>暂无上传记录</td></tr>
                   ) : (
                     paginatedReleases.map((rel) => (
                       <tr key={rel.id}>
                         <td><strong>{rel.version}</strong></td>
-                        <td>
-                          <span className="badge draft">
-                            {rel.channel === "stable" ? "稳定版" : "测试版"}
-                          </span>
-                        </td>
                         <td>{rel.architecture}</td>
-                        <td>{formatBytes(rel.packageSize)}</td>
+                        <td>
+                          {formatBytes(rel.packageSize)}
+                          {rel.packageDeletedAt && (
+                            <div className="muted" style={{ fontSize: "11px", marginTop: "4px" }}>文件已清理</div>
+                          )}
+                        </td>
                         <td>
                           <span className={`badge ${rel.status}`}>
                             {rel.status === "draft" && "草稿"}
@@ -779,12 +784,6 @@ export function App() {
             <h2>上传更新包 (ZIP)</h2>
             <form onSubmit={submitReleaseForm}>
               <label>版本号<input placeholder="e.g. 1.0.0" value={relVersion} onChange={(e) => setRelVersion(e.target.value)} disabled={busy} required /></label>
-              <label>更新通道
-                <select value={relChannel} onChange={(e) => setRelChannel(e.target.value)} disabled={busy}>
-                  <option value="stable">Stable (稳定版)</option>
-                  <option value="beta">Beta (测试版)</option>
-                </select>
-              </label>
               <label>平台架构
                 <select value={relArch} onChange={(e) => setRelArch(e.target.value)} disabled={busy}>
                   <option value="win-x64">win-x64</option>
@@ -861,7 +860,7 @@ export function App() {
                   <div>
                     <label>发布目标</label>
                     <div style={{ marginTop: "4px" }}>
-                      {selectedRelease.channel === "stable" ? "稳定版" : "测试版"} / {selectedRelease.architecture}
+                      稳定版 / {selectedRelease.architecture}
                     </div>
                   </div>
                   <div>
@@ -880,6 +879,11 @@ export function App() {
                     <label>更新包</label>
                     <div style={{ marginTop: "4px" }}>{formatBytes(selectedRelease.packageSize)}</div>
                     <code className="detail-code">{selectedRelease.assetPath}</code>
+                    {selectedRelease.packageDeletedAt && (
+                      <div className="muted" style={{ marginTop: "6px" }}>
+                        物理更新包已于 {formatTime(selectedRelease.packageDeletedAt)} 清理；版本记录和更新日志仍保留。
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label>SHA256</label>
@@ -1112,6 +1116,11 @@ export function App() {
                         <tr key={dev.installationId}>
                           <td className="break-all" style={{ maxWidth: "220px" }}>
                             <code>{dev.deviceIdHash || "—"}</code>
+                            {dev.installationCount > 1 && (
+                              <div className="muted" style={{ fontSize: "11px", marginTop: "6px" }}>
+                                已合并 {dev.installationCount} 个安装实例
+                              </div>
+                            )}
                           </td>
                           <td>{dev.osVersion}</td>
                           <td>{dev.clientVersion}</td>

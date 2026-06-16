@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetRelay.Server.Data;
 
@@ -11,9 +12,11 @@ using NetRelay.Server.Data;
 namespace NetRelay.Server.Data.Migrations
 {
     [DbContext(typeof(NetRelayDbContext))]
-    partial class NetRelayDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260616023500_AddReleasePackageDeletedAt")]
+    partial class AddReleasePackageDeletedAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -33,6 +33,11 @@ services:
       ConnectionStrings__NetRelay: Server=mysql;Port=3306;Database=${NETRELAY_MYSQL_DATABASE};User=${NETRELAY_MYSQL_USER};Password=${NETRELAY_MYSQL_PASSWORD}
       NetRelay__PublicBaseUrl: ${NETRELAY_PUBLIC_BASE_URL}
       NetRelay__GithubRepository: ${NETRELAY_GITHUB_REPOSITORY}
+      NetRelay__GithubSyncEnabled: ${NETRELAY_GITHUB_SYNC_ENABLED}
+      NetRelay__GithubToken: ${NETRELAY_GITHUB_TOKEN}
+      NetRelay__GithubPagesBranch: ${NETRELAY_GITHUB_PAGES_BRANCH}
+      NetRelay__GithubReleaseTagPrefix: ${NETRELAY_GITHUB_RELEASE_TAG_PREFIX}
+      NetRelay__GithubAssetName: ${NETRELAY_GITHUB_ASSET_NAME}
       NetRelay__ReleasesRoot: /var/lib/netrelay/releases
       NetRelay__FeedbackRoot: /var/lib/netrelay/feedback-attachments
       NetRelay__StagingRoot: /var/lib/netrelay/staging

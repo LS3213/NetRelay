@@ -1,6 +1,9 @@
 {
   "primaryApiBaseUrl": "https://netrelay.473700.xyz",
-  "githubRepository": "LS3213/NetRelay",
-  "updateChannel": "stable",
-  "allowGithubFallback": true
+  "githubFallback": {
+    "enabled": true,
+    "repository": "LS3213/NetRelay",
+    "releaseTagPrefix": "v",
+    "assetName": "win-x64.zip"
+  }
 }

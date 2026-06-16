@@ -163,6 +163,14 @@ export interface Release {
   createdAt: string;
   publishedAt?: string;
   revokedAt?: string;
+  packageDeletedAt?: string;
+}
+
+export interface ReleaseCleanupResult {
+  scanned: number;
+  deletedFiles: number;
+  freedBytes: number;
+  deletedVersions: string[];
 }
 
 export async function getReleases() {
@@ -233,6 +241,15 @@ export async function revokeRelease(id: string) {
   return (await request<ApiResponse<unknown>>(`/admin/releases/${id}/revoke`, { method: "POST" })).data;
 }
 
+export async function cleanupReleasePackages(keepLatestPublished = 3) {
+  return (
+    await request<ApiResponse<ReleaseCleanupResult>>("/admin/releases/cleanup", {
+      method: "POST",
+      body: JSON.stringify({ keepLatestPublished }),
+    })
+  ).data;
+}
+
 // === Feedback ===
 
 export interface Feedback {
@@ -260,6 +277,7 @@ export interface RegisteredDevice {
   osVersion: string;
   firstSeenAt: string;
   lastSeenAt: string;
+  installationCount: number;
 }
 
 export async function getFeedbacks() {

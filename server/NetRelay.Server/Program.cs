@@ -105,6 +105,8 @@ builder.Services.AddSingleton<ManagedFileStorage>();
 builder.Services.AddHostedService<StorageInitializationService>();
 builder.Services.AddHostedService<AdminBootstrapService>();
 builder.Services.AddSingleton<KeyManagementService>();
+builder.Services.AddSingleton<ReleaseMetadataService>();
+builder.Services.AddSingleton<GitHubReleaseMirrorService>();
 builder.Services.AddScoped<DeviceActivationService>();
 
 var app = builder.Build();
@@ -142,6 +144,7 @@ adminReleases.MapPost("/", CreateReleaseAsync);
 adminReleases.MapGet("/", GetReleasesAsync);
 adminReleases.MapPost("/{id}/publish", PublishReleaseAsync);
 adminReleases.MapPost("/{id}/revoke", RevokeReleaseAsync);
+adminReleases.MapPost("/cleanup", CleanupReleasePackagesAsync);
 
 var adminFeedback = app.MapGroup("/api/v1/admin/feedback");
 adminFeedback.MapGet("/", GetFeedbacksAsync);
@@ -594,7 +597,7 @@ static async Task<IResult> GetLatestUpdateAsync(
     string currentVersion,
     HttpContext context,
     NetRelayDbContext dbContext,
-    KeyManagementService keyManagementService,
+    ReleaseMetadataService metadataService,
     CancellationToken cancellationToken)
 {
     if (string.IsNullOrWhiteSpace(channel) || string.IsNullOrWhiteSpace(architecture) || string.IsNullOrWhiteSpace(currentVersion))
@@ -602,61 +605,31 @@ static async Task<IResult> GetLatestUpdateAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "请求参数不能为空。");
     }
 
+    if (!metadataService.IsSupportedPublicChannel(channel) || !metadataService.IsSupportedArchitecture(architecture))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "该更新通道或架构不可用。");
+    }
+
     var publishedReleases = await dbContext.Releases
-        .Where(r => r.Status == "published" && r.Channel == channel && r.Architecture == architecture)
+        .Where(r =>
+            r.Status == "published" &&
+            r.PackageDeletedAt == null &&
+            r.Channel == ReleaseMetadataService.StableChannel &&
+            r.Architecture == ReleaseMetadataService.SupportedArchitecture)
         .ToListAsync(cancellationToken);
-    var latest = publishedReleases.MaxBy(
-        release => release.Version,
-        Comparer<string>.Create(CompareReleaseVersions));
+    var latest = metadataService.SelectLatestPrimaryRelease(publishedReleases, channel, architecture);
 
     if (latest is null)
     {
         return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "没有可用的更新。");
     }
 
-    if (CompareReleaseVersions(latest.Version, currentVersion) <= 0)
+    if (ReleaseMetadataService.CompareReleaseVersions(latest.Version, currentVersion) <= 0)
     {
         return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "当前已是最新版本。");
     }
 
-    var manifest = new UpdateManifest
-    {
-        Version = latest.Version,
-        Channel = latest.Channel,
-        Architecture = latest.Architecture,
-        MinUpgradableVersion = latest.MinUpgradableVersion,
-        PackageSize = latest.PackageSize,
-        Sha256 = latest.Sha256,
-        ReleaseDate = latest.ReleaseDate,
-        Changelog = latest.Changelog,
-        IsMandatory = latest.IsMandatory
-    };
-
-    var payload = new Dictionary<string, object?>
-    {
-        ["version"] = manifest.Version,
-        ["channel"] = manifest.Channel,
-        ["architecture"] = manifest.Architecture,
-        ["minUpgradableVersion"] = manifest.MinUpgradableVersion,
-        ["packageSize"] = manifest.PackageSize,
-        ["sha256"] = manifest.Sha256,
-        ["releaseDate"] = manifest.ReleaseDate.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-        ["changelog"] = manifest.Changelog,
-        ["isMandatory"] = manifest.IsMandatory
-    };
-
-    var envelope = keyManagementService.Sign(
-        "update-manifest",
-        Guid.NewGuid().ToString("N"),
-        DateTimeOffset.UtcNow,
-        DateTimeOffset.UtcNow.AddMinutes(5),
-        payload);
-
-    var response = new UpdateCheckResponse
-    {
-        Envelope = envelope,
-        Certificate = keyManagementService.OperationCertificate
-    };
+    var response = metadataService.CreateSignedUpdateResponse(latest);
 
     return Results.Ok(new ApiResponse<UpdateCheckResponse>(ApiInfrastructure.GetRequestId(context), response));
 }
@@ -666,6 +639,7 @@ static async Task<IResult> GetUpdateHistoryAsync(
     string architecture,
     HttpContext context,
     NetRelayDbContext dbContext,
+    ReleaseMetadataService metadataService,
     CancellationToken cancellationToken)
 {
     if (string.IsNullOrWhiteSpace(channel) || string.IsNullOrWhiteSpace(architecture))
@@ -673,40 +647,20 @@ static async Task<IResult> GetUpdateHistoryAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "更新通道和架构不能为空。");
     }
 
+    if (!string.Equals(channel, ReleaseMetadataService.StableChannel, StringComparison.OrdinalIgnoreCase) ||
+        !string.Equals(architecture, ReleaseMetadataService.SupportedArchitecture, StringComparison.OrdinalIgnoreCase))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.UpdateNotAvailable, "该更新通道或架构不可用。");
+    }
+
     var releases = await dbContext.Releases
-        .Where(r => r.Status == "published" && r.Channel == channel && r.Architecture == architecture)
-        .Select(r => new UpdateHistoryItem
-        {
-            Version = r.Version,
-            Channel = r.Channel,
-            Architecture = r.Architecture,
-            ReleaseDate = r.ReleaseDate,
-            Changelog = r.Changelog,
-            IsMandatory = r.IsMandatory
-        })
+        .Where(r =>
+            r.Status == "published" &&
+            r.Channel == ReleaseMetadataService.StableChannel &&
+            r.Architecture == ReleaseMetadataService.SupportedArchitecture)
         .ToListAsync(cancellationToken);
-
-    releases.Sort((left, right) => CompareReleaseVersions(right.Version, left.Version));
-    return Results.Ok(new ApiResponse<List<UpdateHistoryItem>>(ApiInfrastructure.GetRequestId(context), releases));
-}
-
-static int CompareReleaseVersions(string? left, string? right)
-{
-    var leftIsVersion = Version.TryParse(left, out var leftVersion);
-    var rightIsVersion = Version.TryParse(right, out var rightVersion);
-    if (leftIsVersion && rightIsVersion)
-    {
-        return leftVersion!.CompareTo(rightVersion);
-    }
-    if (leftIsVersion)
-    {
-        return 1;
-    }
-    if (rightIsVersion)
-    {
-        return -1;
-    }
-    return string.Compare(left, right, StringComparison.OrdinalIgnoreCase);
+    var history = metadataService.BuildPublishedHistory(releases);
+    return Results.Ok(new ApiResponse<List<UpdateHistoryItem>>(ApiInfrastructure.GetRequestId(context), history.ToList()));
 }
 
 static async Task<IResult> DownloadUpdatePackageAsync(
@@ -723,7 +677,12 @@ static async Task<IResult> DownloadUpdatePackageAsync(
     }
 
     var release = await dbContext.Releases
-        .Where(r => r.Version == version && r.Status == "published")
+        .Where(r =>
+            r.Version == version &&
+            r.Status == "published" &&
+            r.PackageDeletedAt == null &&
+            r.Channel == ReleaseMetadataService.StableChannel &&
+            r.Architecture == ReleaseMetadataService.SupportedArchitecture)
         .FirstOrDefaultAsync(cancellationToken);
 
     if (release is null)
@@ -772,17 +731,28 @@ static async Task<IResult> CreateReleaseAsync(
 
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var version = form["version"].ToString();
-    var channel = form["channel"].ToString();
     var architecture = form["architecture"].ToString();
     var minUpgradableVersion = form["minUpgradableVersion"].ToString();
     var changelog = form["changelog"].ToString();
     var isMandatory = bool.TryParse(form["isMandatory"].ToString(), out var mandatory) && mandatory;
 
-    if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(channel) ||
+    if (string.IsNullOrWhiteSpace(version) ||
         string.IsNullOrWhiteSpace(architecture) || string.IsNullOrWhiteSpace(minUpgradableVersion))
     {
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "必填参数缺失。");
     }
+
+    if (!string.IsNullOrWhiteSpace(form["channel"]) &&
+        !string.Equals(form["channel"].ToString(), ReleaseMetadataService.StableChannel, StringComparison.OrdinalIgnoreCase))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "当前仅支持 stable 更新通道。");
+    }
+
+    if (!string.Equals(architecture, ReleaseMetadataService.SupportedArchitecture, StringComparison.OrdinalIgnoreCase))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "当前仅支持 win-x64 更新包。");
+    }
+    architecture = ReleaseMetadataService.SupportedArchitecture;
 
     var file = form.Files.GetFile("file");
     if (file is null || file.Length == 0)
@@ -790,6 +760,7 @@ static async Task<IResult> CreateReleaseAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "更新包文件缺失。");
     }
 
+    var channel = ReleaseMetadataService.StableChannel;
     var existingRelease = await dbContext.Releases
         .FirstOrDefaultAsync(r => r.Version == version && r.Channel == channel && r.Architecture == architecture, cancellationToken);
     if (existingRelease is not null)
@@ -885,7 +856,10 @@ static async Task<IResult> GetReleasesAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
     }
 
-    var list = await dbContext.Releases.OrderByDescending(r => r.CreatedAt).ToListAsync(cancellationToken);
+    var list = await dbContext.Releases
+        .Where(r => r.Channel == ReleaseMetadataService.StableChannel && r.Architecture == ReleaseMetadataService.SupportedArchitecture)
+        .OrderByDescending(r => r.CreatedAt)
+        .ToListAsync(cancellationToken);
     return Results.Ok(new ApiResponse<List<Release>>(ApiInfrastructure.GetRequestId(context), list));
 }
 
@@ -895,7 +869,9 @@ static async Task<IResult> PublishReleaseAsync(
     NetRelayDbContext dbContext,
     AdminAuthService authService,
     AuditService auditService,
-    IOptions<ServerOptions> options,
+    ManagedFileStorage storage,
+    ReleaseMetadataService metadataService,
+    GitHubReleaseMirrorService gitHubReleaseMirrorService,
     CancellationToken cancellationToken)
 {
     var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
@@ -925,11 +901,48 @@ static async Task<IResult> PublishReleaseAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "只有草稿状态的版本可以发布。");
     }
 
+    var originalReleaseDate = release.ReleaseDate;
     release.Status = "published";
     release.PublishedAt = DateTimeOffset.UtcNow;
     release.ReleaseDate = DateTimeOffset.UtcNow;
 
     await dbContext.SaveChangesAsync(cancellationToken);
+
+    try
+    {
+        if (gitHubReleaseMirrorService.IsEnabled)
+        {
+            var publishedReleases = await dbContext.Releases
+                .Where(r =>
+                    r.Status == "published" &&
+                    r.Channel == ReleaseMetadataService.StableChannel &&
+                    r.Architecture == ReleaseMetadataService.SupportedArchitecture)
+                .ToListAsync(cancellationToken);
+            var latestRelease = metadataService.SelectLatestMirrorRelease(publishedReleases) ??
+                throw new InvalidOperationException("未找到可用于 GitHub 同步的已发布版本。");
+            var latestResponse = metadataService.CreateSignedUpdateResponse(latestRelease);
+            var history = metadataService.BuildPublishedHistory(publishedReleases);
+            var packagePath = storage.Resolve(StorageArea.Releases, release.AssetPath);
+            await gitHubReleaseMirrorService.SyncPublishedReleaseAsync(release, packagePath, latestResponse, history, cancellationToken);
+        }
+    }
+    catch (Exception exception)
+    {
+        release.Status = "draft";
+        release.PublishedAt = null;
+        release.ReleaseDate = originalReleaseDate;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(
+            "release.publish",
+            "failed",
+            ApiInfrastructure.GetRequestId(context),
+            release.Id,
+            details: new { version = release.Version, error = exception.Message },
+            cancellationToken: cancellationToken);
+
+        return ApiInfrastructure.Error(context, StatusCodes.Status502BadGateway, ErrorCodes.ServiceTemporarilyUnavailable, $"同步 GitHub 备用源失败: {exception.Message}");
+    }
 
     await auditService.WriteAsync(
         "release.publish",
@@ -948,6 +961,8 @@ static async Task<IResult> RevokeReleaseAsync(
     NetRelayDbContext dbContext,
     AdminAuthService authService,
     AuditService auditService,
+    ReleaseMetadataService metadataService,
+    GitHubReleaseMirrorService gitHubReleaseMirrorService,
     CancellationToken cancellationToken)
 {
     var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
@@ -972,10 +987,45 @@ static async Task<IResult> RevokeReleaseAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status404NotFound, ErrorCodes.ResourceNotFound, "版本记录不存在。");
     }
 
+    var originalStatus = release.Status;
+    var originalRevokedAt = release.RevokedAt;
     release.Status = "revoked";
     release.RevokedAt = DateTimeOffset.UtcNow;
 
     await dbContext.SaveChangesAsync(cancellationToken);
+
+    try
+    {
+        if (gitHubReleaseMirrorService.IsEnabled)
+        {
+            var publishedReleases = await dbContext.Releases
+                .Where(r =>
+                    r.Status == "published" &&
+                    r.Channel == ReleaseMetadataService.StableChannel &&
+                    r.Architecture == ReleaseMetadataService.SupportedArchitecture)
+                .ToListAsync(cancellationToken);
+            var latestRelease = metadataService.SelectLatestMirrorRelease(publishedReleases);
+            var latestResponse = latestRelease is null ? null : metadataService.CreateSignedUpdateResponse(latestRelease);
+            var history = metadataService.BuildPublishedHistory(publishedReleases);
+            await gitHubReleaseMirrorService.SyncRevokedStateAsync(latestResponse, history, cancellationToken);
+        }
+    }
+    catch (Exception exception)
+    {
+        release.Status = originalStatus;
+        release.RevokedAt = originalRevokedAt;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(
+            "release.revoke",
+            "failed",
+            ApiInfrastructure.GetRequestId(context),
+            release.Id,
+            details: new { version = release.Version, error = exception.Message },
+            cancellationToken: cancellationToken);
+
+        return ApiInfrastructure.Error(context, StatusCodes.Status502BadGateway, ErrorCodes.ServiceTemporarilyUnavailable, $"同步 GitHub 备用源失败: {exception.Message}");
+    }
 
     await auditService.WriteAsync(
         "release.revoke",
@@ -986,6 +1036,101 @@ static async Task<IResult> RevokeReleaseAsync(
         cancellationToken: cancellationToken);
 
     return Results.Ok(new ApiResponse<object?>(ApiInfrastructure.GetRequestId(context), null));
+}
+
+static async Task<IResult> CleanupReleasePackagesAsync(
+    ReleaseCleanupRequest request,
+    HttpContext context,
+    NetRelayDbContext dbContext,
+    AdminAuthService authService,
+    AuditService auditService,
+    ManagedFileStorage storage,
+    CancellationToken cancellationToken)
+{
+    var session = await ResolveRequiredSessionAsync(context, authService, cancellationToken);
+    if (session is null)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
+    }
+
+    if (!authService.VerifyCsrf(session, context.Request.Headers[Protocol.CsrfHeader]))
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminCsrfInvalid, "CSRF 校验失败。");
+    }
+
+    if (session.ReauthenticatedUntil < DateTimeOffset.UtcNow)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status403Forbidden, ErrorCodes.AdminReauthenticationRequired, "敏感操作需要重新进行密码认证。");
+    }
+
+    if (request.KeepLatestPublished is < 1 or > 20)
+    {
+        return ApiInfrastructure.Error(context, StatusCodes.Status400BadRequest, ErrorCodes.RequestInvalid, "保留版本数量必须在 1 到 20 之间。");
+    }
+
+    var publishedWithPackages = await dbContext.Releases
+        .Where(r =>
+            r.Status == "published" &&
+            r.PackageDeletedAt == null &&
+            r.Channel == ReleaseMetadataService.StableChannel &&
+            r.Architecture == ReleaseMetadataService.SupportedArchitecture)
+        .ToListAsync(cancellationToken);
+
+    var candidates = publishedWithPackages
+        .GroupBy(r => new { r.Channel, r.Architecture })
+        .SelectMany(group => group
+            .OrderByDescending(r => r.Version, Comparer<string>.Create(ReleaseMetadataService.CompareReleaseVersions))
+            .Skip(request.KeepLatestPublished))
+        .OrderBy(r => r.Channel)
+        .ThenBy(r => r.Architecture)
+        .ThenBy(r => r.Version, Comparer<string>.Create(ReleaseMetadataService.CompareReleaseVersions))
+        .ToList();
+
+    var now = DateTimeOffset.UtcNow;
+    var deletedFiles = 0;
+    long freedBytes = 0;
+    var deletedVersions = new List<string>();
+
+    foreach (var release in candidates)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = storage.Resolve(StorageArea.Releases, release.AssetPath);
+        if (File.Exists(path))
+        {
+            var length = new FileInfo(path).Length;
+            File.Delete(path);
+            deletedFiles++;
+            freedBytes += length;
+        }
+
+        release.PackageDeletedAt = now;
+        deletedVersions.Add($"{release.Channel}/{release.Version}/{release.Architecture}");
+    }
+
+    await dbContext.SaveChangesAsync(cancellationToken);
+
+    await auditService.WriteAsync(
+        "release.cleanup",
+        "success",
+        ApiInfrastructure.GetRequestId(context),
+        session.AdminAccountId,
+        details: new
+        {
+            keepLatestPublished = request.KeepLatestPublished,
+            scanned = publishedWithPackages.Count,
+            deletedFiles,
+            freedBytes,
+            deletedVersions
+        },
+        cancellationToken: cancellationToken);
+
+    var response = new ReleaseCleanupResponse(
+        publishedWithPackages.Count,
+        deletedFiles,
+        freedBytes,
+        deletedVersions);
+
+    return Results.Ok(new ApiResponse<ReleaseCleanupResponse>(ApiInfrastructure.GetRequestId(context), response));
 }
 
 static async Task<IResult> SubmitFeedbackAsync(
@@ -1245,7 +1390,7 @@ static async Task<IResult> GetRegisteredDevicesAsync(
         return ApiInfrastructure.Error(context, StatusCodes.Status401Unauthorized, ErrorCodes.AdminAuthenticationRequired, "需要管理员认证。");
     }
 
-    var list = await dbContext.DeviceInstallations
+    var installations = await dbContext.DeviceInstallations
         .Include(di => di.Device)
         .OrderByDescending(di => di.LastSeenAt)
         .Select(di => new
@@ -1258,6 +1403,27 @@ static async Task<IResult> GetRegisteredDevicesAsync(
             LastSeenAt = di.LastSeenAt
         })
         .ToListAsync(cancellationToken);
+
+    var list = installations
+        .GroupBy(
+            item => item.DeviceIdHash ?? item.InstallationId.ToString("D"),
+            StringComparer.OrdinalIgnoreCase)
+        .Select(group =>
+        {
+            var latest = group.OrderByDescending(item => item.LastSeenAt).First();
+            return new
+            {
+                latest.DeviceIdHash,
+                latest.InstallationId,
+                latest.ClientVersion,
+                latest.OsVersion,
+                FirstSeenAt = group.Min(item => item.FirstSeenAt),
+                latest.LastSeenAt,
+                InstallationCount = group.Count()
+            };
+        })
+        .OrderByDescending(item => item.LastSeenAt)
+        .ToList();
 
     return Results.Ok(new ApiResponse<object>(ApiInfrastructure.GetRequestId(context), list));
 }

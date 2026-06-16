@@ -121,9 +121,9 @@ https://netrelay.example/api/v1/...    API
 
 优点是证书与部署简单。管理后台不得仅依赖隐藏 URL，仍必须完整认证和授权。
 
-GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供初始部署值，并可由管理后台发布新的签名客户端配置。后端不可用时客户端使用最后有效签名值或安装包内置初始值，不临时依赖后端查询。
+GitHub 备用更新源通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供初始部署值，并可由发布时写入客户端编译资源。后端不可用时客户端直接读取 GitHub Pages 上的公开元数据，再从 GitHub Release 资源下载 `win-x64.zip`，不再调用 GitHub Releases API 查询“最新版本”。
 
-首次正式发布前，部署流程必须将 `NETRELAY_PUBLIC_BASE_URL`、`NETRELAY_GITHUB_REPOSITORY` 和更新通道写入客户端编译资源 `bootstrap-config.json`。服务器部署配置与客户端初始配置必须来自同一受控发布参数，避免地址漂移。
+首次正式发布前，部署流程必须将 `NETRELAY_PUBLIC_BASE_URL` 与 GitHub 备用更新配置写入客户端编译资源 `bootstrap-config.json`。当前客户端固定 `stable / win-x64`，因此不再需要额外写入更新通道。服务器部署配置与客户端初始配置必须来自同一受控发布参数，避免地址漂移。
 
 ## 5. Secret 与配置
 
@@ -146,7 +146,11 @@ GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供�
 | --- | --- | --- |
 | `NETRELAY_PUBLIC_BASE_URL` | 官网与 API 的公开 HTTPS 基础地址 | 否 |
 | `NETRELAY_GITHUB_REPOSITORY` | GitHub 完整备用源仓库 `owner/repository` | 否 |
-| `NETRELAY_UPDATE_CHANNEL` | 初始更新通道 | 否 |
+| `NETRELAY_GITHUB_SYNC_ENABLED` | 是否在发布/撤回时自动同步 GitHub Release 与 Pages 元数据 | 否 |
+| `NETRELAY_GITHUB_TOKEN` | GitHub 自动同步使用的 Token，至少需要 Releases 与 Contents 写权限 | 是 |
+| `NETRELAY_GITHUB_PAGES_BRANCH` | 保存 `latest.json` 与 `history.json` 的分支名，默认 `gh-pages` | 否 |
+| `NETRELAY_GITHUB_RELEASE_TAG_PREFIX` | GitHub Release 标签前缀，默认 `v`，例如 `v1.2.4` | 否 |
+| `NETRELAY_GITHUB_ASSET_NAME` | GitHub Release 资源文件名，当前固定默认 `win-x64.zip` | 否 |
 | `NetRelay__ReleasesRoot` | 主源更新文件目录；Compose 当前固定为 `/var/lib/netrelay/releases` | 否 |
 | `NetRelay__FeedbackRoot` | 私有反馈附件目录；Compose 当前固定为 `/var/lib/netrelay/feedback-attachments` | 否 |
 | `NetRelay__StagingRoot` | 上传暂存目录 | 否 |
@@ -162,7 +166,7 @@ GitHub 备用仓库通过 `NETRELAY_GITHUB_REPOSITORY=owner/repository` 提供�
 - 离线根私钥和离线发布私钥不部署到 Ubuntu 服务器。
 - Ubuntu 只保存短期在线操作私钥及其根签名证书。
 - 在线操作证书到期前由受控运维流程轮换，建议有效期不超过 30 天。
-- 更新清单和更新包在离线发布环境签名后再上传服务器与 GitHub。
+- 更新清单和更新包在离线发布环境签名后再上传服务器；若启用了 GitHub 自动同步，再由后端把同一 ZIP 与元数据镜像到 GitHub。
 
 ## 6. HTTPS、代理和静态文件
 
@@ -202,9 +206,9 @@ Nginx 将 `/admin` 重定向到 `/admin/`，管理后台使用同源 `/api/v1`�
 1. 从受控发布参数生成 `bootstrap-config.json`。
 2. 拒绝空值、示例域名、非 HTTPS 主地址和无效 GitHub `owner/repository`。
 3. 构建客户端并确认初始后端可访问。
-4. 模拟主后端不可用，确认客户端可直接找到 GitHub 备用源。
+4. 模拟主后端不可用，确认客户端可直接读取 GitHub Pages 的 `updates/stable/win-x64/latest.json`，并能从对应 GitHub Release 资源下载更新包。
 
-更新包发布与服务器部署是不同流程。更新包必须在上传主服务器和 GitHub 前完成签名。
+更新包发布与服务器部署是不同流程。更新包必须在上传主服务器前完成签名。若启用了 GitHub 自动同步，后端会在管理员点击“发布”或“撤回”时自动完成 GitHub Release 资源与 Pages 元数据更新。
 
 第八阶段客户端交付统一使用：
 
@@ -215,6 +219,13 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\build-delivery.ps1
 管理后台“更新包文件”应上传脚本生成的 `artifacts/delivery/win-x64/win-x64.zip`。服务端保存草稿时计算 ZIP 的大小与 SHA256，发布后在更新检查响应中返回签名清单；客户端下载签名清单 sidecar，独立更新器再次验证证书链、清单签名、包大小与 SHA256 后才覆盖安装目录。不得手工把 `manifest.json` 塞进 ZIP，否则会引入包哈希自引用问题。
 
 更新包上传需要后端与反向代理同时允许较大的请求体。当前标准上限为 `512MB`：Kestrel 通过服务端代码设置，Nginx/宝塔通过 `client_max_body_size 512m;` 设置。若管理后台上传时报 HTTP 413，先检查生产站点 Nginx 是否仍保留宝塔默认小体积限制，再确认后端服务包已更新并重启。
+
+GitHub 自动同步当前行为：
+
+- 发布稳定版时，后端会确保 GitHub 上存在标签为 `{GithubReleaseTagPrefix}{version}` 的 Release，并上传或替换资源文件 `GithubAssetName`。
+- 后端同时更新 `gh-pages` 分支上的 `updates/stable/win-x64/latest.json` 与 `history.json`。
+- 撤回已发布版本时，后端会重算最新稳定版并重写上述元数据；若已无任何可发布版本，则删除 `latest.json`，仅保留历史文件。
+- 若 GitHub 写入任一步骤失败，当前发布或撤回操作整体失败并回滚数据库状态，避免主站与备用源元数据不一致。
 
 当前实现仍由服务端在线操作密钥动态签名 `update-manifest`，尚不满足本规范的离线发布密钥要求。该链路只能作为第八阶段开发与联调候选，不得视为正式公开发布流程；正式验收前必须改为上传并验证离线签名清单，确保主服务器与 GitHub 分发完全相同的签名清单。
 
@@ -255,9 +266,9 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\build-delivery.ps1
 
 | 故障 | 客户端预期行为 |
 | --- | --- |
-| API 完全不可用 | 已激活未受限客户端继续本地运行；更新切换 GitHub |
+| API 完全不可用 | 已激活未受限客户端继续本地运行；更新切换到 GitHub Pages 元数据 + GitHub Release 资源 |
 | MySQL 不可用 | API 返回可重试错误，不生成封锁策略 |
-| 发布文件不可用 | 主源更新失败，客户端切换 GitHub |
+| 发布文件不可用 | 主源更新失败，客户端切换到 GitHub Pages 元数据 + GitHub Release 资源 |
 | 签名服务不可用 | 停止发布新控制数据，不发送未签名替代内容 |
 | 管理后台不可用 | 不影响客户端公开 API |
 | 磁盘接近满 | 停止附件上传并告警，不影响策略验证与更新检查 |

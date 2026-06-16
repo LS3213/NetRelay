@@ -43,7 +43,7 @@
 | 管理后台 | 位于 `website/admin/`，随官网和后端统一部署 |
 | 管理员 | 首版仅一个管理员账号 |
 | 主更新源 | NetRelay 后端独立保存并提供更新文件，不依赖 GitHub |
-| 备用更新源 | 后端不可用时，客户端完全通过 GitHub Releases API 检查并从 GitHub Release Assets 下载 |
+| 备用更新源 | 后端不可用时，客户端通过 GitHub Pages 元数据检查版本，并从 GitHub Release Assets 下载固定资源文件 |
 | 更新安装 | 独立 `NetRelay.Updater.exe`，验证、替换和失败回滚 |
 | 首次运行 | 必须联网验证并同意用户协议与隐私政策 |
 | 后续离线 | 首次激活成功后允许离线运行 |
@@ -63,7 +63,7 @@ flowchart LR
     Site["website 官网"]
     MySql["MySQL 8.0"]
     Files["服务器更新包与反馈附件"]
-    Github["GitHub Releases 备用源"]
+    Github["GitHub Pages 元数据 + GitHub Releases 备用源"]
 
     Client -->|激活、心跳、探测、公告、反馈、策略、更新| Api
     Client -->|主源失败时检查与下载| Github
@@ -140,7 +140,7 @@ HTTPS 是传输保护，不足以单独证明更新、封锁和公告内容可�
 
 1. 客户端发布时内置初始主 API 引导地址和初始 GitHub 备用仓库。
 2. 客户端缓存最后一次验证成功的签名客户端配置。
-3. 管理后台可修改主 API 地址、GitHub 仓库、更新通道和备用策略。
+3. 管理后台可修改主 API 地址和 GitHub 备用策略。
 4. 后端发布独立 `client-configuration` 签名信封。
 5. 客户端仅接受可信公钥签名、版本递增且未过期的配置。
 6. 新主 API 不可用时保留上一份有效配置。
@@ -153,8 +153,12 @@ HTTPS 证书由部署环境的 Nginx 与 ACME 工具管理，不通过客户端�
 ```json
 {
   "primaryApiBaseUrl": "https://正式域名/api/v1",
-  "githubRepository": "owner/repository",
-  "updateChannel": "stable"
+  "githubFallback": {
+    "enabled": true,
+    "repository": "owner/repository",
+    "releaseTagPrefix": "v",
+    "assetName": "win-x64.zip"
+  }
 }
 ```
 
@@ -215,12 +219,13 @@ Ubuntu 服务器独立保存更新内容：
 
 只有主后端检查失败、超时或返回明确不可用状态时，客户端才启用备用源：
 
-1. 调用 GitHub Releases API 获取最新公开 Release。
-2. 从 GitHub Release Assets 下载 `manifest.json`、`manifest.sig` 和 `NetRelay-update.zip`。
-3. 使用与主源相同的公钥、签名与 SHA256 验证。
-4. 通过同一个独立更新器安装。
+1. 读取 GitHub Pages 上的 `updates/stable/win-x64/latest.json`。
+2. 如需展示历史，再读取同目录下的 `history.json`。
+3. 按 `{releaseTagPrefix}{version}` 拼出 GitHub Release 标签，并下载固定资源文件 `win-x64.zip`。
+4. 使用与主源相同的公钥、签名与 SHA256 验证。
+5. 通过同一个独立更新器安装。
 
-GitHub 不是主后端的依赖。发布新版本时需要将完全相同的签名清单和更新包分别上传到 Ubuntu 服务器与 GitHub。
+GitHub 不是主后端的依赖。发布新版本时，后端可在管理员点击“发布”或“撤回”时自动把同一 ZIP 与元数据镜像到 GitHub；若同步失败，发布或撤回必须整体失败并回滚。
 
 ### 6.3 封锁状态下的更新
 

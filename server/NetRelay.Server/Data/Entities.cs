@@ -115,6 +115,7 @@ public sealed class Release
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
+    public DateTimeOffset? PackageDeletedAt { get; set; }
 }
 
 public sealed class Feedback

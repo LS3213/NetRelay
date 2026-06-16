@@ -90,6 +90,16 @@ sequenceDiagram
 
 运行配置保存到 `runtime-config.json`，包含数据库连接字符串、公开地址、GitHub 仓库、存储目录和 Data Protection 密钥目录。该文件权限必须限制为服务账号可读写。
 
+若要启用“后台发布/撤回时自动同步 GitHub”，安装完成后需在 `runtime-config.json` 的 `netRelay` 段额外维护以下字段：
+
+- `githubSyncEnabled`: `true` 或 `false`。
+- `githubToken`: 具有 GitHub Releases 与 Contents 写权限的 Token。
+- `githubPagesBranch`: 保存 `updates/stable/win-x64/latest.json` 与 `history.json` 的分支，默认 `gh-pages`。
+- `githubReleaseTagPrefix`: Release 标签前缀，默认 `v`。
+- `githubAssetName`: GitHub Release 资源文件名，默认 `win-x64.zip`。
+
+这些字段属于服务端运行配置，不下发给客户端，也不得提交到仓库。
+
 ## 5. 构建与部署
 
 在 Windows 开发机仓库根目录执行：

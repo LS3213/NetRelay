@@ -154,6 +154,11 @@ public sealed class InstallationService(InstallationState state)
         {
             PublicBaseUrl = request.PublicBaseUrl.Trim(),
             GithubRepository = request.GithubRepository.Trim(),
+            GithubSyncEnabled = false,
+            GithubToken = string.Empty,
+            GithubPagesBranch = "gh-pages",
+            GithubReleaseTagPrefix = "v",
+            GithubAssetName = "win-x64.zip",
             ReleasesRoot = Path.Combine(root, "releases"),
             FeedbackRoot = Path.Combine(root, "feedback-attachments"),
             StagingRoot = Path.Combine(root, "staging"),

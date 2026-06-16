@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NetRelay.Contracts;
 using NetRelay.Contracts.Security;
+using NetRelay.Models;
 
 namespace NetRelay.Services;
 
@@ -18,6 +19,8 @@ public sealed record DownloadedUpdatePackage(string PackagePath, string Manifest
 
 public sealed class UpdateService
 {
+    private const string StableChannel = "stable";
+    private const string UpdateArchitecture = "win-x64";
     private readonly ConfigurationService _configService;
     private readonly DiagnosticLogService _diagnosticLog = new();
     private static readonly string RootPublicKey = OperationalKeyCertificate.DefaultRootPublicKeyBase64;
@@ -31,10 +34,7 @@ public sealed class UpdateService
     private void InitializeDefaultsFromBootstrap()
     {
         var config = _configService.Current;
-        // If config values are uninitialized (or default), try reading bootstrap-config
-        if (config.ClientConfigurationVersion == 0 && 
-            config.PrimaryApiBaseUrl == "https://netrelay.473700.xyz" && 
-            config.GithubRepository == "LS3213/NetRelay")
+        if (config.ClientConfigurationVersion == 0)
         {
             try
             {
@@ -48,10 +48,8 @@ public sealed class UpdateService
                     if (bootstrap != null)
                     {
                         config.PrimaryApiBaseUrl = bootstrap.PrimaryApiBaseUrl;
-                        config.GithubRepository = bootstrap.GithubRepository;
-                        config.UpdateChannel = bootstrap.UpdateChannel;
-                        config.AllowGithubFallback = bootstrap.AllowGithubFallback;
-                        config.ClientConfigurationVersion = 1;
+                        config.GithubFallback = bootstrap.GithubFallback ?? new GithubFallbackOptions();
+                        config.ClientConfigurationVersion = 2;
                         _configService.Save();
                     }
                 }
@@ -67,12 +65,12 @@ public sealed class UpdateService
     {
         var config = _configService.Current;
         var now = DateTimeOffset.UtcNow;
-        await _diagnosticLog.InfoAsync("update", "check", "started", detail: $"source=primary; channel={config.UpdateChannel}; currentVersion={currentVersion}");
+        await _diagnosticLog.InfoAsync("update", "check", "started", detail: $"source=primary; channel={StableChannel}; currentVersion={currentVersion}");
 
         // Try primary source first
         try
         {
-            var manifest = await CheckPrimarySourceAsync(config.PrimaryApiBaseUrl, config.UpdateChannel, currentVersion, now, cancellationToken);
+            var manifest = await CheckPrimarySourceAsync(config.PrimaryApiBaseUrl, StableChannel, currentVersion, now, cancellationToken);
             if (manifest != null)
             {
                 await _diagnosticLog.InfoAsync("update", "check", "available", detail: $"version={manifest.Version}; mandatory={manifest.IsMandatory}");
@@ -86,11 +84,11 @@ public sealed class UpdateService
         }
 
         // Fallback to GitHub source if enabled
-        if (config.AllowGithubFallback && !string.IsNullOrWhiteSpace(config.GithubRepository))
+        if (config.GithubFallback.Enabled && !string.IsNullOrWhiteSpace(config.GithubFallback.Repository))
         {
             try
             {
-                var manifest = await CheckGitHubSourceAsync(config.GithubRepository, currentVersion, now, cancellationToken);
+                var manifest = await CheckGitHubSourceAsync(config.GithubFallback, currentVersion, now, cancellationToken);
                 await _diagnosticLog.InfoAsync("update", "check-fallback", manifest is null ? "not-available" : "available");
                 return manifest;
             }
@@ -149,7 +147,7 @@ public sealed class UpdateService
         var requestId = Guid.NewGuid().ToString("N");
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/history?channel={Uri.EscapeDataString(config.UpdateChannel)}&architecture=win-x64");
+            $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/history?channel={Uri.EscapeDataString(StableChannel)}&architecture={UpdateArchitecture}");
         request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
         request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
         request.Headers.Add(Protocol.RequestIdHeader, requestId);
@@ -167,12 +165,27 @@ public sealed class UpdateService
         catch (Exception exception)
         {
             await _diagnosticLog.ErrorAsync("update", "history", exception, requestId: requestId);
-            throw;
+            if (!config.GithubFallback.Enabled || string.IsNullOrWhiteSpace(config.GithubFallback.Repository))
+            {
+                throw;
+            }
+
+            try
+            {
+                var fallback = await GetGitHubHistoryAsync(config.GithubFallback, cancellationToken);
+                await _diagnosticLog.InfoAsync("update", "history-fallback", "success", requestId);
+                return fallback;
+            }
+            catch (Exception fallbackException)
+            {
+                await _diagnosticLog.ErrorAsync("update", "history-fallback", fallbackException, requestId: requestId);
+                throw;
+            }
         }
     }
 
     private async Task<UpdateManifest?> CheckGitHubSourceAsync(
-        string repo,
+        GithubFallbackOptions fallback,
         string currentVersion,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -181,61 +194,32 @@ public sealed class UpdateService
         client.Timeout = TimeSpan.FromSeconds(15);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("NetRelay-Client");
 
-        var requestUrl = $"https://api.github.com/repos/{repo}/releases/latest";
+        var requestUrl = $"{BuildGitHubMetadataBaseUrl(fallback)}/stable/{UpdateArchitecture}/latest.json";
         var response = await client.GetAsync(requestUrl, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return null;
         }
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        
-        var tagName = root.GetProperty("tag_name").GetString() ?? string.Empty;
-        var versionString = tagName.TrimStart('v');
-
-        if (Version.TryParse(versionString, out var latestVer) && Version.TryParse(currentVersion, out var currentVer))
-        {
-            if (latestVer <= currentVer)
-            {
-                return null;
-            }
-        }
-        else if (string.Compare(versionString, currentVersion, StringComparison.OrdinalIgnoreCase) <= 0)
-        {
-            return null;
-        }
-
-        // Find manifest.json in assets
-        string? manifestUrl = null;
-        if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var asset in assets.EnumerateArray())
-            {
-                var name = asset.GetProperty("name").GetString();
-                if (string.Equals(name, "manifest.json", StringComparison.OrdinalIgnoreCase))
-                {
-                    manifestUrl = asset.GetProperty("browser_download_url").GetString();
-                    break;
-                }
-            }
-        }
-
-        if (string.IsNullOrEmpty(manifestUrl))
-        {
-            return null;
-        }
-
-        // Download manifest and verify
-        var manifestJson = await client.GetStringAsync(manifestUrl, cancellationToken);
+        var manifestJson = await response.Content.ReadAsStringAsync(cancellationToken);
         var checkResponse = JsonSerializer.Deserialize<UpdateCheckResponse>(manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (checkResponse == null)
         {
             return null;
         }
 
-        return VerifyAndExtractManifest(checkResponse, now);
+        var manifest = VerifyAndExtractManifest(checkResponse, now);
+        if (manifest is null)
+        {
+            return null;
+        }
+
+        if (CompareVersions(manifest.Version, currentVersion) <= 0)
+        {
+            return null;
+        }
+
+        return manifest;
     }
 
     private UpdateManifest? VerifyAndExtractManifest(UpdateCheckResponse checkResponse, DateTimeOffset now)
@@ -273,7 +257,7 @@ public sealed class UpdateService
         CancellationToken cancellationToken)
     {
         var config = _configService.Current;
-        var filename = "win-x64.zip"; // standard package filename
+        var filename = config.GithubFallback.AssetName;
         var primaryUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
         await _diagnosticLog.InfoAsync("update", "download", "started", detail: $"version={manifest.Version}; expectedBytes={manifest.PackageSize}");
 
@@ -296,7 +280,7 @@ public sealed class UpdateService
         HttpResponseMessage? fallbackResponse = null;
         if (!primaryResponse.IsSuccessStatusCode)
         {
-            if (!config.AllowGithubFallback || string.IsNullOrWhiteSpace(config.GithubRepository))
+            if (!config.GithubFallback.Enabled || string.IsNullOrWhiteSpace(config.GithubFallback.Repository))
             {
                 throw new HttpRequestException(
                     $"主更新源下载失败（HTTP {(int)primaryResponse.StatusCode} {primaryResponse.ReasonPhrase}），且未启用可用的 GitHub 备用源。",
@@ -304,7 +288,7 @@ public sealed class UpdateService
                     primaryResponse.StatusCode);
             }
 
-            var githubUrl = await GetGitHubAssetUrlAsync(config.GithubRepository, manifest.Version, filename, cancellationToken);
+            var githubUrl = BuildGitHubReleaseAssetUrl(config.GithubFallback, manifest.Version);
             fallbackClient = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
             fallbackClient.DefaultRequestHeaders.UserAgent.ParseAdd("NetRelay-Client");
             fallbackResponse = await fallbackClient.GetAsync(githubUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -425,39 +409,55 @@ public sealed class UpdateService
         }
     }
 
-    private async Task<string> GetGitHubAssetUrlAsync(string repo, string version, string filename, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<UpdateHistoryItem>> GetGitHubHistoryAsync(
+        GithubFallbackOptions fallback,
+        CancellationToken cancellationToken)
     {
         using var client = new HttpClient();
         client.Timeout = TimeSpan.FromSeconds(15);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("NetRelay-Client");
-
-        var requestUrl = $"https://api.github.com/repos/{repo}/releases/tags/v{version}";
+        var requestUrl = $"{BuildGitHubMetadataBaseUrl(fallback)}/stable/{UpdateArchitecture}/history.json";
         var response = await client.GetAsync(requestUrl, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            // Try tag without v prefix
-            requestUrl = $"https://api.github.com/repos/{repo}/releases/tags/{version}";
-            response = await client.GetAsync(requestUrl, cancellationToken);
-            response.EnsureSuccessStatusCode();
-        }
-
+        response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+        return JsonSerializer.Deserialize<List<UpdateHistoryItem>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+    }
 
-        if (root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+    private static string BuildGitHubMetadataBaseUrl(GithubFallbackOptions fallback)
+    {
+        var parts = fallback.Repository.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2)
         {
-            foreach (var asset in assets.EnumerateArray())
-            {
-                var name = asset.GetProperty("name").GetString();
-                if (string.Equals(name, filename, StringComparison.OrdinalIgnoreCase))
-                {
-                    return asset.GetProperty("browser_download_url").GetString() ?? throw new InvalidOperationException("Asset browser_download_url is null.");
-                }
-            }
+            throw new InvalidOperationException("GitHub 备用源仓库格式无效，必须为 owner/repository。");
         }
 
-        throw new FileNotFoundException($"在 GitHub Releases 资源列表中未找到包文件: {filename}");
+        return $"https://{parts[0]}.github.io/{parts[1]}/updates";
+    }
+
+    private static string BuildGitHubReleaseAssetUrl(GithubFallbackOptions fallback, string version)
+    {
+        var tag = $"{fallback.ReleaseTagPrefix}{version}";
+        return $"https://github.com/{fallback.Repository}/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(fallback.AssetName)}";
+    }
+
+    private static int CompareVersions(string? left, string? right)
+    {
+        var leftIsVersion = Version.TryParse(left, out var leftVersion);
+        var rightIsVersion = Version.TryParse(right, out var rightVersion);
+        if (leftIsVersion && rightIsVersion)
+        {
+            return leftVersion!.CompareTo(rightVersion);
+        }
+        if (leftIsVersion)
+        {
+            return 1;
+        }
+        if (rightIsVersion)
+        {
+            return -1;
+        }
+
+        return string.Compare(left, right, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class BootstrapConfig
@@ -465,13 +465,7 @@ public sealed class UpdateService
         [JsonPropertyName("primaryApiBaseUrl")]
         public string PrimaryApiBaseUrl { get; set; } = string.Empty;
 
-        [JsonPropertyName("githubRepository")]
-        public string GithubRepository { get; set; } = string.Empty;
-
-        [JsonPropertyName("updateChannel")]
-        public string UpdateChannel { get; set; } = string.Empty;
-
-        [JsonPropertyName("allowGithubFallback")]
-        public bool AllowGithubFallback { get; set; }
+        [JsonPropertyName("githubFallback")]
+        public GithubFallbackOptions? GithubFallback { get; set; }
     }
 }

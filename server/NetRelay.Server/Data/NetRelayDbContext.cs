@@ -157,6 +157,7 @@ public sealed class NetRelayDbContext(DbContextOptions<NetRelayDbContext> option
             entity.Property(item => item.AssetPath).HasMaxLength(500);
             entity.Property(item => item.Status).HasMaxLength(50);
             entity.Property(item => item.Changelog).HasMaxLength(4000);
+            entity.Property(item => item.PackageDeletedAt).HasColumnName("package_deleted_at");
             entity.HasIndex(item => new { item.Version, item.Channel, item.Architecture }).IsUnique();
             entity.HasIndex(item => item.Status);
         });

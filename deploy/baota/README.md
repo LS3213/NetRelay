@@ -45,6 +45,16 @@ sudo bash install.sh
 - 再次执行 `install.sh` 只会刷新 systemd 服务、执行数据库迁移并重启后端，不会重新安装或重新开放安装入口。
 - 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，使新版本代码和数据库结构保持一致。
 
+如果要启用“后台发布/撤回时自动同步 GitHub”，请在安装完成后编辑 `/www/server/netrelay/config/runtime-config.json` 的 `netRelay` 段，至少补充：
+
+- `githubSyncEnabled: true`
+- `githubToken: "<你的 GitHub Token>"`
+- `githubPagesBranch: "gh-pages"`（默认）
+- `githubReleaseTagPrefix: "v"`（默认）
+- `githubAssetName: "win-x64.zip"`（默认）
+
+启用后，后台发布稳定版时，后端会自动更新 GitHub Release 资源和 `gh-pages/updates/stable/win-x64/latest.json`、`history.json`；若 GitHub 写入失败，发布或撤回会整体失败并回滚。
+
 ## 常用命令
 
 ```bash

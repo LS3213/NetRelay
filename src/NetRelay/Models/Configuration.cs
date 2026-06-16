@@ -6,7 +6,7 @@ namespace NetRelay.Models;
 public sealed class AppConfiguration
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
 
     [JsonPropertyName("probePolicy")]
     public ConnectivityProbePolicy ProbePolicy { get; set; } = new();
@@ -71,20 +71,29 @@ public sealed class AppConfiguration
     [JsonPropertyName("ignoreSslErrors")]
     public bool IgnoreSslErrors { get; set; } = false;
 
-    [JsonPropertyName("githubRepository")]
-    public string GithubRepository { get; set; } = "LS3213/NetRelay";
-
-    [JsonPropertyName("updateChannel")]
-    public string UpdateChannel { get; set; } = "stable";
-
-    [JsonPropertyName("allowGithubFallback")]
-    public bool AllowGithubFallback { get; set; } = true;
+    [JsonPropertyName("githubFallback")]
+    public GithubFallbackOptions GithubFallback { get; set; } = new();
 
     [JsonPropertyName("displayedAnnouncementIds")]
     public List<string> DisplayedAnnouncementIds { get; set; } = [];
 
     [JsonPropertyName("persistedBlockState")]
     public PolicyEvaluateResponse? PersistedBlockState { get; set; }
+}
+
+public sealed class GithubFallbackOptions
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+
+    [JsonPropertyName("repository")]
+    public string Repository { get; set; } = "LS3213/NetRelay";
+
+    [JsonPropertyName("releaseTagPrefix")]
+    public string ReleaseTagPrefix { get; set; } = "v";
+
+    [JsonPropertyName("assetName")]
+    public string AssetName { get; set; } = "win-x64.zip";
 }
 
 public sealed class ConnectivityProbePolicy

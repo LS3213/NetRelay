@@ -20,7 +20,7 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
   - `/api/v1/connectivity/challenge`（高可信联网验证挑战）。
 - **B3 双源更新**：
   - `/api/v1/updates/latest`（获取最新清单）与 `/api/v1/updates/{version}/download/{filename}`（流式包下载）。
-  - 管理端 `/api/v1/admin/releases`（更新包分块上传、草稿管理、双重 TOTP 授权发布与撤销）。
+  - 管理端 `/api/v1/admin/releases`（更新包上传、草稿管理、双重 TOTP 授权发布与撤销、旧物理包清理）。
 - **B4 反馈、日志与公告**：
   - `/api/v1/feedback`（反馈创建）、流式上传附件，管理端 `/api/v1/admin/feedback`（反馈列表、附件下载，受 Re-auth 保护）。
   - `/api/v1/announcements/active`（获取签名活动公告），管理端 `/api/v1/admin/announcements`（公告草稿、编辑、发布与撤销）。
@@ -154,11 +154,11 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
 | 方法与路径 | 用途 |
 | --- | --- |
 | `GET /api/v1/updates/latest?channel=stable&architecture=win-x64&currentVersion=...` | 获取签名更新清单 |
-| `GET /api/v1/updates/history?channel=stable&architecture=win-x64` | 获取当前通道仍处于已发布状态的更新历史 |
+| `GET /api/v1/updates/history?channel=stable&architecture=win-x64` | 获取当前固定稳定通道仍处于已发布状态的更新历史 |
 | `GET /api/v1/updates/{version}/download/{filename}` | 下载服务器主源更新包 |
 | `HEAD /api/v1/updates/{version}/download/{filename}` | 供已安装客户端在正式下载前探测主源更新包是否可用 |
 
-更新清单载荷至少包含版本、通道、架构、最低升级版本、包大小、SHA256、签名、发布日期、发布说明摘要和 `isMandatory` 强制更新标志。主源不可用时客户端直接调用 GitHub Releases API，不经后端代理。
+更新清单载荷至少包含版本、通道、架构、最低升级版本、包大小、SHA256、签名、发布日期、发布说明摘要和 `isMandatory` 强制更新标志。当前公开更新固定为 `stable / win-x64`。主源不可用时客户端直接读取 GitHub Pages 上的 `updates/stable/win-x64/latest.json` 与 `history.json`，再从 GitHub Release 资源下载同一版本的 `win-x64.zip`，不经后端代理。
 
 更新历史接口仅返回公开发布信息，不返回下载路径、SHA256、草稿或已撤回记录。客户端启动检查在无新版时静默；发现新版时展示更新日志确认窗口。关于页的手动检查复用同一窗口，关于页更新历史通过公开历史接口读取。
 
@@ -172,18 +172,22 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
 {
   "configurationVersion": 1,
   "primaryApiBaseUrl": "https://netrelay.example/api/v1",
-  "githubRepository": "owner/repository",
-  "updateChannel": "stable",
-  "allowGithubFallback": true
+  "githubFallback": {
+    "enabled": true,
+    "repository": "owner/repository",
+    "releaseTagPrefix": "v",
+    "assetName": "win-x64.zip"
+  }
 }
 ```
 
 - 客户端内置初始配置并保存最后有效签名配置。
-- 发布版客户端必须在编译资源 `bootstrap-config.json` 中预置可用的主后端地址、GitHub 备用仓库和更新通道。
+- 发布版客户端必须在编译资源 `bootstrap-config.json` 中预置可用的主后端地址和 GitHub 备用配置。
 - Release 构建必须拒绝示例域名、空地址和占位 GitHub 仓库。
 - 后端管理后台可修改并发布新配置。
 - `primaryApiBaseUrl` 必须为 HTTPS。
-- `githubRepository` 必须是规范化的 `owner/repository`，客户端自行构造 GitHub Releases API 地址。
+- `githubFallback.repository` 必须是规范化的 `owner/repository`；客户端按固定规则构造 GitHub Pages 元数据地址和 GitHub Release 资源下载地址。
+- `githubFallback.assetName` 当前必须与服务端镜像输出一致，默认 `win-x64.zip`。
 - 配置版本必须严格递增；无效签名、版本回退、过期或不可用的新主地址不得覆盖最后有效配置。
 - 后端不可用时不得为获取 GitHub 地址而再次依赖后端。
 
@@ -208,7 +212,7 @@ OpenAPI 见 [`openapi/netrelay-v1.yaml`](openapi/netrelay-v1.yaml)。该文件�
 | 设备 | `GET /devices`、`GET /devices/{id}` |
 | 封锁 | `POST /device-blocks`、`POST /device-blocks/{id}/revoke` |
 | 全局策略 | `GET /policies`、`POST /policies`、`POST /policies/{id}/revoke` |
-| 发布 | `GET /releases`、`POST /releases`、`POST /releases/{id}/publish`、`POST /releases/{id}/revoke` |
+| 发布 | `GET /releases`、`POST /releases`、`POST /releases/{id}/publish`、`POST /releases/{id}/revoke`、`POST /releases/cleanup` |
 | 客户端配置 | `GET /client-configuration`、`POST /client-configuration`、`POST /client-configuration/{id}/publish` |
 | 公告 | `GET /announcements`、`POST /announcements`、`POST /announcements/{id}/revoke` |
 | 反馈 | `GET /feedback`、`GET /feedback/{id}`、`GET /feedback/{id}/attachments/{attachmentId}` |
@@ -259,5 +263,5 @@ B1 当前认证实现边界：
 
 - UUID v7 的具体库和 MySQL 映射方式。
 - RFC 8785 实现库选择与跨语言测试向量。
-- Release Asset 命名和新增更新通道策略。
+- Release Asset 命名与未来是否重新引入多通道发布策略。
 - 附件大小、反馈频率和公开 API 具体限流值。
