@@ -16,6 +16,16 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 artifacts/baota-portable.zip
 ```
 
+上传服务器前，建议先确认 `artifacts/baota-portable/` 根目录同时存在：
+
+- `install.sh`
+- `netrelay-menu.sh`
+- `netrelay.service`
+- `nginx-location.conf`
+- `README.md`
+- `app/`
+- `public/`
+
 ## 宝塔安装
 
 1. 在宝塔创建 MySQL 数据库和专用账号。
@@ -26,6 +36,8 @@ artifacts/baota-portable.zip
 cd /www/wwwroot/netrelay
 sudo bash install.sh
 ```
+
+升级现有环境时，必须用新的 `baota-portable.zip` 整包覆盖部署目录，再执行 `install.sh`。不要只替换 `app/`，否则会遗漏 `install.sh`、`netrelay-menu.sh` 和服务模板更新。
 
 4. 记录脚本输出的一次性安装令牌。
 5. 在宝塔创建纯静态网站，网站目录设置为 `/www/wwwroot/netrelay/public`。
@@ -45,6 +57,15 @@ sudo bash install.sh
 - 再次执行 `install.sh` 只会刷新 systemd 服务、执行数据库迁移并重启后端，不会重新安装或重新开放安装入口。
 - 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，使新版本代码和数据库结构保持一致。
 - 安装脚本会自动注册全局维护命令：`NetRelay`、`netrelay`、`NR`。
+
+若执行完 `install.sh` 后仍提示 `NR: command not found`，应先检查：
+
+```bash
+ls -l /www/wwwroot/netrelay/install.sh /www/wwwroot/netrelay/netrelay-menu.sh
+ls -l /usr/local/bin/netrelay /usr/local/bin/NetRelay /usr/local/bin/NR
+```
+
+通常这意味着服务器上仍是旧便携包，或只更新了 `app/` 而没有更新根目录脚本。
 
 如果要启用“后台发布/撤回时自动同步 GitHub”，请在安装完成后编辑 `/www/server/netrelay/config/runtime-config.json` 的 `netRelay` 段，至少补充：
 

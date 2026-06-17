@@ -27,14 +27,22 @@ if (Test-Path -LiteralPath $outputPath) {
 New-Item -ItemType Directory -Path $appPath, $publicPath | Out-Null
 New-Item -ItemType Directory -Path $npmCachePath -Force | Out-Null
 
-& npm.cmd --cache $npmCachePath --prefix (Join-Path $root "website\admin") ci
-if ($LASTEXITCODE -ne 0) {
-    Start-Sleep -Seconds 2
-    & npm.cmd --cache $npmCachePath --prefix (Join-Path $root "website\admin") ci
+$adminPrefix = "website\admin"
+Push-Location $root
+try {
+    & npm.cmd --cache $npmCachePath --prefix $adminPrefix ci
+    if ($LASTEXITCODE -ne 0) {
+        Start-Sleep -Seconds 2
+        & npm.cmd --cache $npmCachePath --prefix $adminPrefix ci
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Admin dependency installation failed after retry." }
+
+    & npm.cmd --prefix $adminPrefix run build
+    if ($LASTEXITCODE -ne 0) { throw "Admin production build failed." }
 }
-if ($LASTEXITCODE -ne 0) { throw "Admin dependency installation failed after retry." }
-& npm.cmd --prefix (Join-Path $root "website\admin") run build
-if ($LASTEXITCODE -ne 0) { throw "Admin production build failed." }
+finally {
+    Pop-Location
+}
 
 & $dotnetExecutable publish (Join-Path $root "server\NetRelay.Server\NetRelay.Server.csproj") `
     -c Release `

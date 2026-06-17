@@ -174,6 +174,21 @@ artifacts/baota-portable/
 artifacts/baota-portable.zip
 ```
 
+构建成功后，上传服务器前必须先检查 `artifacts/baota-portable/` 根目录至少包含：
+
+```text
+app/
+public/
+BUILD.txt
+install.sh
+netrelay-menu.sh
+netrelay.service
+nginx-location.conf
+README.md
+```
+
+若缺少 `netrelay-menu.sh` 或 `install.sh`，说明当前便携包不是最新完整产物，不得上传。
+
 部署或升级步骤：
 
 1. 备份数据库、运行配置、密钥和上传文件。
@@ -197,7 +212,16 @@ journalctl -u netrelay -n 100 --no-pager
 
 8. 验证健康端点、管理后台登录、客户端 API 和数据库迁移状态。
 
-不得只替换服务器可执行文件而跳过 `install.sh`，否则可能造成代码与数据库 Schema 不一致。
+不得只替换服务器可执行文件或只覆盖 `app/` 而跳过根目录脚本更新；必须整包覆盖部署目录并执行 `install.sh`。否则不仅会造成代码与数据库 Schema 不一致，还会遗漏 `netrelay-menu.sh`、新版 `install.sh`、`netrelay.service` 和 `nginx-location.conf`。
+
+升级后立即核对：
+
+```bash
+ls -l /www/wwwroot/netrelay/install.sh /www/wwwroot/netrelay/netrelay-menu.sh
+ls -l /usr/local/bin/netrelay /usr/local/bin/NetRelay /usr/local/bin/NR
+```
+
+若 `NR` / `NetRelay` 仍提示 `command not found`，优先检查服务器上的部署目录是否真的存在 `netrelay-menu.sh`，以及当前 `install.sh` 是否包含全局菜单命令安装逻辑。该现象通常意味着上传了旧便携包，或只更新了 `app/` 而未更新根目录脚本。
 
 首次安装、目录权限、Nginx 配置和安装锁细节见 [宝塔便携部署与首次安装向导](18-baota-portable-deployment.md)。
 

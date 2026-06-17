@@ -111,6 +111,16 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 
 产物为 `artifacts/baota-portable/` 和 `artifacts/baota-portable.zip`。
 
+构建完成后，至少应先核对便携目录根部包含以下文件；若缺少任一项，不得上传服务器：
+
+- `install.sh`
+- `netrelay-menu.sh`
+- `netrelay.service`
+- `nginx-location.conf`
+- `README.md`
+- `app/`
+- `public/`
+
 宝塔部署步骤：
 
 1. 在宝塔创建 MySQL 8 数据库和专用账号。
@@ -121,6 +131,8 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 6. 将 `nginx-location.conf` 加入网站的 `server` 块。
 7. 配置并强制启用 HTTPS。
 8. 访问 `/install/` 完成安装。
+
+升级现有服务器时，必须用新的 `baota-portable.zip` 整包覆盖部署目录，再执行 `install.sh`。不得只替换 `app/` 或单独替换 `NetRelay.Server`，否则会遗漏根目录脚本与服务模板，例如 `install.sh`、`netrelay-menu.sh`、`netrelay.service` 和 `nginx-location.conf`。
 
 宝塔默认网站配置通常包含处理 CSS 和 JavaScript 的正则 `location`。安装页路由必须使用 `location ^~ /install/`，确保安装页样式和脚本均代理到安装模式后端，而不是被默认静态文件规则截获。
 
@@ -136,6 +148,15 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 - 再次执行 `install.sh` 只刷新 systemd 服务、执行数据库迁移并重启后端，不重建管理员或开放安装入口。
 - 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，避免静态页面已更新但 API 仍为旧版本或新代码连接旧库结构。
 - `install.sh` 会额外注册 `/usr/local/bin/netrelay`，并创建别名 `NetRelay` 与 `NR`，因此后续可在任意目录直接打开维护菜单。
+
+升级或首次安装后应立即核对：
+
+```bash
+ls -l /www/wwwroot/netrelay/install.sh /www/wwwroot/netrelay/netrelay-menu.sh
+ls -l /usr/local/bin/netrelay /usr/local/bin/NetRelay /usr/local/bin/NR
+```
+
+若站点目录中缺少 `netrelay-menu.sh`，或 `install.sh` 运行完成后没有创建 `/usr/local/bin/netrelay`、`/usr/local/bin/NetRelay`、`/usr/local/bin/NR`，说明上传的便携包不是最新完整包，或服务器并未整包覆盖部署目录。
 
 如果安装在数据库迁移或创建管理员期间失败，应查看 `journalctl -u netrelay`。首次安装应使用空数据库；若数据库已留下不完整数据，先由维护者确认和清理该专用数据库，再重新安装。不得通过删除 `installed.lock` 绕过已安装环境的保护。
 
