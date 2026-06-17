@@ -137,6 +137,13 @@ public sealed class MainViewModel : ObservableObject
                 NetRelay.Dialogs.ModernMessageBox.Show("无法加载更新历史，请稍后重试。", "更新历史", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         });
+        HelpCommand = new RelayCommand(() =>
+        {
+            new NetRelay.Dialogs.HelpDialog
+            {
+                Owner = System.Windows.Application.Current.MainWindow
+            }.ShowDialog();
+        });
 
         // Bind Scheduler Events
         if (_ruleScheduler != null)
@@ -187,6 +194,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand CheckUpdatesCommand { get; }
     public RelayCommand FeedbackCommand { get; }
     public RelayCommand UpdateHistoryCommand { get; }
+    public RelayCommand HelpCommand { get; }
 
     public async Task CheckForUpdatesOnStartupAsync()
     {

@@ -136,6 +136,8 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 
 宝塔默认网站配置通常包含处理 CSS 和 JavaScript 的正则 `location`。安装页路由必须使用 `location ^~ /install/`，确保安装页样式和脚本均代理到安装模式后端，而不是被默认静态文件规则截获。
 
+客户端首次运行的隐私同意弹窗会直接打开 `https://<publicBaseUrl>/terms/` 与 `https://<publicBaseUrl>/privacy/`。当前默认静态站点根路由会把未知路径回退到 `index.html`，因此若 `public/` 下没有真实的 `terms` 与 `privacy` 页面，用户点击协议链接时会落回官网首页；若站点尚未完成安装，还可能先被重定向到 `/install/`。正式对外前必须补齐这两个真实页面，或把客户端链接改为有效协议地址。
+
 详细操作说明以 [`deploy/baota/README.md`](../deploy/baota/README.md) 为准。
 
 ## 6. 安全与恢复
