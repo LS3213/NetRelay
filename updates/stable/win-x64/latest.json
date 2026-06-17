@@ -2,11 +2,11 @@
   "envelope": {
     "protocolVersion": 1,
     "purpose": "update-manifest",
-    "nonce": "41e756e3457549c3990273ffa2cf1122",
-    "issuedAt": "2026-06-17T15:38:50.5315484+00:00",
+    "nonce": "7e058312334e445ea88ded61d05bd11d",
+    "issuedAt": "2026-06-17T18:00:11.4723308+00:00",
     "expiresAt": "2026-07-14T08:18:45.2705055+00:00",
     "payloadJson": "{\u0022architecture\u0022:\u0022win-x64\u0022,\u0022changelog\u0022:\u0022\\u4FEE\\u590D\\u66F4\\u65B0\\u9519\\u8BEF\u0022,\u0022channel\u0022:\u0022stable\u0022,\u0022isMandatory\u0022:false,\u0022minUpgradableVersion\u0022:\u00220.1.0\u0022,\u0022packageSize\u0022:144636356,\u0022releaseDate\u0022:\u00222026-06-17T15:38:50.507Z\u0022,\u0022sha256\u0022:\u00228a4816ad3b164c3a0b5b9d8a0fc8c7f552e78ec2a17d3750110211c0d6eb4d87\u0022,\u0022version\u0022:\u00221.2.6\u0022}",
-    "signature": "T8YllNpbthQgc5KHxsBI\u002BDyqvs7\u002B6TOXUh13NVimgok2Z4Lp/Xc9hHrQjH9fUGQiNhwLAyGSgWCkvjOZMn\u002BdtA=="
+    "signature": "WalEJre/UwGuf\u002B0JTOgLLSQH7QnCjbufNmlqKVZF0WBivI6ghHiCGIkHaeZqYwIK5hMSfKkhAwosUwOPOmKIoQ=="
   },
   "certificate": {
     "keyId": "operations-20260614-081845",
