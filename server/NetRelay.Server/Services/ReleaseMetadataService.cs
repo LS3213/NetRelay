@@ -8,6 +8,7 @@ public sealed class ReleaseMetadataService(KeyManagementService keyManagementSer
 {
     public const string StableChannel = "stable";
     public const string SupportedArchitecture = "win-x64";
+    private static readonly TimeSpan PrimaryResponseLifetime = TimeSpan.FromMinutes(5);
 
     public bool IsSupportedPublicChannel(string channel) =>
         string.Equals(channel, StableChannel, StringComparison.OrdinalIgnoreCase);
@@ -65,6 +66,19 @@ public sealed class ReleaseMetadataService(KeyManagementService keyManagementSer
 
     public UpdateCheckResponse CreateSignedUpdateResponse(Release release)
     {
+        var issuedAt = DateTimeOffset.UtcNow;
+        return CreateSignedUpdateResponseCore(release, issuedAt, issuedAt.Add(PrimaryResponseLifetime));
+    }
+
+    public UpdateCheckResponse CreateSignedMirrorUpdateResponse(Release release)
+    {
+        var certificate = keyManagementService.OperationCertificate;
+        var issuedAt = DateTimeOffset.UtcNow;
+        return CreateSignedUpdateResponseCore(release, issuedAt, certificate.NotAfter);
+    }
+
+    private UpdateCheckResponse CreateSignedUpdateResponseCore(Release release, DateTimeOffset issuedAt, DateTimeOffset expiresAt)
+    {
         var manifest = new UpdateManifest
         {
             Version = release.Version,
@@ -94,8 +108,8 @@ public sealed class ReleaseMetadataService(KeyManagementService keyManagementSer
         var envelope = keyManagementService.Sign(
             "update-manifest",
             Guid.NewGuid().ToString("N"),
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow.AddMinutes(5),
+            issuedAt,
+            expiresAt,
             payload);
 
         return new UpdateCheckResponse

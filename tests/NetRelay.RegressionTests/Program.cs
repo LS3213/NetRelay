@@ -62,6 +62,7 @@ var tests = new (string Name, Action Test)[]
     ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable),
     ("Log packaging logic zips jsonl files properly", TestLogPackagingLogic),
     ("Diagnostic logs redact sensitive values", TestDiagnosticLogRedaction),
+    ("Update service recognizes UPDATE_NOT_AVAILABLE as up-to-date", TestUpdateNotAvailableClassification),
     ("Safe markdown parser parses formatting and filters unsafe protocols", TestSafeMarkdownParser),
     ("Client policy restriction behaves correctly when blocked", TestClientPolicyRestriction),
     ("Policy envelope double-signature verifies correctly", TestPolicyEnvelopeSignature)
@@ -1863,5 +1864,37 @@ static void TestPolicyEnvelopeSignature()
         {
             Directory.Delete(tempDir, recursive: true);
         }
+    }
+}
+
+static void TestUpdateNotAvailableClassification()
+{
+    var method = typeof(UpdateService).GetMethod("IsUpdateNotAvailableResponse", BindingFlags.Static | BindingFlags.NonPublic);
+    Assert(method is not null);
+
+    var updateNotAvailable = new ApiErrorResponse(
+        "req-1",
+        new ApiError(ErrorCodes.UpdateNotAvailable, "当前已是最新版本。", false));
+    var resourceNotFound = new ApiErrorResponse(
+        "req-2",
+        new ApiError(ErrorCodes.ResourceNotFound, "不存在。", false));
+
+    var accepted = (bool)method!.Invoke(null, new object?[] { HttpStatusCode.NotFound, updateNotAvailable })!;
+    var rejectedWrongCode = (bool)method.Invoke(null, new object?[] { HttpStatusCode.NotFound, resourceNotFound })!;
+    var rejectedWrongStatus = (bool)method.Invoke(null, new object?[] { HttpStatusCode.BadGateway, updateNotAvailable })!;
+
+    if (!accepted)
+    {
+        throw new InvalidOperationException("UPDATE_NOT_AVAILABLE should be treated as an up-to-date response.");
+    }
+
+    if (rejectedWrongCode)
+    {
+        throw new InvalidOperationException("Only UPDATE_NOT_AVAILABLE should bypass fallback logic.");
+    }
+
+    if (rejectedWrongStatus)
+    {
+        throw new InvalidOperationException("Non-404 responses must not be treated as up-to-date.");
     }
 }

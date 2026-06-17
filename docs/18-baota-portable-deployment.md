@@ -24,6 +24,7 @@
 ├── app/                               # Linux x64 自包含后端
 ├── public/                            # 唯一允许由 Nginx 静态公开的目录
 ├── install.sh
+├── netrelay-menu.sh
 ├── netrelay.service
 └── nginx-location.conf
 
@@ -134,6 +135,7 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 - 数据库已存在管理员时安装器拒绝继续，避免接管已有环境。
 - 再次执行 `install.sh` 只刷新 systemd 服务、执行数据库迁移并重启后端，不重建管理员或开放安装入口。
 - 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，避免静态页面已更新但 API 仍为旧版本或新代码连接旧库结构。
+- `install.sh` 会额外注册 `/usr/local/bin/netrelay`，并创建别名 `NetRelay` 与 `NR`，因此后续可在任意目录直接打开维护菜单。
 
 如果安装在数据库迁移或创建管理员期间失败，应查看 `journalctl -u netrelay`。首次安装应使用空数据库；若数据库已留下不完整数据，先由维护者确认和清理该专用数据库，再重新安装。不得通过删除 `installed.lock` 绕过已安装环境的保护。
 
@@ -147,6 +149,7 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 | `server/NetRelay.Server/InstallAssets/` | 首次安装页面 |
 | `deploy/baota/build-package.ps1` | 构建自包含便携发布包 |
 | `deploy/baota/install.sh` | 创建目录、令牌并安装 systemd 服务 |
+| `deploy/baota/netrelay-menu.sh` | 安装到 `/usr/local/bin` 的服务器维护菜单 |
 | `deploy/baota/netrelay.service` | 后端 systemd 服务模板 |
 | `deploy/baota/nginx-location.conf` | 宝塔 Nginx 路由片段 |
 
@@ -169,6 +172,33 @@ journalctl -u netrelay -n 200 --no-pager
 find /www/server/netrelay/data/releases -maxdepth 4 -type f -ls
 nginx -t
 systemctl reload nginx
+```
+
+安装脚本还会注册全局维护命令：
+
+```bash
+NetRelay
+netrelay
+NR
+```
+
+菜单内提供以下数字操作：
+
+1. 查看后端运行状态
+2. 查看最近 200 行服务日志
+3. 启动服务
+4. 停止服务
+5. 重启服务
+6. 执行当前部署目录下的 `install.sh`，用于升级后的“更新安装”或重新执行 Migration
+7. 显示安装目录、配置目录与脚本路径
+
+同一脚本也支持直接参数调用，例如：
+
+```bash
+netrelay status
+netrelay logs
+netrelay restart
+netrelay update
 ```
 
 ## 9. 当前验证与未确认项

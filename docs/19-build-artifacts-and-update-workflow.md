@@ -187,14 +187,15 @@ sudo bash install.sh
 ```
 
 5. `install.sh` 在已有安装上会停止服务、自动执行数据库 Migration，然后重启服务。
-6. 检查：
+6. 安装或升级完成后，可在任意目录直接输入 `NetRelay`、`netrelay` 或 `NR` 打开服务器维护菜单。
+7. 检查：
 
 ```bash
 systemctl status netrelay
 journalctl -u netrelay -n 100 --no-pager
 ```
 
-7. 验证健康端点、管理后台登录、客户端 API 和数据库迁移状态。
+8. 验证健康端点、管理后台登录、客户端 API 和数据库迁移状态。
 
 不得只替换服务器可执行文件而跳过 `install.sh`，否则可能造成代码与数据库 Schema 不一致。
 

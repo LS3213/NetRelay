@@ -73,6 +73,26 @@
                     <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#536EF2" VerticalAlignment="Center"/>
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="检查更新" Click="TrayCheckUpdates_Click">
+                <MenuItem.Icon>
+                    <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#536EF2" VerticalAlignment="Center"/>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="导出诊断包" Click="TrayExportDiagnostics_Click">
+                <MenuItem.Icon>
+                    <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#536EF2" VerticalAlignment="Center"/>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="打开日志目录" Click="TrayOpenLogs_Click">
+                <MenuItem.Icon>
+                    <TextBlock Text="&#xE838;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#536EF2" VerticalAlignment="Center"/>
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Header="打开更新缓存" Click="TrayOpenUpdateCache_Click">
+                <MenuItem.Icon>
+                    <TextBlock Text="&#xE7C3;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="#536EF2" VerticalAlignment="Center"/>
+                </MenuItem.Icon>
+            </MenuItem>
             <Separator/>
             <MenuItem Header="退出程序" Click="TrayExit_Click">
                 <MenuItem.Icon>
@@ -663,7 +683,7 @@
                                 <Button Style="{StaticResource SoftButtonStyle}" Command="{Binding ExportLogsCommand}" Margin="0,0,10,0" Padding="15,9">
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <TextBlock Text="导出日志" VerticalAlignment="Center"/>
+                                        <TextBlock Text="导出诊断包" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Button>
                                 <Button Style="{StaticResource DangerButtonStyle}" Command="{Binding ClearLogsCommand}" Padding="15,9">
@@ -758,8 +778,14 @@
 
                         <!-- Content Area -->
                         <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="30" Margin="0,0,0,10">
-                            <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-20,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,26">
                                     <!-- Glowing Logo Border -->
                                     <Border Width="90" Height="90" CornerRadius="32" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1.5" HorizontalAlignment="Center">
                                         <Border.Effect>
@@ -775,15 +801,37 @@
                                     <TextBlock Text="{Binding ProductVersionText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
                                     <TextBlock Text="作者：lansi" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
 
-                                    <!-- Subtle Separator -->
-                                    <Border Height="1" Background="#18000000" Margin="0,30,0,30" Width="220" HorizontalAlignment="Center"/>
+                                </StackPanel>
 
-                                    <!-- Action Buttons -->
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="检查更新" Command="{Binding CheckUpdatesCommand}" Margin="0,0,16,0" Padding="24,11"/>
-                                        <Button Style="{StaticResource SoftButtonStyle}" Content="更新历史" Command="{Binding UpdateHistoryCommand}" Margin="0,0,16,0" Padding="24,11"/>
-                                        <Button Style="{StaticResource SoftButtonStyle}" Content="建议与反馈" Command="{Binding FeedbackCommand}" Padding="24,11"/>
-                                    </StackPanel>
+                                <Grid Grid.Row="1" Margin="0,0,0,24">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="#68FFFFFF" BorderBrush="#C8FFFFFF" BorderThickness="1" CornerRadius="18" Padding="18">
+                                        <StackPanel>
+                                            <TextBlock Text="更新状态" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="{Binding UpdateLastAvailableVersionText}" Margin="0,12,0,0" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding UpdateLastCheckText}" Margin="0,10,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding UpdateLastCheckOutcomeText}" Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding UpdateLastCheckSourceText}" Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding UpdateLastDownloadText}" Margin="0,6,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="2" Background="#68FFFFFF" BorderBrush="#C8FFFFFF" BorderThickness="1" CornerRadius="18" Padding="18">
+                                        <StackPanel>
+                                            <TextBlock Text="运行概览" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="{Binding UpdateStartupPolicyText}" Margin="0,12,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding AutomationStatusText}" Margin="0,10,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top">
+                                    <Button Style="{StaticResource PrimaryButtonStyle}" Content="检查更新" Command="{Binding CheckUpdatesCommand}" Margin="0,0,16,0" Padding="24,11"/>
+                                    <Button Style="{StaticResource SoftButtonStyle}" Content="更新历史" Command="{Binding UpdateHistoryCommand}" Margin="0,0,16,0" Padding="24,11"/>
+                                    <Button Style="{StaticResource SoftButtonStyle}" Content="建议与反馈" Command="{Binding FeedbackCommand}" Padding="24,11"/>
                                 </StackPanel>
                             </Grid>
                         </Border>

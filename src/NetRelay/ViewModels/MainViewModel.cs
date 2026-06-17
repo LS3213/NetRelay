@@ -21,6 +21,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly LogService _logService;
     private readonly RuleEngine _ruleEngine;
     private readonly UpdateService _updateService;
+    private readonly DiagnosticsBundleService _diagnosticsBundleService;
 
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
@@ -31,6 +32,7 @@ public sealed class MainViewModel : ObservableObject
     private UpdateManifest? _pendingUpdateManifest;
     private bool _activeUpdateWasMandatory;
     private string? _operationMessage;
+    private UpdateStatusSnapshot _updateStatus = UpdateStatusSnapshot.Empty;
     private readonly DispatcherTimer _trafficTimer;
     private readonly DispatcherTimer _countdownTimer;
     private CancellationTokenSource? _probeCts;
@@ -65,6 +67,7 @@ public sealed class MainViewModel : ObservableObject
         _connectivityService = connectivityService;
         _ruleScheduler = ruleScheduler;
         _logService = logService ?? new LogService();
+        _diagnosticsBundleService = new DiagnosticsBundleService();
 
         _ruleEngine = ruleEngine;
 
@@ -101,135 +104,14 @@ public sealed class MainViewModel : ObservableObject
         CancelPendingCommand = new RelayCommand(CancelPending);
 
         _updateService = new UpdateService(_configService);
-
-        CheckUpdatesCommand = new RelayCommand(async () =>
+        _updateStatus = _updateService.GetStatusSnapshot();
+        _updateService.StatusChanged += (_, snapshot) =>
         {
-            if (_isUpdating)
-            {
-                return;
-            }
+            _updateStatus = snapshot;
+            RaiseUpdateStatusProperties();
+        };
 
-            _isUpdating = true;
-            CheckUpdatesCommand?.RaiseCanExecuteChanged();
-            if (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false)
-            {
-                OperationMessage = "更新功能在该受限状态下已被系统管理员禁用。";
-                await Task.Delay(2550);
-                OperationMessage = null;
-                _isUpdating = false;
-                CheckUpdatesCommand?.RaiseCanExecuteChanged();
-                return;
-            }
-
-            OperationMessage = "正在检查更新...";
-            try
-            {
-                var manifest = _pendingUpdateManifest ?? await _updateService.CheckForUpdatesAsync(Protocol.ProductVersion, CancellationToken.None);
-                _pendingUpdateManifest = null;
-                if (manifest == null)
-                {
-                    OperationMessage = $"当前已是最新版本 (v{Protocol.ProductVersion})";
-                    await Task.Delay(2000);
-                    OperationMessage = null;
-                    return;
-                }
-
-                OperationMessage = $"检测到新版本 v{manifest.Version}，正在下载更新包...";
-                _activeUpdateWasMandatory = manifest.IsMandatory;
-                OperationMessage = null;
-                var updateDialog = new NetRelay.Dialogs.UpdateAvailableDialog(manifest)
-                {
-                    Owner = System.Windows.Application.Current.MainWindow
-                };
-                if (updateDialog.ShowDialog() != true)
-                {
-                    return;
-                }
-
-                var downloadedPackage = await _updateService.DownloadPackageAsync(manifest, progress =>
-                {
-                    OperationMessage = $"正在下载更新包 ({progress:P0})...";
-                }, CancellationToken.None);
-
-                OperationMessage = "下载完成，正在启动更新器并退出应用...";
-                await Task.Delay(1500);
-
-                var updaterDir = AppDomain.CurrentDomain.BaseDirectory;
-                var updaterPath = Path.Combine(updaterDir, "NetRelay.Updater.exe");
-
-                if (!File.Exists(updaterPath))
-                {
-                    throw new FileNotFoundException("未找到独立更新器程序 (NetRelay.Updater.exe)。", updaterPath);
-                }
-
-                var updaterRunDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "NetRelay",
-                    "updates",
-                    "updater-run");
-                Directory.CreateDirectory(updaterRunDir);
-                foreach (var sourcePath in Directory.EnumerateFiles(updaterDir, "NetRelay.Updater*"))
-                {
-                    File.Copy(sourcePath, Path.Combine(updaterRunDir, Path.GetFileName(sourcePath)), overwrite: true);
-                }
-
-                var contractsPath = Path.Combine(updaterDir, "NetRelay.Contracts.dll");
-                if (File.Exists(contractsPath))
-                {
-                    File.Copy(contractsPath, Path.Combine(updaterRunDir, Path.GetFileName(contractsPath)), overwrite: true);
-                }
-
-                updaterPath = Path.Combine(updaterRunDir, "NetRelay.Updater.exe");
-                var targetDir = AppDomain.CurrentDomain.BaseDirectory;
-                var parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
-
-                var startInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = updaterPath,
-                    UseShellExecute = true
-                };
-                startInfo.ArgumentList.Add("--package");
-                startInfo.ArgumentList.Add(downloadedPackage.PackagePath);
-                startInfo.ArgumentList.Add("--manifest");
-                startInfo.ArgumentList.Add(downloadedPackage.ManifestPath);
-                startInfo.ArgumentList.Add("--target-dir");
-                startInfo.ArgumentList.Add(targetDir);
-                startInfo.ArgumentList.Add("--parent-pid");
-                startInfo.ArgumentList.Add(parentPid.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                startInfo.ArgumentList.Add("--executable");
-                startInfo.ArgumentList.Add("NetRelay.exe");
-
-                if (IsDirectoryWritable(targetDir))
-                {
-                    System.Diagnostics.Process.Start(startInfo);
-                }
-                else
-                {
-                    startInfo.Verb = "runas";
-                    System.Diagnostics.Process.Start(startInfo);
-                }
-
-                System.Windows.Application.Current.Shutdown();
-            }
-            catch (Exception ex)
-            {
-                await new DiagnosticLogService().ErrorAsync("update", "apply", ex);
-                OperationMessage = $"更新失败: {ex.Message}";
-                await Task.Delay(3000);
-                OperationMessage = null;
-                if (_activeUpdateWasMandatory)
-                {
-                    NetRelay.Dialogs.ModernMessageBox.Show("强制更新未完成，应用将退出。请检查网络后重新启动并重试。", "必须更新", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                    System.Windows.Application.Current.Shutdown();
-                }
-            }
-            finally
-            {
-                _activeUpdateWasMandatory = false;
-                _isUpdating = false;
-                CheckUpdatesCommand?.RaiseCanExecuteChanged();
-            }
-        }, () => !_isUpdating);
+        CheckUpdatesCommand = new RelayCommand(async () => await CheckForUpdatesInteractiveAsync(), () => !_isUpdating);
 
         FeedbackCommand = new RelayCommand(() =>
         {
@@ -308,7 +190,9 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task CheckForUpdatesOnStartupAsync()
     {
-        if (_isUpdating || (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false))
+        if (_isUpdating
+            || !_configService.Current.AutoCheckUpdatesOnStartup
+            || (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false))
         {
             return;
         }
@@ -331,7 +215,30 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public ConfigurationService ConfigService => _configService;
+    public UpdateStatusSnapshot UpdateStatusSnapshot => _updateStatus;
     public string ProductVersionText => $"版本：v{Protocol.ProductVersion}";
+    public string UpdatePrimarySourceText => _configService.Current.PrimaryApiBaseUrl;
+    public string UpdateFallbackSourceText => _configService.Current.GithubFallback.Repository;
+    public string UpdateStartupPolicyText => _configService.Current.AutoCheckUpdatesOnStartup ? "启动时自动静默检查" : "启动时不自动检查";
+    public string UpdateLastCheckText => _updateStatus.LastCheckedAt.HasValue
+        ? _updateStatus.LastCheckedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        : "尚未检查";
+    public string UpdateLastCheckOutcomeText => _updateStatus.LastCheckMessage;
+    public string UpdateLastCheckSourceText => _updateStatus.LastCheckSource switch
+    {
+        UpdateSourceKind.Primary => "最近检查来源：主更新源",
+        UpdateSourceKind.GitHubFallback => "最近检查来源：GitHub 备用源",
+        _ => "最近检查来源：尚未确定"
+    };
+    public string UpdateLastDownloadText => _updateStatus.LastDownloadAt.HasValue
+        ? $"{_updateStatus.LastDownloadAt.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {_updateStatus.LastDownloadMessage}"
+        : "尚未下载更新";
+    public string UpdateLastAvailableVersionText => string.IsNullOrWhiteSpace(_updateStatus.AvailableVersion)
+        ? "暂无候选更新"
+        : $"最近发现版本：v{_updateStatus.AvailableVersion}";
+    public string AutomationStatusText => _configService.IsAutomationEnabled
+        ? $"自动化规则已启用，共 {_configService.Current.Rules.Count} 条"
+        : $"自动化规则已暂停：{_configService.AutomationDisabledReason ?? "探测配置无效"}";
 
     public bool ManualDisableProtection
     {
@@ -451,6 +358,38 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _isPendingOverlayVisible, value);
     }
 
+    public void NotifySettingsChanged()
+    {
+        RaisePropertyChanged(nameof(UpdatePrimarySourceText));
+        RaisePropertyChanged(nameof(UpdateFallbackSourceText));
+        RaisePropertyChanged(nameof(UpdateStartupPolicyText));
+        RaisePropertyChanged(nameof(AutomationStatusText));
+    }
+
+    public Task ExportDiagnosticsAsync() => ExportLogsAsync();
+
+    public void OpenLogsDirectory() => _diagnosticsBundleService.OpenLogsDirectory();
+
+    public void OpenUpdateCacheDirectory() => _diagnosticsBundleService.OpenUpdateCacheDirectory();
+
+    public async Task ClearUpdateCacheAsync()
+    {
+        try
+        {
+            await Task.Run(() => _diagnosticsBundleService.ClearUpdateCache());
+            OperationMessage = "已尝试清理更新缓存目录。";
+            await Task.Delay(2200);
+            OperationMessage = null;
+        }
+        catch (Exception exception)
+        {
+            await new DiagnosticLogService().ErrorAsync("diagnostics", "clear-update-cache", exception);
+            OperationMessage = $"清理更新缓存失败: {exception.Message}";
+            await Task.Delay(2600);
+            OperationMessage = null;
+        }
+    }
+
     public void ReloadRules()
     {
         _ruleScheduler?.Reload();
@@ -559,88 +498,33 @@ public sealed class MainViewModel : ObservableObject
         var saveFileDialog = new Microsoft.Win32.SaveFileDialog
         {
             Filter = "ZIP 压缩文件 (*.zip)|*.zip",
-            FileName = $"NetRelay-detailed-logs-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
-            Title = "导出详细日志与诊断报告"
+            FileName = $"NetRelay-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            Title = "导出诊断包"
         };
 
         if (saveFileDialog.ShowDialog() == true)
         {
             var zipPath = saveFileDialog.FileName;
             IsLoadingLogs = true;
-            OperationMessage = "正在准备日志与诊断报告...";
+            OperationMessage = "正在准备诊断包...";
             try
             {
-                await Task.Run(() =>
-                {
-                    var tempDir = Path.Combine(Path.GetTempPath(), $"NetRelay-Export-{Guid.NewGuid():N}");
-                    Directory.CreateDirectory(tempDir);
+                await _diagnosticsBundleService.ExportBundleAsync(
+                    zipPath,
+                    _configService.Current,
+                    _configService.IsAutomationEnabled,
+                    _configService.AutomationDisabledReason,
+                    _updateStatus,
+                    CancellationToken.None);
 
-                    try
-                    {
-                        // 1. Write a safe runtime summary. Never export raw configuration or credentials.
-                        File.WriteAllText(
-                            Path.Combine(tempDir, "runtime-summary.json"),
-                            System.Text.Json.JsonSerializer.Serialize(new
-                            {
-                                ProductVersion = Protocol.ProductVersion,
-                                OsVersion = Environment.OSVersion.ToString(),
-                                Architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
-                                AutomationEnabled = _configService.IsAutomationEnabled,
-                                RuleCount = _configService.Current.Rules.Count,
-                                LogKeepDays = _configService.Current.KeepDays
-                            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-
-                        // 2. Copy execution logs
-                        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                        var logsDir = Path.Combine(localAppData, "NetRelay", "logs");
-                        var logsDestDir = Path.Combine(tempDir, "logs");
-                        if (Directory.Exists(logsDir))
-                        {
-                            Directory.CreateDirectory(logsDestDir);
-                            var logFiles = Directory.GetFiles(logsDir)
-                                .Where(file => file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
-                                    || Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase));
-                            foreach (var file in logFiles)
-                            {
-                                var destFile = Path.Combine(logsDestDir, Path.GetFileName(file));
-                                if (Path.GetFileName(file).StartsWith("updater-", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    File.WriteAllText(destFile, DiagnosticLogService.Sanitize(File.ReadAllText(file)));
-                                }
-                                else
-                                {
-                                    File.Copy(file, destFile, true);
-                                }
-                            }
-                        }
-
-                        // 3. Write adapter diagnostics report
-                        var reportPath = Path.Combine(tempDir, "adapter-diagnostics.json");
-                        AdapterDiagnosticService.WriteReport(reportPath);
-
-                        // 4. Create zip archive
-                        if (File.Exists(zipPath))
-                        {
-                            File.Delete(zipPath);
-                        }
-                        System.IO.Compression.ZipFile.CreateFromDirectory(tempDir, zipPath);
-                    }
-                    finally
-                    {
-                        if (Directory.Exists(tempDir))
-                        {
-                            Directory.Delete(tempDir, recursive: true);
-                        }
-                    }
-                });
-
-                OperationMessage = $"日志成功导出至：{Path.GetFileName(zipPath)}";
+                OperationMessage = $"诊断包已导出：{Path.GetFileName(zipPath)}";
                 await Task.Delay(2500);
                 OperationMessage = null;
             }
             catch (Exception ex)
             {
-                OperationMessage = $"导出日志失败: {ex.Message}";
+                await new DiagnosticLogService().ErrorAsync("diagnostics", "export-bundle", ex);
+                OperationMessage = $"导出诊断包失败: {ex.Message}";
                 await Task.Delay(2500);
                 OperationMessage = null;
             }
@@ -649,6 +533,242 @@ public sealed class MainViewModel : ObservableObject
                 IsLoadingLogs = false;
             }
         }
+    }
+
+    private async Task CheckForUpdatesInteractiveAsync()
+    {
+        if (_isUpdating)
+        {
+            return;
+        }
+
+        _isUpdating = true;
+        CheckUpdatesCommand?.RaiseCanExecuteChanged();
+        if (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false)
+        {
+            OperationMessage = "更新功能在该受限状态下已被系统管理员禁用。";
+            await Task.Delay(2550);
+            OperationMessage = null;
+            _isUpdating = false;
+            CheckUpdatesCommand?.RaiseCanExecuteChanged();
+            return;
+        }
+
+        try
+        {
+            OperationMessage = "正在检查更新...";
+            var manifest = _pendingUpdateManifest ?? await _updateService.CheckForUpdatesAsync(Protocol.ProductVersion, CancellationToken.None);
+            _pendingUpdateManifest = null;
+            if (manifest == null)
+            {
+                OperationMessage = $"当前已是最新版本 (v{Protocol.ProductVersion})";
+                await Task.Delay(2000);
+                OperationMessage = null;
+                return;
+            }
+
+            _activeUpdateWasMandatory = manifest.IsMandatory;
+            var updaterPath = TryResolveUpdaterPath(out var updaterDirectory);
+            var targetDir = AppDomain.CurrentDomain.BaseDirectory;
+            var preflight = EvaluateUpdatePreflight(manifest, updaterPath, targetDir);
+            OperationMessage = null;
+
+            var updateDialog = new NetRelay.Dialogs.UpdateAvailableDialog(manifest, preflight);
+            var ownerWindow = System.Windows.Application.Current.MainWindow;
+            if (ownerWindow?.IsVisible == true)
+            {
+                updateDialog.Owner = ownerWindow;
+            }
+            else
+            {
+                updateDialog.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+            }
+            if (updateDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            if (!preflight.Success)
+            {
+                throw new InvalidOperationException(preflight.Summary);
+            }
+
+            OperationMessage = $"正在从{manifest.SourceLabel}下载更新包...";
+            var downloadedPackage = await _updateService.DownloadPackageAsync(manifest, progress =>
+            {
+                var percentText = progress.Percent.HasValue ? $" {progress.Percent:P0}" : string.Empty;
+                var sizeText = progress.TotalBytes.HasValue && progress.TotalBytes.Value > 0
+                    ? $" · {FormatBytes(progress.BytesReceived)} / {FormatBytes(progress.TotalBytes.Value)}"
+                    : string.Empty;
+                OperationMessage = $"{progress.Message}{percentText}{sizeText}";
+            }, CancellationToken.None);
+
+            OperationMessage = preflight.RequiresElevation
+                ? "下载完成，正在请求管理员权限启动更新器..."
+                : "下载完成，正在启动更新器并退出应用...";
+            await Task.Delay(1200);
+
+            var updaterRunDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "NetRelay",
+                "updates",
+                "updater-run");
+            Directory.CreateDirectory(updaterRunDir);
+            foreach (var sourcePath in Directory.EnumerateFiles(updaterDirectory, "NetRelay.Updater*"))
+            {
+                File.Copy(sourcePath, Path.Combine(updaterRunDir, Path.GetFileName(sourcePath)), overwrite: true);
+            }
+
+            var contractsPath = Path.Combine(updaterDirectory, "NetRelay.Contracts.dll");
+            if (File.Exists(contractsPath))
+            {
+                File.Copy(contractsPath, Path.Combine(updaterRunDir, Path.GetFileName(contractsPath)), overwrite: true);
+            }
+
+            var runtimeUpdaterPath = Path.Combine(updaterRunDir, "NetRelay.Updater.exe");
+            var parentPid = System.Diagnostics.Process.GetCurrentProcess().Id;
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = runtimeUpdaterPath,
+                UseShellExecute = true
+            };
+            startInfo.ArgumentList.Add("--package");
+            startInfo.ArgumentList.Add(downloadedPackage.PackagePath);
+            startInfo.ArgumentList.Add("--manifest");
+            startInfo.ArgumentList.Add(downloadedPackage.ManifestPath);
+            startInfo.ArgumentList.Add("--target-dir");
+            startInfo.ArgumentList.Add(targetDir);
+            startInfo.ArgumentList.Add("--parent-pid");
+            startInfo.ArgumentList.Add(parentPid.ToString());
+            startInfo.ArgumentList.Add("--executable");
+            startInfo.ArgumentList.Add("NetRelay.exe");
+
+            if (preflight.RequiresElevation)
+            {
+                startInfo.Verb = "runas";
+            }
+
+            System.Diagnostics.Process.Start(startInfo);
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            await new DiagnosticLogService().ErrorAsync("update", "apply", ex);
+            OperationMessage = $"更新失败: {ex.Message}";
+            await Task.Delay(3200);
+            OperationMessage = null;
+            if (_activeUpdateWasMandatory)
+            {
+                NetRelay.Dialogs.ModernMessageBox.Show("强制更新未完成，应用将退出。请检查网络、磁盘空间和权限后重新启动并重试。", "必须更新", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                System.Windows.Application.Current.Shutdown();
+            }
+        }
+        finally
+        {
+            _activeUpdateWasMandatory = false;
+            _isUpdating = false;
+            CheckUpdatesCommand?.RaiseCanExecuteChanged();
+        }
+    }
+
+    private static string TryResolveUpdaterPath(out string updaterDirectory)
+    {
+        updaterDirectory = AppDomain.CurrentDomain.BaseDirectory;
+        var updaterPath = Path.Combine(updaterDirectory, "NetRelay.Updater.exe");
+        return updaterPath;
+    }
+
+    private UpdatePreflightResult EvaluateUpdatePreflight(UpdateManifest manifest, string updaterPath, string targetDirectory)
+    {
+        var issues = new List<string>();
+        var requiredBytes = Math.Max(manifest.PackageSize * 2, 256L * 1024 * 1024);
+        var availableBytes = GetMinimumAvailableBytes(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetRelay", "updates"),
+            targetDirectory);
+        var requiresElevation = !IsDirectoryWritable(targetDirectory);
+
+        if (!Directory.Exists(targetDirectory))
+        {
+            issues.Add("安装目录不存在，无法覆盖当前程序。");
+        }
+
+        if (!File.Exists(updaterPath))
+        {
+            issues.Add("缺少 NetRelay.Updater.exe，无法执行自更新。");
+        }
+
+        if (availableBytes.HasValue && availableBytes.Value < requiredBytes)
+        {
+            issues.Add($"可用磁盘空间不足，至少需要 {FormatBytes(requiredBytes)}。");
+        }
+
+        if (requiresElevation)
+        {
+            issues.Add("当前安装目录需要管理员权限，启动更新器时会弹出 UAC 确认。");
+        }
+
+        var summary = issues.Count == 0
+            ? $"已通过预检，可从{manifest.SourceLabel}下载安装包。"
+            : string.Join(" ", issues);
+
+        return new UpdatePreflightResult(
+            issues.All(issue => issue.Contains("管理员权限", StringComparison.Ordinal)),
+            requiresElevation,
+            summary,
+            issues,
+            requiredBytes,
+            availableBytes,
+            updaterPath,
+            targetDirectory);
+    }
+
+    private static long? GetMinimumAvailableBytes(params string[] paths)
+    {
+        long? min = null;
+        foreach (var path in paths.Where(path => !string.IsNullOrWhiteSpace(path)))
+        {
+            try
+            {
+                var root = Path.GetPathRoot(Path.GetFullPath(path));
+                if (string.IsNullOrWhiteSpace(root))
+                {
+                    continue;
+                }
+
+                var drive = new DriveInfo(root);
+                min = min.HasValue ? Math.Min(min.Value, drive.AvailableFreeSpace) : drive.AvailableFreeSpace;
+            }
+            catch
+            {
+                // Ignore unknown roots.
+            }
+        }
+
+        return min;
+    }
+
+    private void RaiseUpdateStatusProperties()
+    {
+        RaisePropertyChanged(nameof(UpdateLastCheckText));
+        RaisePropertyChanged(nameof(UpdateLastCheckOutcomeText));
+        RaisePropertyChanged(nameof(UpdateLastCheckSourceText));
+        RaisePropertyChanged(nameof(UpdateLastDownloadText));
+        RaisePropertyChanged(nameof(UpdateLastAvailableVersionText));
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double size = bytes;
+        var unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return $"{size:0.##} {units[unitIndex]}";
     }
 
     private static string NormalizeAdapterId(string adapterId)

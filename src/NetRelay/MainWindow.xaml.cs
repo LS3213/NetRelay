@@ -90,7 +90,15 @@ public partial class MainWindow : Window
 
     private async void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SettingsDialog(_viewModel.ConfigService.Current)
+        var dialog = new SettingsDialog(
+            _viewModel.ConfigService.Current,
+            _viewModel.UpdateStatusSnapshot,
+            _viewModel.ConfigService.IsAutomationEnabled,
+            _viewModel.ConfigService.AutomationDisabledReason,
+            _viewModel.ExportDiagnosticsAsync,
+            _viewModel.OpenLogsDirectory,
+            _viewModel.OpenUpdateCacheDirectory,
+            _viewModel.ClearUpdateCacheAsync)
         {
             Owner = this
         };
@@ -101,6 +109,7 @@ public partial class MainWindow : Window
             {
                 await _viewModel.LoadLogsAsync();
             }
+            _viewModel.NotifySettingsChanged();
 
             ModernMessageBox.Show(
                 this,
@@ -224,6 +233,32 @@ public partial class MainWindow : Window
     private void TrayOpen_Click(object sender, RoutedEventArgs e)
     {
         RestoreWindow();
+    }
+
+    private void TrayCheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        RestoreWindow();
+        _viewModel.CurrentTabIndex = 3;
+        UpdateTabSelection(3);
+        _viewModel.CheckUpdatesCommand.Execute(null);
+    }
+
+    private async void TrayExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        RestoreWindow();
+        _viewModel.CurrentTabIndex = 2;
+        UpdateTabSelection(2);
+        await _viewModel.ExportDiagnosticsAsync();
+    }
+
+    private void TrayOpenLogs_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.OpenLogsDirectory();
+    }
+
+    private void TrayOpenUpdateCache_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.OpenUpdateCacheDirectory();
     }
 
     private void TrayExit_Click(object sender, RoutedEventArgs e)

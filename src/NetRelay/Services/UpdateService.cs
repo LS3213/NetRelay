@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -24,6 +25,11 @@ public sealed class UpdateService
     private readonly ConfigurationService _configService;
     private readonly DiagnosticLogService _diagnosticLog = new();
     private static readonly string RootPublicKey = OperationalKeyCertificate.DefaultRootPublicKeyBase64;
+    private UpdateStatusSnapshot _status = UpdateStatusSnapshot.Empty;
+
+    public event EventHandler<UpdateStatusSnapshot>? StatusChanged;
+
+    public UpdateStatusSnapshot GetStatusSnapshot() => _status;
 
     public UpdateService(ConfigurationService configService)
     {
@@ -65,7 +71,11 @@ public sealed class UpdateService
     {
         var config = _configService.Current;
         var now = DateTimeOffset.UtcNow;
+        Exception? primaryException = null;
+        Exception? fallbackException = null;
+        UpdateStatusSnapshot status;
         await _diagnosticLog.InfoAsync("update", "check", "started", detail: $"source=primary; channel={StableChannel}; currentVersion={currentVersion}");
+        UpdateStatus(lastCheckedAt: now, lastCheckOutcome: "checking", lastCheckMessage: "正在检查主更新源...", lastCheckSource: UpdateSourceKind.Primary);
 
         // Try primary source first
         try
@@ -73,13 +83,33 @@ public sealed class UpdateService
             var manifest = await CheckPrimarySourceAsync(config.PrimaryApiBaseUrl, StableChannel, currentVersion, now, cancellationToken);
             if (manifest != null)
             {
+                manifest.SourceKind = UpdateSourceKind.Primary;
                 await _diagnosticLog.InfoAsync("update", "check", "available", detail: $"version={manifest.Version}; mandatory={manifest.IsMandatory}");
+                UpdateStatus(
+                    lastCheckedAt: DateTimeOffset.Now,
+                    lastCheckOutcome: "available",
+                    lastCheckMessage: $"发现新版本 v{manifest.Version}（来源：主更新源）",
+                    lastCheckSource: UpdateSourceKind.Primary,
+                    availableVersion: manifest.Version,
+                    lastCheckFoundUpdate: true);
                 return manifest;
             }
         }
+        catch (NoUpdateAvailableException noUpdateException)
+        {
+            await _diagnosticLog.InfoAsync("update", "check", "not-available", detail: noUpdateException.Message);
+            UpdateStatus(
+                lastCheckedAt: DateTimeOffset.Now,
+                lastCheckOutcome: "up-to-date",
+                lastCheckMessage: $"当前已是最新版本 (v{currentVersion})",
+                lastCheckSource: UpdateSourceKind.Primary,
+                availableVersion: null,
+                lastCheckFoundUpdate: false);
+            return null;
+        }
         catch (Exception ex)
         {
-            // Logging or tracing can be done here, now we proceed to fallback
+            primaryException = ex;
             await _diagnosticLog.ErrorAsync("update", "check-primary", ex);
         }
 
@@ -90,15 +120,46 @@ public sealed class UpdateService
             {
                 var manifest = await CheckGitHubSourceAsync(config.GithubFallback, currentVersion, now, cancellationToken);
                 await _diagnosticLog.InfoAsync("update", "check-fallback", manifest is null ? "not-available" : "available");
-                return manifest;
+                if (manifest != null)
+                {
+                    manifest.SourceKind = UpdateSourceKind.GitHubFallback;
+                    UpdateStatus(
+                        lastCheckedAt: DateTimeOffset.Now,
+                        lastCheckOutcome: "available",
+                        lastCheckMessage: $"发现新版本 v{manifest.Version}（来源：GitHub 备用源）",
+                        lastCheckSource: UpdateSourceKind.GitHubFallback,
+                        availableVersion: manifest.Version,
+                        lastCheckFoundUpdate: true);
+                    return manifest;
+                }
             }
             catch (Exception ex)
             {
+                fallbackException = ex;
                 await _diagnosticLog.ErrorAsync("update", "check-fallback", ex);
             }
         }
 
+        if (primaryException != null || fallbackException != null)
+        {
+            status = UpdateStatus(
+                lastCheckedAt: DateTimeOffset.Now,
+                lastCheckOutcome: "failed",
+                lastCheckMessage: "版本更新服务暂时不可用，请稍后重试。",
+                lastCheckSource: fallbackException != null ? UpdateSourceKind.GitHubFallback : UpdateSourceKind.Primary,
+                availableVersion: null,
+                lastCheckFoundUpdate: false);
+            throw new InvalidOperationException(status.LastCheckMessage, fallbackException ?? primaryException);
+        }
+
         await _diagnosticLog.InfoAsync("update", "check", "not-available");
+        UpdateStatus(
+            lastCheckedAt: DateTimeOffset.Now,
+            lastCheckOutcome: "up-to-date",
+            lastCheckMessage: $"当前已是最新版本 (v{currentVersion})",
+            lastCheckSource: UpdateSourceKind.Primary,
+            availableVersion: null,
+            lastCheckFoundUpdate: false);
         return null;
     }
 
@@ -123,7 +184,16 @@ public sealed class UpdateService
         if (!response.IsSuccessStatusCode)
         {
             await _diagnosticLog.InfoAsync("update", "check-primary-response", "not-success", requestId, (int)response.StatusCode);
-            return null;
+            var apiError = await TryReadApiErrorAsync(response, cancellationToken);
+            if (IsUpdateNotAvailableResponse(response.StatusCode, apiError))
+            {
+                throw new NoUpdateAvailableException(apiError?.Error.Message ?? "当前已是最新版本。");
+            }
+
+            throw new HttpRequestException(
+                $"主更新源检查失败（HTTP {(int)response.StatusCode} {response.ReasonPhrase}）。",
+                null,
+                response.StatusCode);
         }
         await _diagnosticLog.InfoAsync("update", "check-primary-response", "success", requestId, (int)response.StatusCode);
 
@@ -138,6 +208,24 @@ public sealed class UpdateService
 
         return VerifyAndExtractManifest(apiResponse.Data, now);
     }
+
+    private static async Task<ApiErrorResponse?> TryReadApiErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<ApiErrorResponse>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                cancellationToken);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool IsUpdateNotAvailableResponse(HttpStatusCode statusCode, ApiErrorResponse? apiError) =>
+        statusCode == HttpStatusCode.NotFound &&
+        string.Equals(apiError?.Error.Code, ErrorCodes.UpdateNotAvailable, StringComparison.Ordinal);
 
     public async Task<IReadOnlyList<UpdateHistoryItem>> GetHistoryAsync(CancellationToken cancellationToken)
     {
@@ -253,13 +341,19 @@ public sealed class UpdateService
 
     public async Task<DownloadedUpdatePackage> DownloadPackageAsync(
         UpdateManifest manifest,
-        Action<double>? progressCallback,
+        Action<UpdateDownloadProgress>? progressCallback,
         CancellationToken cancellationToken)
     {
         var config = _configService.Current;
         var filename = config.GithubFallback.AssetName;
         var primaryUrl = $"{config.PrimaryApiBaseUrl.TrimEnd('/')}/api/v1/updates/{manifest.Version}/download/{filename}";
         await _diagnosticLog.InfoAsync("update", "download", "started", detail: $"version={manifest.Version}; expectedBytes={manifest.PackageSize}");
+        UpdateStatus(
+            lastDownloadAt: DateTimeOffset.Now,
+            lastDownloadOutcome: "started",
+            lastDownloadMessage: $"开始下载 v{manifest.Version}（优先使用主更新源）",
+            lastDownloadSource: manifest.SourceKind == UpdateSourceKind.Unknown ? UpdateSourceKind.Primary : manifest.SourceKind,
+            lastDownloadedBytes: 0);
 
         // Execute download with progress reporting and SHA256 hashing
         var tempDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetRelay", "updates");
@@ -278,6 +372,7 @@ public sealed class UpdateService
         HttpResponseMessage response = primaryResponse;
         HttpClient? fallbackClient = null;
         HttpResponseMessage? fallbackResponse = null;
+        var downloadSource = UpdateSourceKind.Primary;
         if (!primaryResponse.IsSuccessStatusCode)
         {
             if (!config.GithubFallback.Enabled || string.IsNullOrWhiteSpace(config.GithubFallback.Repository))
@@ -293,6 +388,7 @@ public sealed class UpdateService
             fallbackClient.DefaultRequestHeaders.UserAgent.ParseAdd("NetRelay-Client");
             fallbackResponse = await fallbackClient.GetAsync(githubUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response = fallbackResponse;
+            downloadSource = UpdateSourceKind.GitHubFallback;
         }
 
         try
@@ -305,6 +401,13 @@ public sealed class UpdateService
             long totalRead = 0;
             try
             {
+                progressCallback?.Invoke(new UpdateDownloadProgress(
+                    "connecting",
+                    $"已连接{GetSourceLabel(downloadSource)}，正在接收更新包...",
+                    0,
+                    downloadSource,
+                    0,
+                    totalBytes));
                 await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
                 await using (var destStream = new FileStream(
                     downloadFilePath,
@@ -325,13 +428,26 @@ public sealed class UpdateService
                         totalRead += read;
                         if (totalBytes > 0)
                         {
-                            progressCallback?.Invoke((double)totalRead / totalBytes);
+                            progressCallback?.Invoke(new UpdateDownloadProgress(
+                                "downloading",
+                                $"正在从{GetSourceLabel(downloadSource)}下载更新包...",
+                                (double)totalRead / totalBytes,
+                                downloadSource,
+                                totalRead,
+                                totalBytes));
                         }
                     }
 
                     await destStream.FlushAsync(cancellationToken);
                 }
 
+                progressCallback?.Invoke(new UpdateDownloadProgress(
+                    "verifying",
+                    "下载完成，正在校验哈希...",
+                    0.98,
+                    downloadSource,
+                    totalRead,
+                    totalBytes));
                 sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
                 var downloadedHash = Convert.ToHexString(sha256.Hash!).ToLower();
 
@@ -353,6 +469,12 @@ public sealed class UpdateService
                     cancellationToken);
 
                 await _diagnosticLog.InfoAsync("update", "download", "completed", bytes: totalRead, detail: $"version={manifest.Version}");
+                UpdateStatus(
+                    lastDownloadAt: DateTimeOffset.Now,
+                    lastDownloadOutcome: "completed",
+                    lastDownloadMessage: $"已完成下载并校验 v{manifest.Version}（来源：{GetSourceLabel(downloadSource)}）",
+                    lastDownloadSource: downloadSource,
+                    lastDownloadedBytes: totalRead);
                 return new DownloadedUpdatePackage(tempFilePath, manifestPath);
             }
             catch (Exception exception)
@@ -373,6 +495,12 @@ public sealed class UpdateService
                     "download",
                     exception,
                     bytes: File.Exists(downloadFilePath) ? new FileInfo(downloadFilePath).Length : null);
+                UpdateStatus(
+                    lastDownloadAt: DateTimeOffset.Now,
+                    lastDownloadOutcome: "failed",
+                    lastDownloadMessage: ClassifyDownloadFailure(exception),
+                    lastDownloadSource: downloadSource,
+                    lastDownloadedBytes: File.Exists(downloadFilePath) ? new FileInfo(downloadFilePath).Length : totalRead);
                 throw;
             }
         }
@@ -440,6 +568,59 @@ public sealed class UpdateService
         return $"https://github.com/{fallback.Repository}/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(fallback.AssetName)}";
     }
 
+    private UpdateStatusSnapshot UpdateStatus(
+        DateTimeOffset? lastCheckedAt = null,
+        string? lastCheckOutcome = null,
+        string? lastCheckMessage = null,
+        UpdateSourceKind? lastCheckSource = null,
+        string? availableVersion = null,
+        bool? lastCheckFoundUpdate = null,
+        DateTimeOffset? lastDownloadAt = null,
+        string? lastDownloadOutcome = null,
+        string? lastDownloadMessage = null,
+        UpdateSourceKind? lastDownloadSource = null,
+        long? lastDownloadedBytes = null)
+    {
+        _status = _status with
+        {
+            LastCheckedAt = lastCheckedAt ?? _status.LastCheckedAt,
+            LastCheckOutcome = lastCheckOutcome ?? _status.LastCheckOutcome,
+            LastCheckMessage = lastCheckMessage ?? _status.LastCheckMessage,
+            LastCheckSource = lastCheckSource ?? _status.LastCheckSource,
+            AvailableVersion = availableVersion,
+            LastCheckFoundUpdate = lastCheckFoundUpdate ?? _status.LastCheckFoundUpdate,
+            LastDownloadAt = lastDownloadAt ?? _status.LastDownloadAt,
+            LastDownloadOutcome = lastDownloadOutcome ?? _status.LastDownloadOutcome,
+            LastDownloadMessage = lastDownloadMessage ?? _status.LastDownloadMessage,
+            LastDownloadSource = lastDownloadSource ?? _status.LastDownloadSource,
+            LastDownloadedBytes = lastDownloadedBytes ?? _status.LastDownloadedBytes
+        };
+        StatusChanged?.Invoke(this, _status);
+        return _status;
+    }
+
+    private static string ClassifyDownloadFailure(Exception exception)
+    {
+        return exception switch
+        {
+            CryptographicException => "更新包校验失败：签名或哈希不匹配。",
+            HttpRequestException httpEx when httpEx.StatusCode is not null => $"更新包下载失败：HTTP {(int)httpEx.StatusCode}。",
+            IOException => "更新包写入失败：文件被占用、磁盘不可写或空间不足。",
+            UnauthorizedAccessException => "更新包写入失败：当前目录需要管理员权限。",
+            _ => $"更新包下载失败：{exception.Message}"
+        };
+    }
+
+    private static string GetSourceLabel(UpdateSourceKind source)
+    {
+        return source switch
+        {
+            UpdateSourceKind.Primary => "主更新源",
+            UpdateSourceKind.GitHubFallback => "GitHub 备用源",
+            _ => "更新源"
+        };
+    }
+
     private static int CompareVersions(string? left, string? right)
     {
         var leftIsVersion = Version.TryParse(left, out var leftVersion);
@@ -468,4 +649,6 @@ public sealed class UpdateService
         [JsonPropertyName("githubFallback")]
         public GithubFallbackOptions? GithubFallback { get; set; }
     }
+
+    private sealed class NoUpdateAvailableException(string message) : Exception(message);
 }

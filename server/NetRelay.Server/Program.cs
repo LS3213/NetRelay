@@ -104,6 +104,7 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddSingleton<ManagedFileStorage>();
 builder.Services.AddHostedService<StorageInitializationService>();
 builder.Services.AddHostedService<AdminBootstrapService>();
+builder.Services.AddHostedService<GitHubMirrorRefreshService>();
 builder.Services.AddSingleton<KeyManagementService>();
 builder.Services.AddSingleton<ReleaseMetadataService>();
 builder.Services.AddSingleton<GitHubReleaseMirrorService>();
@@ -920,7 +921,7 @@ static async Task<IResult> PublishReleaseAsync(
                 .ToListAsync(cancellationToken);
             var latestRelease = metadataService.SelectLatestMirrorRelease(publishedReleases) ??
                 throw new InvalidOperationException("未找到可用于 GitHub 同步的已发布版本。");
-            var latestResponse = metadataService.CreateSignedUpdateResponse(latestRelease);
+            var latestResponse = metadataService.CreateSignedMirrorUpdateResponse(latestRelease);
             var history = metadataService.BuildPublishedHistory(publishedReleases);
             var packagePath = storage.Resolve(StorageArea.Releases, release.AssetPath);
             await gitHubReleaseMirrorService.SyncPublishedReleaseAsync(release, packagePath, latestResponse, history, cancellationToken);
@@ -1005,7 +1006,7 @@ static async Task<IResult> RevokeReleaseAsync(
                     r.Architecture == ReleaseMetadataService.SupportedArchitecture)
                 .ToListAsync(cancellationToken);
             var latestRelease = metadataService.SelectLatestMirrorRelease(publishedReleases);
-            var latestResponse = latestRelease is null ? null : metadataService.CreateSignedUpdateResponse(latestRelease);
+            var latestResponse = latestRelease is null ? null : metadataService.CreateSignedMirrorUpdateResponse(latestRelease);
             var history = metadataService.BuildPublishedHistory(publishedReleases);
             await gitHubReleaseMirrorService.SyncRevokedStateAsync(latestResponse, history, cancellationToken);
         }

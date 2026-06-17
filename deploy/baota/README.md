@@ -44,6 +44,7 @@ sudo bash install.sh
 - systemd 自动重启后，安装 API 不再注册。
 - 再次执行 `install.sh` 只会刷新 systemd 服务、执行数据库迁移并重启后端，不会重新安装或重新开放安装入口。
 - 覆盖新便携包后再次执行 `install.sh` 会先运行 `./app/NetRelay.Server --migrate`，迁移成功后才重启正在运行的后端，使新版本代码和数据库结构保持一致。
+- 安装脚本会自动注册全局维护命令：`NetRelay`、`netrelay`、`NR`。
 
 如果要启用“后台发布/撤回时自动同步 GitHub”，请在安装完成后编辑 `/www/server/netrelay/config/runtime-config.json` 的 `netRelay` 段，至少补充：
 
@@ -61,6 +62,35 @@ sudo bash install.sh
 systemctl status netrelay
 journalctl -u netrelay -n 100 --no-pager
 systemctl restart netrelay
+```
+
+## 全局维护菜单
+
+安装完成后，可在任意目录直接输入以下任一命令：
+
+```bash
+NetRelay
+netrelay
+NR
+```
+
+命令会弹出数字菜单，当前内置操作包括：
+
+1. 查看后端运行状态
+2. 查看最近 200 行服务日志
+3. 启动服务
+4. 停止服务
+5. 重启服务
+6. 执行当前部署目录下的 `install.sh`（用于升级后的“更新安装”/重新执行 Migration 与刷新服务）
+7. 显示安装目录、配置目录和脚本路径
+
+也支持直接带参数：
+
+```bash
+netrelay status
+netrelay logs
+netrelay restart
+netrelay update
 ```
 
 ## 安全边界

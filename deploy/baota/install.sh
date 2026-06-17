@@ -12,6 +12,7 @@ data_root="${NETRELAY_DATA_ROOT:-/www/server/netrelay/data}"
 service_user="${NETRELAY_SERVICE_USER:-www}"
 service_group="${NETRELAY_SERVICE_GROUP:-www}"
 service_file="/etc/systemd/system/netrelay.service"
+menu_script="/usr/local/bin/netrelay"
 
 if ! id "${service_user}" >/dev/null 2>&1; then
   echo "找不到宝塔运行用户 ${service_user}，可通过 NETRELAY_SERVICE_USER 和 NETRELAY_SERVICE_GROUP 指定。" >&2
@@ -39,6 +40,14 @@ sed \
   -e "s|__SERVICE_GROUP__|${service_group}|g" \
   "${package_root}/netrelay.service" >"${service_file}"
 
+sed \
+  -e "s|__PACKAGE_ROOT__|${package_root}|g" \
+  -e "s|__CONFIG_ROOT__|${config_root}|g" \
+  "${package_root}/netrelay-menu.sh" >"${menu_script}"
+chmod 755 "${menu_script}"
+ln -sfn "${menu_script}" /usr/local/bin/NetRelay
+ln -sfn "${menu_script}" /usr/local/bin/NR
+
 systemctl daemon-reload
 systemctl enable netrelay.service
 
@@ -61,6 +70,7 @@ systemctl restart netrelay.service
 
 echo
 echo "NetRelay 服务已启动。"
+echo "全局维护命令已安装：NetRelay / netrelay / NR"
 if [[ -f "${install_lock_file}" ]]; then
   echo "检测到已安装状态，安装入口保持关闭。本次已刷新 systemd 服务、完成数据库迁移并重启后端。"
 else

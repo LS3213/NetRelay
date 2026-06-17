@@ -103,6 +103,13 @@ public sealed class ConfigurationService
                 configUpdated = true;
             }
 
+            if (config.SchemaVersion < 4)
+            {
+                config.AutoCheckUpdatesOnStartup = true;
+                config.SchemaVersion = 4;
+                configUpdated = true;
+            }
+
             if (string.IsNullOrWhiteSpace(config.InstallationId))
             {
                 config.InstallationId = Guid.NewGuid().ToString();
@@ -196,10 +203,11 @@ public sealed class ConfigurationService
     {
         return new AppConfiguration
         {
-            SchemaVersion = 3,
+            SchemaVersion = 4,
             ProbePolicy = new ConnectivityProbePolicy(),
             Rules = [],
             AutoStart = false,
+            AutoCheckUpdatesOnStartup = true,
             InstallationId = Guid.NewGuid().ToString()
         };
     }

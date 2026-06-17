@@ -4,6 +4,13 @@ using NetRelay.Contracts.Security;
 
 namespace NetRelay.Contracts;
 
+public enum UpdateSourceKind
+{
+    Unknown = 0,
+    Primary = 1,
+    GitHubFallback = 2
+}
+
 public sealed class UpdateManifest
 {
     [JsonPropertyName("version")]
@@ -35,6 +42,17 @@ public sealed class UpdateManifest
 
     [JsonIgnore]
     public UpdateCheckResponse? VerifiedResponse { get; set; }
+
+    [JsonIgnore]
+    public UpdateSourceKind SourceKind { get; set; }
+
+    [JsonIgnore]
+    public string SourceLabel => SourceKind switch
+    {
+        UpdateSourceKind.Primary => "主更新源",
+        UpdateSourceKind.GitHubFallback => "GitHub 备用源",
+        _ => "未知来源"
+    };
 }
 
 public sealed class UpdateHistoryItem

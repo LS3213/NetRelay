@@ -52,6 +52,7 @@ Copy-Item (Join-Path $root "website\styles.css") $publicPath
 Copy-Item (Join-Path $root "website\admin\dist") (Join-Path $publicPath "admin") -Recurse
 Copy-Item (Join-Path $PSScriptRoot "install.sh") $outputPath
 Copy-Item (Join-Path $PSScriptRoot "netrelay.service") $outputPath
+Copy-Item (Join-Path $PSScriptRoot "netrelay-menu.sh") $outputPath
 Copy-Item (Join-Path $PSScriptRoot "nginx-location.conf") $outputPath
 Copy-Item (Join-Path $PSScriptRoot "README.md") $outputPath
 

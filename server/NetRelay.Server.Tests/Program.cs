@@ -44,6 +44,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installation mode exposes only the protected installer", TestInstallationHttpBoundaryAsync),
     ("Admin HTTP authentication workflow enforces session and CSRF boundaries", TestAdminHttpWorkflowAsync),
     ("SignedEnvelope and OperationalKeyCertificate verification work correctly", () => RunSync(TestSignedEnvelopeAndCertificate)),
+    ("GitHub mirror update metadata stays valid beyond the live API window", () => RunSync(TestMirrorUpdateMetadataLifetime)),
     ("Device fingerprint activation matching logic behaves correctly", TestDeviceFingerprintActivationMatchingAsync),
     ("Device activation and connectivity challenge endpoints work correctly", TestDeviceActivationAndChallengeApiAsync),
     ("Update management and download endpoints behave correctly", TestUpdateApiAsync),
@@ -597,6 +598,8 @@ static ServiceProvider CreateServiceProvider(string root, string databaseName)
     services.AddScoped<AdminAuthService>();
     services.AddScoped<AuditService>();
     services.AddSingleton<KeyManagementService>();
+    services.AddSingleton<ManagedFileStorage>();
+    services.AddSingleton<ReleaseMetadataService>();
     services.AddScoped<DeviceActivationService>();
     services.AddSingleton<IOptions<ServerOptions>>(Options.Create(CreateOptions(root)));
     return services.BuildServiceProvider();
@@ -719,6 +722,52 @@ static void TestSignedEnvelopeAndCertificate()
     Assert(!envelope.Verify("device-activation", "nonce-123", now.AddMinutes(6), operationKey), "Expired envelope was verified.");
     Assert(!envelope.Verify("device-activation", "wrong-nonce", now, operationKey), "Envelope with mismatched nonce was verified.");
     Assert(!envelope.Verify("wrong-purpose", "nonce-123", now, operationKey), "Envelope with mismatched purpose was verified.");
+}
+
+static void TestMirrorUpdateMetadataLifetime()
+{
+    var root = CreateTemporaryDirectory();
+    try
+    {
+        using var provider = CreateServiceProvider(root, "mirror-signature-" + Guid.NewGuid());
+        using var scope = provider.CreateScope();
+        var metadataService = scope.ServiceProvider.GetRequiredService<ReleaseMetadataService>();
+
+        var release = new Release
+        {
+            Id = Guid.NewGuid(),
+            Version = "1.2.6",
+            Channel = ReleaseMetadataService.StableChannel,
+            Architecture = ReleaseMetadataService.SupportedArchitecture,
+            MinUpgradableVersion = "0.1.0",
+            PackageSize = 1024,
+            Sha256 = new string('a', 64),
+            ReleaseDate = DateTimeOffset.UtcNow,
+            Changelog = "mirror lifetime test",
+            IsMandatory = false,
+            AssetPath = "stable/1.2.6/win-x64.zip",
+            Status = "published",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var primaryResponse = metadataService.CreateSignedUpdateResponse(release);
+        var mirrorResponse = metadataService.CreateSignedMirrorUpdateResponse(release);
+
+        using var rootKey = ECDsa.Create();
+        rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
+
+        using var mirrorOperationalKey = ECDsa.Create();
+        mirrorOperationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(mirrorResponse.Certificate.PublicKey), out _);
+
+        var tenMinutesLater = DateTimeOffset.UtcNow.AddMinutes(10);
+        Assert(!primaryResponse.Envelope.Verify("update-manifest", primaryResponse.Envelope.Nonce, tenMinutesLater, mirrorOperationalKey), "Primary update response should expire quickly.");
+        Assert(mirrorResponse.Certificate.Verify(tenMinutesLater, rootKey, "update-manifest"), "Mirror certificate should still be valid.");
+        Assert(mirrorResponse.Envelope.Verify("update-manifest", mirrorResponse.Envelope.Nonce, tenMinutesLater, mirrorOperationalKey), "Mirror update response should remain valid beyond 10 minutes.");
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
 }
 
 static async Task TestDeviceFingerprintActivationMatchingAsync()

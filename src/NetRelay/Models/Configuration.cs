@@ -6,7 +6,7 @@ namespace NetRelay.Models;
 public sealed class AppConfiguration
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
 
     [JsonPropertyName("probePolicy")]
     public ConnectivityProbePolicy ProbePolicy { get; set; } = new();
@@ -22,6 +22,9 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("autoStart")]
     public bool AutoStart { get; set; } = false;
+
+    [JsonPropertyName("autoCheckUpdatesOnStartup")]
+    public bool AutoCheckUpdatesOnStartup { get; set; } = true;
 
     [JsonPropertyName("manualDisableProtection")]
     public bool ManualDisableProtection { get; set; } = true;
