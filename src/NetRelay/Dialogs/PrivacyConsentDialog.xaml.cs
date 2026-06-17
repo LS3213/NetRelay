@@ -1,5 +1,3 @@
-using System;
-using System.Diagnostics;
 using System.Windows;
 
 namespace NetRelay.Dialogs;
@@ -42,31 +40,5 @@ public partial class PrivacyConsentDialog : Window
     {
         ConsentAccepted = true;
         DialogResult = true;
-    }
-
-    private void Terms_Click(object sender, RoutedEventArgs e)
-    {
-        OpenUrl("https://netrelay.473700.xyz/terms/");
-    }
-
-    private void Privacy_Click(object sender, RoutedEventArgs e)
-    {
-        OpenUrl("https://netrelay.473700.xyz/privacy/");
-    }
-
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ModernMessageBox.Show(
-                $"无法打开浏览器：{ex.Message}",
-                "NetRelay",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
     }
 }

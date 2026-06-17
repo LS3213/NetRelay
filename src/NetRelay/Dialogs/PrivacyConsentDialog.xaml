@@ -50,9 +50,9 @@
                     <CheckBox x:Name="AgreeCheckBox" VerticalAlignment="Center" Checked="AgreeCheckBox_Changed" Unchecked="AgreeCheckBox_Changed"/>
                     <TextBlock Margin="9,0,0,0" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center">
                         <Run Text="我已阅读并同意 "/>
-                        <Hyperlink Click="Terms_Click" Foreground="#536EF2">用户协议</Hyperlink>
+                        <Run Text="用户协议"/>
                         <Run Text=" 和 "/>
-                        <Hyperlink Click="Privacy_Click" Foreground="#536EF2">隐私政策</Hyperlink>
+                        <Run Text="隐私政策"/>
                     </TextBlock>
                 </StackPanel>
             </Border>

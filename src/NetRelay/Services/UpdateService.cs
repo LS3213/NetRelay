@@ -113,25 +113,34 @@ public sealed class UpdateService
             await _diagnosticLog.ErrorAsync("update", "check-primary", ex);
         }
 
-        // Fallback to GitHub source if enabled
+        // Fallback source if enabled.
         if (config.GithubFallback.Enabled && !string.IsNullOrWhiteSpace(config.GithubFallback.Repository))
         {
             try
             {
                 var manifest = await CheckGitHubSourceAsync(config.GithubFallback, currentVersion, now, cancellationToken);
-                await _diagnosticLog.InfoAsync("update", "check-fallback", manifest is null ? "not-available" : "available");
-                if (manifest != null)
-                {
-                    manifest.SourceKind = UpdateSourceKind.GitHubFallback;
-                    UpdateStatus(
-                        lastCheckedAt: DateTimeOffset.Now,
-                        lastCheckOutcome: "available",
-                        lastCheckMessage: $"发现新版本 v{manifest.Version}（来源：GitHub 备用源）",
-                        lastCheckSource: UpdateSourceKind.GitHubFallback,
-                        availableVersion: manifest.Version,
-                        lastCheckFoundUpdate: true);
-                    return manifest;
-                }
+                await _diagnosticLog.InfoAsync("update", "check-fallback", "available");
+                manifest.SourceKind = UpdateSourceKind.GitHubFallback;
+                UpdateStatus(
+                    lastCheckedAt: DateTimeOffset.Now,
+                    lastCheckOutcome: "available",
+                    lastCheckMessage: $"发现新版本 v{manifest.Version}（来源：备用源）",
+                    lastCheckSource: UpdateSourceKind.GitHubFallback,
+                    availableVersion: manifest.Version,
+                    lastCheckFoundUpdate: true);
+                return manifest;
+            }
+            catch (NoUpdateAvailableException noUpdateException)
+            {
+                await _diagnosticLog.InfoAsync("update", "check-fallback", "not-available", detail: noUpdateException.Message);
+                UpdateStatus(
+                    lastCheckedAt: DateTimeOffset.Now,
+                    lastCheckOutcome: "up-to-date",
+                    lastCheckMessage: $"当前已是最新版本 (v{currentVersion}，备用源确认)",
+                    lastCheckSource: UpdateSourceKind.GitHubFallback,
+                    availableVersion: null,
+                    lastCheckFoundUpdate: false);
+                return null;
             }
             catch (Exception ex)
             {
@@ -272,7 +281,7 @@ public sealed class UpdateService
         }
     }
 
-    private async Task<UpdateManifest?> CheckGitHubSourceAsync(
+    private async Task<UpdateManifest> CheckGitHubSourceAsync(
         GithubFallbackOptions fallback,
         string currentVersion,
         DateTimeOffset now,
@@ -286,25 +295,28 @@ public sealed class UpdateService
         var response = await client.GetAsync(requestUrl, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return null;
+            throw new HttpRequestException(
+                $"备用源检查失败（HTTP {(int)response.StatusCode} {response.ReasonPhrase}）。",
+                null,
+                response.StatusCode);
         }
 
         var manifestJson = await response.Content.ReadAsStringAsync(cancellationToken);
         var checkResponse = JsonSerializer.Deserialize<UpdateCheckResponse>(manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (checkResponse == null)
         {
-            return null;
+            throw new InvalidDataException("备用源更新信息无效。");
         }
 
         var manifest = VerifyAndExtractManifest(checkResponse, now);
         if (manifest is null)
         {
-            return null;
+            throw new InvalidDataException("备用源更新信息为空。");
         }
 
         if (CompareVersions(manifest.Version, currentVersion) <= 0)
         {
-            return null;
+            throw new NoUpdateAvailableException("备用源确认当前已是最新版本。");
         }
 
         return manifest;
@@ -378,7 +390,7 @@ public sealed class UpdateService
             if (!config.GithubFallback.Enabled || string.IsNullOrWhiteSpace(config.GithubFallback.Repository))
             {
                 throw new HttpRequestException(
-                    $"主更新源下载失败（HTTP {(int)primaryResponse.StatusCode} {primaryResponse.ReasonPhrase}），且未启用可用的 GitHub 备用源。",
+                    $"主更新源下载失败（HTTP {(int)primaryResponse.StatusCode} {primaryResponse.ReasonPhrase}），且未启用可用的备用源。",
                     null,
                     primaryResponse.StatusCode);
             }
@@ -556,7 +568,7 @@ public sealed class UpdateService
         var parts = fallback.Repository.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length != 2)
         {
-            throw new InvalidOperationException("GitHub 备用源仓库格式无效，必须为 owner/repository。");
+            throw new InvalidOperationException("备用源配置无效。");
         }
 
         return $"https://{parts[0]}.github.io/{parts[1]}/updates";
@@ -616,7 +628,7 @@ public sealed class UpdateService
         return source switch
         {
             UpdateSourceKind.Primary => "主更新源",
-            UpdateSourceKind.GitHubFallback => "GitHub 备用源",
+            UpdateSourceKind.GitHubFallback => "备用源",
             _ => "更新源"
         };
     }

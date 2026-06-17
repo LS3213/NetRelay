@@ -225,8 +225,8 @@ public sealed class MainViewModel : ObservableObject
     public ConfigurationService ConfigService => _configService;
     public UpdateStatusSnapshot UpdateStatusSnapshot => _updateStatus;
     public string ProductVersionText => $"版本：v{Protocol.ProductVersion}";
-    public string UpdatePrimarySourceText => _configService.Current.PrimaryApiBaseUrl;
-    public string UpdateFallbackSourceText => _configService.Current.GithubFallback.Repository;
+    public string UpdatePrimarySourceText => "主更新源";
+    public string UpdateFallbackSourceText => _configService.Current.GithubFallback.Enabled ? "备用源" : "备用源未启用";
     public string UpdateStartupPolicyText => _configService.Current.AutoCheckUpdatesOnStartup ? "启动时自动静默检查" : "启动时不自动检查";
     public string UpdateLastCheckText => _updateStatus.LastCheckedAt.HasValue
         ? _updateStatus.LastCheckedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
@@ -235,7 +235,7 @@ public sealed class MainViewModel : ObservableObject
     public string UpdateLastCheckSourceText => _updateStatus.LastCheckSource switch
     {
         UpdateSourceKind.Primary => "最近检查来源：主更新源",
-        UpdateSourceKind.GitHubFallback => "最近检查来源：GitHub 备用源",
+        UpdateSourceKind.GitHubFallback => "最近检查来源：备用源",
         _ => "最近检查来源：尚未确定"
     };
     public string UpdateLastDownloadText => _updateStatus.LastDownloadAt.HasValue

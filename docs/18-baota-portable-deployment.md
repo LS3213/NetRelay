@@ -121,6 +121,8 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 - `app/`
 - `public/`
 
+当前客户端首次运行隐私同意弹窗不再打开外部“用户协议”或“隐私政策”页面；若后续版本重新启用可点击协议详情，部署站点必须先提供真实有效的协议页面，不能让用户落到首页、安装页或空白页面。
+
 宝塔部署步骤：
 
 1. 在宝塔创建 MySQL 8 数据库和专用账号。
@@ -136,7 +138,7 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 
 宝塔默认网站配置通常包含处理 CSS 和 JavaScript 的正则 `location`。安装页路由必须使用 `location ^~ /install/`，确保安装页样式和脚本均代理到安装模式后端，而不是被默认静态文件规则截获。
 
-客户端首次运行的隐私同意弹窗会直接打开 `https://<publicBaseUrl>/terms/` 与 `https://<publicBaseUrl>/privacy/`。当前默认静态站点根路由会把未知路径回退到 `index.html`，因此若 `public/` 下没有真实的 `terms` 与 `privacy` 页面，用户点击协议链接时会落回官网首页；若站点尚未完成安装，还可能先被重定向到 `/install/`。正式对外前必须补齐这两个真实页面，或把客户端链接改为有效协议地址。
+客户端首次运行的隐私同意弹窗当前仅展示“用户协议”和“隐私政策”文字，不打开外部页面。若未来重新启用可点击协议详情，必须先在公开站点提供真实有效的协议页面，避免用户落回首页、安装页或空白页面。
 
 详细操作说明以 [`deploy/baota/README.md`](../deploy/baota/README.md) 为准。
 

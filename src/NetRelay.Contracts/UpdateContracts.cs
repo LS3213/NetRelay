@@ -50,7 +50,7 @@ public sealed class UpdateManifest
     public string SourceLabel => SourceKind switch
     {
         UpdateSourceKind.Primary => "主更新源",
-        UpdateSourceKind.GitHubFallback => "GitHub 备用源",
+        UpdateSourceKind.GitHubFallback => "备用源",
         _ => "未知来源"
     };
 }

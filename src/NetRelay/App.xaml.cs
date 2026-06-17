@@ -16,6 +16,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _ = new DiagnosticLogService().InfoAsync("startup", "application", "started", detail: $"version={NetRelay.Contracts.Protocol.ProductVersion}; args={e.Args.Length}");
         SmoothScrollBehavior.Enable();
 
@@ -127,6 +128,7 @@ public partial class App : System.Windows.Application
 
         var mainWindow = new MainWindow(configService);
         MainWindow = mainWindow;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
         _singleInstanceService.StartListening(args => Dispatcher.Invoke(() => mainWindow.HandleCommandLineArgs(args)));
         if (e.Args.Length > 0)
         {
