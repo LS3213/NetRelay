@@ -1,0 +1,42 @@
+[
+  {
+    "version": "1.2.5",
+    "channel": "stable",
+    "architecture": "win-x64",
+    "releaseDate": "2026-06-17T09:30:45.0185877+00:00",
+    "changelog": "\u5BA2\u6237\u7AEF\u6574\u4F53\u529F\u80FD\u8865\u5F3A",
+    "isMandatory": false
+  },
+  {
+    "version": "1.2.4",
+    "channel": "stable",
+    "architecture": "win-x64",
+    "releaseDate": "2026-06-16T02:10:50.198576+00:00",
+    "changelog": "\u5B8C\u5584\u66F4\u65B0\u5668\uFF0C\u5B8C\u5584\u90E8\u5206UI",
+    "isMandatory": false
+  },
+  {
+    "version": "1.2.3",
+    "channel": "stable",
+    "architecture": "win-x64",
+    "releaseDate": "2026-06-16T00:52:52.997992+00:00",
+    "changelog": "1.2.3\u529F\u80FD\u5B8C\u6574\u6027\u66F4\u65B0",
+    "isMandatory": false
+  },
+  {
+    "version": "1.2.2",
+    "channel": "stable",
+    "architecture": "win-x64",
+    "releaseDate": "2026-06-15T17:23:55.212313+00:00",
+    "changelog": "\u4FEE\u590D\u66F4\u65B01.2.2",
+    "isMandatory": false
+  },
+  {
+    "version": "1.2.1",
+    "channel": "stable",
+    "architecture": "win-x64",
+    "releaseDate": "2026-06-15T16:57:31.110971+00:00",
+    "changelog": "1.2.1\u66F4\u65B0\u6D4B\u8BD5",
+    "isMandatory": false
+  }
+]
