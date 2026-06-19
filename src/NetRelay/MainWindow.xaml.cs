@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
     private readonly bool _startMinimized;
+    private bool _startupUpdateCheckStarted;
     private bool _tabSelectionIndicatorInitialized;
 
     public MainWindow() : this(new ConfigurationService())
@@ -30,8 +31,7 @@ public partial class MainWindow : Window
     public MainWindow(ConfigurationService configService)
     {
         var commandLineArgs = Environment.GetCommandLineArgs();
-        _startMinimized = commandLineArgs.Contains("--startup", StringComparer.OrdinalIgnoreCase)
-            || commandLineArgs.Contains("--protocol-launch", StringComparer.OrdinalIgnoreCase);
+        _startMinimized = commandLineArgs.Contains("--protocol-launch", StringComparer.OrdinalIgnoreCase);
         if (_startMinimized)
         {
             Opacity = 0;
@@ -57,7 +57,7 @@ public partial class MainWindow : Window
             _ruleScheduler,
             logService);
         DataContext = _viewModel;
-        Loaded += async (_, _) => await _viewModel.CheckForUpdatesOnStartupAsync();
+        Loaded += async (_, _) => await CheckForUpdatesOnStartupOnceAsync();
 
         // Listen to events
         _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
@@ -86,6 +86,17 @@ public partial class MainWindow : Window
                 System.Windows.Forms.ToolTipIcon.Warning);
         }
         UpdateTabSelection(0);
+    }
+
+    public async Task CheckForUpdatesOnStartupOnceAsync()
+    {
+        if (_startupUpdateCheckStarted)
+        {
+            return;
+        }
+
+        _startupUpdateCheckStarted = true;
+        await _viewModel.CheckForUpdatesOnStartupAsync();
     }
 
     private async void SettingsButton_Click(object sender, RoutedEventArgs e)

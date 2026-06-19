@@ -130,11 +130,19 @@ public partial class App : System.Windows.Application
         MainWindow = mainWindow;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         _singleInstanceService.StartListening(args => Dispatcher.Invoke(() => mainWindow.HandleCommandLineArgs(args)));
+        var startInTray = e.Args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
         if (e.Args.Length > 0)
         {
             mainWindow.HandleCommandLineArgs(e.Args);
         }
-        mainWindow.Show();
+        if (startInTray)
+        {
+            _ = mainWindow.CheckForUpdatesOnStartupOnceAsync();
+        }
+        else
+        {
+            mainWindow.Show();
+        }
 
         if (PolicyService.IsBlocked)
         {
