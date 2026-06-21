@@ -97,7 +97,7 @@ public static class RichToastService
             : string.Empty;
 
         return $@"
-<toast scenario=""reminder"">
+<toast duration=""short"">
   <visual>
     <binding template=""ToastGeneric"">
       <text>{SecurityElementEscape(title)}</text>

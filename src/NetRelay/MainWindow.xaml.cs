@@ -304,15 +304,8 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            // System-level notification bubble that auto-dismisses and is non-intrusive for gaming/fullscreen
-            _notifyIcon?.ShowBalloonTip(
-                5000,
-                "NetRelay 计划切换提醒",
-                $"规则“{e.Rule.Name}”将在 {e.MinutesRemaining} 分钟后执行，点击处理。",
-                System.Windows.Forms.ToolTipIcon.Info
-            );
-
-            // Trigger right corner Windows native Interactive Toast
+            // Use one native interactive toast. Sending a legacy tray balloon as
+            // well would produce duplicate notifications for the same event.
             var actionName = e.Rule.Action == RuleAction.Enable ? "启用" : "禁用";
             RichToastService.ShowPreNotification(e, actionName);
         });

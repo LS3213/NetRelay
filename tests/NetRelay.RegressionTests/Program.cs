@@ -973,6 +973,8 @@ static void RichToastRespectsNotificationActionPermissions()
     Assert(bothXml.Contains("延迟 7 分钟", StringComparison.Ordinal));
     Assert(bothXml.Contains("notificationId=", StringComparison.Ordinal));
     Assert(bothXml.Contains("token=TOKEN", StringComparison.Ordinal));
+    Assert(bothXml.Contains("duration=\"short\"", StringComparison.Ordinal));
+    Assert(!bothXml.Contains("scenario=\"reminder\"", StringComparison.Ordinal));
 }
 
 static ExecutionRecord CreateRecord(Guid ruleId, RuleSource source)
