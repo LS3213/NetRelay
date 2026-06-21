@@ -164,6 +164,7 @@ artifacts/delivery/win-x64/
 构建命令：
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-delivery.ps1
 powershell -ExecutionPolicy Bypass -File deploy\baota\build-package.ps1
 ```
 
@@ -179,6 +180,7 @@ artifacts/baota-portable.zip
 ```text
 app/
 public/
+public/downloads/NetRelaySetup.exe
 BUILD.txt
 install.sh
 netrelay-menu.sh
@@ -188,6 +190,8 @@ README.md
 ```
 
 若缺少 `netrelay-menu.sh` 或 `install.sh`，说明当前便携包不是最新完整产物，不得上传。
+
+宝塔包同时承担官网安装器分发，因此还必须包含 `public/downloads/NetRelaySetup.exe`。该文件由宝塔打包脚本从正式 Windows 交付产物复制；没有先运行 `build-delivery.ps1` 时，`build-package.ps1` 必须失败，不能生成官网按钮指向空文件的部署包。
 
 部署或升级步骤：
 
@@ -246,6 +250,7 @@ ls -l /usr/local/bin/netrelay /usr/local/bin/NetRelay /usr/local/bin/NR
 7. 上传 `win-x64.zip` 为更新草稿并核对元数据。
 8. 在受控测试机完成真实更新、签名拒绝、哈希拒绝和回滚测试。
 9. 发布更新，并向首次安装用户提供同一构建批次的 `NetRelaySetup.exe`。
+10. 重新构建并部署宝塔便携包，确认官网 `/downloads/NetRelaySetup.exe` 已替换为该批次安装器；客户端在线更新 ZIP 与官网安装器不得混用。
 
 当前服务端仍使用在线操作密钥动态签名 `update-manifest`，尚未满足离线发布密钥规范。因此以上流程当前只允许用于 B8 开发联调和受控验收，在离线签名清单链路完成前不得进行正式公开发布。
 

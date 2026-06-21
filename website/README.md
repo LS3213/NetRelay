@@ -18,15 +18,17 @@ http://localhost:4173
 
 也可以直接打开 `website/index.html`，但使用本地 HTTP 服务器更接近生产环境。
 
-## 配置下载地址
+## 安装器下载
 
-在 `script.js` 中配置：
+官网按钮固定下载同站点下的安装器：
 
 ```js
-const downloadUrl = "https://example.com/NetRelay.exe";
+const downloadUrl = "downloads/NetRelaySetup.exe";
 ```
 
-可以填写 GitHub Release、对象存储或其他正式下载地址。留空时，按钮会提示下载地址尚未配置。
+宝塔便携包构建脚本会从 `artifacts/delivery/win-x64/installer/NetRelaySetup.exe` 自动复制该文件。标准顺序是先运行 `deploy/windows/build-delivery.ps1`，再运行 `deploy/baota/build-package.ps1`。安装器二进制不会提交到 Git。
+
+若单独部署 `website/` 到其他静态平台，需要自行把同一构建批次的 `NetRelaySetup.exe` 上传到 `website/downloads/`，或在部署阶段映射到同名路径。
 
 ## 部署
 

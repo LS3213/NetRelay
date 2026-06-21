@@ -1,5 +1,5 @@
 const revealItems = document.querySelectorAll(".reveal");
-const downloadUrl = "";
+const downloadUrl = "downloads/NetRelaySetup.exe";
 
 if ("IntersectionObserver" in window) {
   const observer = new IntersectionObserver((entries) => {
@@ -19,6 +19,7 @@ if ("IntersectionObserver" in window) {
 document.querySelectorAll(".download-link").forEach((link) => {
   if (downloadUrl) {
     link.href = downloadUrl;
+    link.download = "NetRelaySetup.exe";
   } else {
     link.addEventListener("click", (event) => {
       event.preventDefault();

@@ -6,6 +6,8 @@ obj/
 *.suo
 *.log
 artifacts/
+website/downloads/*
+!website/downloads/.gitkeep
 *_wpftmp.csproj
 deploy/.env
 deploy/backups/

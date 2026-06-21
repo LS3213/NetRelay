@@ -157,15 +157,15 @@ python -m http.server 4173 --directory website
 
 随后访问 `http://localhost:4173`。也可以直接打开 `website/index.html`，但 HTTP 预览更接近实际部署行为。
 
-下载按钮由 `website/script.js` 顶部的 `downloadUrl` 常量统一配置：
+下载按钮由 `website/script.js` 顶部的 `downloadUrl` 常量统一配置，当前固定指向同站点安装器：
 
 ```js
-const downloadUrl = "https://example.com/NetRelay.exe";
+const downloadUrl = "downloads/NetRelaySetup.exe";
 ```
 
-- 留空时，下载按钮只显示“下载地址尚未配置”的提示，不会请求不存在的发布包。
-- 正式发布时应填写 GitHub Release、对象存储或其他稳定下载地址。
-- `website/downloads/` 默认忽略实际发布包，避免将大型二进制文件提交到 Git；仅保留 `.gitkeep`。
+- 宝塔官网部署时，先运行 `deploy/windows/build-delivery.ps1` 生成安装器，再运行 `deploy/baota/build-package.ps1`；后者会自动复制到 `public/downloads/NetRelaySetup.exe`。
+- `website/downloads/` 中的实际安装器默认忽略，不得将大型二进制文件提交到 Git；仅保留 `.gitkeep`。
+- 若部署到 GitHub Pages、Cloudflare Pages 或其他独立静态平台，部署流程必须额外上传同一构建批次的 `NetRelaySetup.exe` 到 `downloads/` 路径。
 
 静态部署不需要构建命令：
 

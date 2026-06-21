@@ -106,10 +106,13 @@ sequenceDiagram
 在 Windows 开发机仓库根目录执行：
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File deploy/windows/build-delivery.ps1
 powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 ```
 
 产物为 `artifacts/baota-portable/` 和 `artifacts/baota-portable.zip`。
+
+必须先生成 Windows 正式交付产物。宝塔打包脚本要求存在 `artifacts/delivery/win-x64/installer/NetRelaySetup.exe`，并自动将其复制到官网公开目录 `public/downloads/NetRelaySetup.exe`；安装器缺失时打包会失败，避免部署带失效下载按钮的官网。
 
 构建完成后，至少应先核对便携目录根部包含以下文件；若缺少任一项，不得上传服务器：
 
@@ -120,6 +123,7 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 - `README.md`
 - `app/`
 - `public/`
+- `public/downloads/NetRelaySetup.exe`
 
 当前客户端首次运行隐私同意弹窗不再打开外部“用户协议”或“隐私政策”页面；若后续版本重新启用可点击协议详情，部署站点必须先提供真实有效的协议页面，不能让用户落到首页、安装页或空白页面。
 
@@ -133,6 +137,8 @@ powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 6. 将 `nginx-location.conf` 加入网站的 `server` 块。
 7. 配置并强制启用 HTTPS。
 8. 访问 `/install/` 完成安装。
+
+部署完成后还应访问 `/downloads/NetRelaySetup.exe`，确认返回安装器附件且文件大小与本地 `artifacts/delivery/win-x64/installer/NetRelaySetup.exe` 一致。该静态文件由 Nginx 直接发送，不经过后端 API。
 
 升级现有服务器时，必须用新的 `baota-portable.zip` 整包覆盖部署目录，再执行 `install.sh`。不得只替换 `app/` 或单独替换 `NetRelay.Server`，否则会遗漏根目录脚本与服务模板，例如 `install.sh`、`netrelay-menu.sh`、`netrelay.service` 和 `nginx-location.conf`。
 

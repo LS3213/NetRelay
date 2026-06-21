@@ -1,5 +1,6 @@
 param(
-    [string]$Output = "artifacts/baota-portable"
+    [string]$Output = "artifacts/baota-portable",
+    [string]$InstallerPath = "artifacts/delivery/win-x64/installer/NetRelaySetup.exe"
 )
 
 $ErrorActionPreference = "Stop"
@@ -7,7 +8,18 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $outputPath = Join-Path $root $Output
 $appPath = Join-Path $outputPath "app"
 $publicPath = Join-Path $outputPath "public"
+$publicDownloadsPath = Join-Path $publicPath "downloads"
 $npmCachePath = Join-Path $root "artifacts\.npm-cache"
+$installerSourcePath = if ([IO.Path]::IsPathRooted($InstallerPath)) {
+    $InstallerPath
+}
+else {
+    Join-Path $root $InstallerPath
+}
+
+if (-not (Test-Path -LiteralPath $installerSourcePath -PathType Leaf)) {
+    throw "Windows installer not found: $installerSourcePath. Run deploy\windows\build-delivery.ps1 first."
+}
 $dotnetCandidate = Join-Path $env:USERPROFILE ".dotnet\dotnet.exe"
 if (Test-Path -LiteralPath $dotnetCandidate) {
     $dotnetExecutable = $dotnetCandidate
@@ -24,7 +36,7 @@ if (Test-Path -LiteralPath $outputPath) {
     Remove-Item -LiteralPath $outputPath -Recurse -Force
 }
 
-New-Item -ItemType Directory -Path $appPath, $publicPath | Out-Null
+New-Item -ItemType Directory -Path $appPath, $publicPath, $publicDownloadsPath | Out-Null
 New-Item -ItemType Directory -Path $npmCachePath -Force | Out-Null
 
 $adminPrefix = "website\admin"
@@ -57,6 +69,7 @@ Copy-Item (Join-Path $root "website\assets") $publicPath -Recurse
 Copy-Item (Join-Path $root "website\index.html") $publicPath
 Copy-Item (Join-Path $root "website\script.js") $publicPath
 Copy-Item (Join-Path $root "website\styles.css") $publicPath
+Copy-Item -LiteralPath $installerSourcePath -Destination (Join-Path $publicDownloadsPath "NetRelaySetup.exe") -Force
 Copy-Item (Join-Path $root "website\admin\dist") (Join-Path $publicPath "admin") -Recurse
 Copy-Item (Join-Path $PSScriptRoot "install.sh") $outputPath
 Copy-Item (Join-Path $PSScriptRoot "netrelay.service") $outputPath

@@ -7,8 +7,11 @@
 在 Windows 开发机仓库根目录运行：
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File deploy/windows/build-delivery.ps1
 powershell -ExecutionPolicy Bypass -File deploy/baota/build-package.ps1
 ```
+
+必须先生成 Windows 正式交付产物。宝塔打包脚本会把 `artifacts/delivery/win-x64/installer/NetRelaySetup.exe` 自动复制为 `public/downloads/NetRelaySetup.exe`，官网的所有“下载 Windows 版”按钮直接下载该文件。若安装器不存在，脚本会拒绝生成便携包。
 
 输出：
 
@@ -25,6 +28,7 @@ artifacts/baota-portable.zip
 - `README.md`
 - `app/`
 - `public/`
+- `public/downloads/NetRelaySetup.exe`
 
 ## 宝塔安装
 
