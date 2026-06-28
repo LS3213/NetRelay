@@ -2,11 +2,11 @@
   "envelope": {
     "protocolVersion": 1,
     "purpose": "update-manifest",
-    "nonce": "07ba2feb41b7461594fc1a9a7ca0a0e9",
-    "issuedAt": "2026-06-27T14:03:09.482864+00:00",
+    "nonce": "108f17b379fa4d52bef6351da3ca5d3f",
+    "issuedAt": "2026-06-28T02:03:12.5088262+00:00",
     "expiresAt": "2026-07-14T08:18:45.2705055+00:00",
     "payloadJson": "{\u0022architecture\u0022:\u0022win-x64\u0022,\u0022changelog\u0022:\u0022\\u5907\\u7528\\u6E90\\u66F4\\u65B0\\u6062\\u590D\u0022,\u0022channel\u0022:\u0022stable\u0022,\u0022isMandatory\u0022:true,\u0022minUpgradableVersion\u0022:\u00220.1.0\u0022,\u0022packageSize\u0022:144648215,\u0022releaseDate\u0022:\u00222026-06-17T18:11:31.777Z\u0022,\u0022sha256\u0022:\u0022865737fc91898d70703470f46eb84444648a0ab51cadfb3f2ccb332af5777e1b\u0022,\u0022version\u0022:\u00221.2.7\u0022}",
-    "signature": "VjXa0iZXvEL\u002B/RK4Yjw8nOht6wUByRJrlAfrb3S9Hjuh3hdORLV8yEZROfaWxkyQPs\u002BQjGJnLUseau2Elfg32w=="
+    "signature": "2hFp/C/CbU8xQ4EmEm9FC\u002B6NwUFgvUScMpZABdr8y2wRI06h4PEgfjCNhDbhZAJDfrjEcxJwvVklg6uN4t4tFg=="
   },
   "certificate": {
     "keyId": "operations-20260614-081845",
