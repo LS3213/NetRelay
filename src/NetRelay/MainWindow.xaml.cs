@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly RuleEngine _ruleEngine;
     private readonly RuleSchedulerService _ruleScheduler;
     private readonly SettingsRuntimeService _settingsRuntimeService;
+    private readonly bool _ownsRuntime;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
     private readonly bool _startMinimized;
@@ -28,8 +29,16 @@ public partial class MainWindow : Window
     {
     }
 
-    public MainWindow(ConfigurationService configService)
+    public MainWindow(
+        ConfigurationService configService,
+        NativeNetworkConnectionService? connectionService = null,
+        ConnectivityService? connectivityService = null,
+        RuleEngine? ruleEngine = null,
+        RuleSchedulerService? ruleScheduler = null,
+        LogService? logService = null,
+        bool ownsRuntime = true)
     {
+        _ownsRuntime = ownsRuntime;
         var commandLineArgs = Environment.GetCommandLineArgs();
         _startMinimized = commandLineArgs.Contains("--protocol-launch", StringComparer.OrdinalIgnoreCase);
         if (_startMinimized)
@@ -39,29 +48,55 @@ public partial class MainWindow : Window
         }
 
         InitializeComponent();
-        RichToastService.Initialize();
-        var connectivityService = new ConnectivityService();
-        _connectionService = new NativeNetworkConnectionService();
+        if (_ownsRuntime)
+        {
+            RichToastService.Initialize();
+        }
 
-        _ruleEngine = new RuleEngine(_connectionService, connectivityService, configService);
-        _ruleScheduler = new RuleSchedulerService(_ruleEngine, configService, connectivityService);
-        _ruleScheduler.Start();
-        var logService = new LogService();
-        _settingsRuntimeService = new SettingsRuntimeService(configService, logService, () => _ruleScheduler.Reload());
+        var connectivity = connectivityService ?? new ConnectivityService();
+        _connectionService = connectionService ?? new NativeNetworkConnectionService();
+
+        _ruleEngine = ruleEngine ?? new RuleEngine(_connectionService, connectivity, configService);
+        _ruleScheduler = ruleScheduler ?? new RuleSchedulerService(_ruleEngine, configService, connectivity);
+        if (ruleScheduler is null)
+        {
+            _ruleScheduler.Start();
+        }
+
+        var logs = logService ?? new LogService();
+        _settingsRuntimeService = new SettingsRuntimeService(configService, logs, () => _ruleScheduler.Reload());
 
         _viewModel = new MainViewModel(
             new NetworkAdapterService(_connectionService),
             configService,
-            connectivityService,
+            connectivity,
             _ruleEngine,
             _ruleScheduler,
-            logService);
+            logs);
         DataContext = _viewModel;
-        Loaded += async (_, _) => await CheckForUpdatesOnStartupOnceAsync();
+        Loaded += async (_, _) =>
+        {
+            _viewModel.ResumeUiMonitoring();
+            await CheckForUpdatesOnStartupOnceAsync();
+        };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible)
+            {
+                _viewModel.ResumeUiMonitoring();
+            }
+            else
+            {
+                _viewModel.PauseUiMonitoring();
+            }
+        };
 
         // Listen to events
-        _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
-        _ruleEngine.ExecutionRecorded += OnRuleExecutionRecorded;
+        if (_ownsRuntime)
+        {
+            _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
+            _ruleEngine.ExecutionRecorded += OnRuleExecutionRecorded;
+        }
         _viewModel.RequestEditRule += OnRequestEditRule;
 
         SourceInitialized += (_, _) =>
@@ -76,17 +111,22 @@ public partial class MainWindow : Window
         StateChanged += (_, _) => UpdateMaximizeIcon();
         UpdateMaximizeIcon();
 
-        InitializeNotifyIcon();
-        if (!_viewModel.ConfigService.IsAutomationEnabled)
+        if (_ownsRuntime)
         {
-            _notifyIcon?.ShowBalloonTip(
-                8000,
-                "NetRelay 自动化已暂停",
-                _viewModel.ConfigService.AutomationDisabledReason ?? "探测配置无效，请检查配置文件。",
-                System.Windows.Forms.ToolTipIcon.Warning);
+            InitializeNotifyIcon();
+            if (!_viewModel.ConfigService.IsAutomationEnabled)
+            {
+                _notifyIcon?.ShowBalloonTip(
+                    8000,
+                    "NetRelay 自动化已暂停",
+                    _viewModel.ConfigService.AutomationDisabledReason ?? "探测配置无效，请检查配置文件。",
+                    System.Windows.Forms.ToolTipIcon.Warning);
+            }
         }
         UpdateTabSelection(0);
     }
+
+    public bool IsForceExiting => _isForceExiting;
 
     public async Task CheckForUpdatesOnStartupOnceAsync()
     {
@@ -277,10 +317,40 @@ public partial class MainWindow : Window
         ExitApplication();
     }
 
+    public void SelectTab(int tabIndex)
+    {
+        _viewModel.CurrentTabIndex = tabIndex;
+        UpdateTabSelection(tabIndex);
+        if (tabIndex == 2)
+        {
+            _ = _viewModel.LoadLogsAsync();
+        }
+    }
+
+    public void CheckUpdatesInteractive()
+    {
+        _viewModel.CheckUpdatesCommand.Execute(null);
+    }
+
+    public void ClearPendingNotificationIfMatches(Guid notificationActionId)
+    {
+        _viewModel.ClearPendingNotificationIfMatches(notificationActionId);
+    }
+
+    public void ForceCloseFromRuntime()
+    {
+        _isForceExiting = true;
+        _viewModel.Shutdown();
+        _notifyIcon?.Dispose();
+        _notifyIcon = null;
+        Close();
+    }
+
     public void RestoreWindow()
     {
         ShowInTaskbar = true;
         Show();
+        _viewModel.ResumeUiMonitoring();
         if (WindowState == WindowState.Minimized)
         {
             WindowState = WindowState.Normal;
@@ -290,6 +360,13 @@ public partial class MainWindow : Window
 
     private void ExitApplication()
     {
+        if (!_ownsRuntime)
+        {
+            _isForceExiting = true;
+            System.Windows.Application.Current.Shutdown();
+            return;
+        }
+
         Hide();
         _viewModel.Shutdown();
         _ruleScheduler?.Stop();
@@ -546,10 +623,18 @@ public partial class MainWindow : Window
             if (config.CloseAction == "HideToTray")
             {
                 e.Cancel = true;
+                _viewModel.PauseUiMonitoring();
                 Hide();
             }
             else // Exit
             {
+                if (!_ownsRuntime)
+                {
+                    _isForceExiting = true;
+                    System.Windows.Application.Current.Shutdown();
+                    return;
+                }
+
                 Hide();
                 _viewModel.Shutdown();
                 _ruleScheduler?.Stop();
@@ -576,10 +661,18 @@ public partial class MainWindow : Window
 
                 if (dialog.CloseActionResult == "HideToTray")
                 {
+                    _viewModel.PauseUiMonitoring();
                     Hide();
                 }
                 else
                 {
+                    if (!_ownsRuntime)
+                    {
+                        _isForceExiting = true;
+                        System.Windows.Application.Current.Shutdown();
+                        return;
+                    }
+
                     Hide();
                     _viewModel.Shutdown();
                     _ruleScheduler?.Stop();

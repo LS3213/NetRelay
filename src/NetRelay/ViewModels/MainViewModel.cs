@@ -38,6 +38,7 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? _probeCts;
     private int _probeTickCount = 0;
     private bool _isProbing;
+    private bool _logsLoaded;
 
     // Navigation and Page Tabs
     private int _currentTabIndex = 0;
@@ -80,7 +81,6 @@ public sealed class MainViewModel : ObservableObject
             Interval = TimeSpan.FromSeconds(1)
         };
         _trafficTimer.Tick += (_, _) => SampleTraffic();
-        _trafficTimer.Start();
 
         // 1s Countdown Timer for Pre-Notifications
         _countdownTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -165,7 +165,6 @@ public sealed class MainViewModel : ObservableObject
         }
 
         LoadRules();
-        _ = LoadLogsAsync();
         _ = _logService.RotateLogsAsync(_configService.Current.KeepDays);
     }
 
@@ -448,6 +447,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        _logsLoaded = true;
         IsLoadingLogs = true;
         try
         {
@@ -473,6 +473,14 @@ public sealed class MainViewModel : ObservableObject
         finally
         {
             IsLoadingLogs = false;
+        }
+    }
+
+    private void ReloadLogsIfLoaded()
+    {
+        if (_logsLoaded)
+        {
+            _ = LoadLogsAsync();
         }
     }
 
@@ -818,7 +826,7 @@ public sealed class MainViewModel : ObservableObject
             await Task.Delay(2500);
             OperationMessage = null;
             RefreshAdapters();
-            _ = LoadLogsAsync();
+            ReloadLogsIfLoaded();
         }
         catch (Exception ex)
         {
@@ -854,13 +862,13 @@ public sealed class MainViewModel : ObservableObject
         {
             dispatcher.Invoke(() =>
             {
-                _ = LoadLogsAsync();
+                ReloadLogsIfLoaded();
                 LoadRules(); // Update "Once" rules enabled state from config
             });
         }
         else
         {
-            _ = LoadLogsAsync();
+            ReloadLogsIfLoaded();
             LoadRules();
         }
     }
@@ -1014,7 +1022,7 @@ public sealed class MainViewModel : ObservableObject
                         null
                     );
                     await _ruleEngine.WriteExecutionRecordAsync(skippedRecord);
-                    _ = LoadLogsAsync();
+                    ReloadLogsIfLoaded();
 
                     IsOperating = false;
                     await Task.Delay(2500);
@@ -1042,7 +1050,7 @@ public sealed class MainViewModel : ObservableObject
                 result.WindowsErrorCode
             );
             await _ruleEngine.WriteExecutionRecordAsync(record);
-            _ = LoadLogsAsync();
+            ReloadLogsIfLoaded();
 
             await Task.Delay(700);
             RefreshAdapters();
@@ -1277,7 +1285,7 @@ public sealed class MainViewModel : ObservableObject
 
     public void Shutdown()
     {
-        _trafficTimer.Stop();
+        PauseUiMonitoring();
         _countdownTimer.Stop();
         try
         {
@@ -1287,6 +1295,28 @@ public sealed class MainViewModel : ObservableObject
         catch
         {
             // Ignore cancel/dispose exceptions on shutdown
+        }
+    }
+
+    public void ResumeUiMonitoring()
+    {
+        if (!_trafficTimer.IsEnabled)
+        {
+            _trafficTimer.Start();
+            RefreshAdapters();
+        }
+    }
+
+    public void PauseUiMonitoring()
+    {
+        _trafficTimer.Stop();
+        try
+        {
+            _probeCts?.Cancel();
+        }
+        catch
+        {
+            // Ignore cancellation failures while hiding the UI.
         }
     }
 

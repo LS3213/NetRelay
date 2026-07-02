@@ -11,6 +11,7 @@ namespace NetRelay;
 public partial class App : System.Windows.Application
 {
     private SingleInstanceService? _singleInstanceService;
+    private BackgroundRuntime? _runtime;
     public static PolicyService PolicyService { get; private set; } = null!;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -126,32 +127,25 @@ public partial class App : System.Windows.Application
             });
         }
 
-        var mainWindow = new MainWindow(configService);
-        MainWindow = mainWindow;
-        ShutdownMode = ShutdownMode.OnMainWindowClose;
-        _singleInstanceService.StartListening(args => Dispatcher.Invoke(() => mainWindow.HandleCommandLineArgs(args)));
+        _runtime = new BackgroundRuntime(configService);
+        _runtime.Start();
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        _singleInstanceService.StartListening(args => Dispatcher.Invoke(() => _runtime.HandleCommandLineArgs(args)));
         var startInTray = e.Args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
         if (e.Args.Length > 0)
         {
-            mainWindow.HandleCommandLineArgs(e.Args);
+            _runtime.HandleCommandLineArgs(e.Args);
         }
         if (startInTray)
         {
-            _ = mainWindow.CheckForUpdatesOnStartupOnceAsync();
+            _ = _runtime.CheckForUpdatesOnStartupOnceAsync();
         }
-        else
+        else if (e.Args.Length == 0)
         {
-            mainWindow.Show();
+            _runtime.ShowMainWindow();
         }
 
-        if (PolicyService.IsBlocked)
-        {
-            var dialog = new Dialogs.BlockWarningDialog(PolicyService)
-            {
-                Owner = mainWindow
-            };
-            dialog.ShowDialog();
-        }
+        _runtime.ShowBlockedDialogIfNeeded();
 
         // Asynchronously check online policy
         _ = Task.Run(async () =>
@@ -175,11 +169,7 @@ public partial class App : System.Windows.Application
 
                         if (!alreadyOpen)
                         {
-                            var dialog = new Dialogs.BlockWarningDialog(PolicyService)
-                            {
-                                Owner = mainWindow
-                            };
-                            dialog.ShowDialog();
+                            _runtime.ShowBlockedDialog();
                         }
                     });
                 }
@@ -208,6 +198,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _ = new DiagnosticLogService().InfoAsync("startup", "application", "exited", detail: $"exitCode={e.ApplicationExitCode}");
+        _runtime?.Dispose();
         _singleInstanceService?.Dispose();
         base.OnExit(e);
     }

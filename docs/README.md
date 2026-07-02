@@ -36,6 +36,7 @@
 17. [B0 设备指纹手动测试指南](17-b0-device-fingerprint-manual-test-guide.md)
 18. [宝塔便携部署与首次安装向导](18-baota-portable-deployment.md)
 19. [构建产物与更新流程规范](19-build-artifacts-and-update-workflow.md)
+20. [客户端托盘常驻内存分析](20-client-tray-memory-analysis.md)
 
 ## 目录结构
 
