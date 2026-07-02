@@ -234,6 +234,7 @@ public sealed class BackgroundRuntime : IDisposable
                 _configService.IsAutomationEnabled,
                 _configService.AutomationDisabledReason,
                 _updateService.GetStatusSnapshot(),
+                mainWindowCreated: _mainWindow is not null,
                 CancellationToken.None);
 
             _trayIcon.ShowBalloonTip(

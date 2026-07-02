@@ -7,6 +7,8 @@ namespace NetRelay.Services;
 public sealed class LogService
 {
     public const int DefaultKeepDays = 30;
+    private const int DefaultLoadDays = 7;
+    private const int DefaultMaxRecords = 500;
 
     private readonly string _logDirectory;
 
@@ -22,9 +24,11 @@ public sealed class LogService
         _logDirectory = customDirectory;
     }
 
-    public async Task<List<ExecutionRecord>> LoadLogsAsync(int daysLimit = 7)
+    public async Task<List<ExecutionRecord>> LoadLogsAsync(int daysLimit = DefaultLoadDays, int maxRecords = DefaultMaxRecords)
     {
         var records = new List<ExecutionRecord>();
+        var validatedDaysLimit = daysLimit is >= 1 and <= 90 ? daysLimit : DefaultLoadDays;
+        var validatedMaxRecords = maxRecords is >= 50 and <= 5000 ? maxRecords : DefaultMaxRecords;
 
         try
         {
@@ -53,7 +57,7 @@ public sealed class LogService
                 })
                 .Where(x => x.Date != DateTime.MinValue)
                 .OrderByDescending(x => x.Date)
-                .Take(daysLimit)
+                .Take(validatedDaysLimit)
                 .ToList();
 
             foreach (var fileInfo in filesWithDates)
@@ -62,22 +66,31 @@ public sealed class LogService
                 {
                     if (!File.Exists(fileInfo.Path)) continue;
 
-                    var lines = await File.ReadAllLinesAsync(fileInfo.Path);
-                    foreach (var line in lines)
+                    using var fileStream = new FileStream(
+                        fileInfo.Path,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete,
+                        bufferSize: 16 * 1024,
+                        useAsync: true);
+                    using var reader = new StreamReader(fileStream);
+
+                    while (await reader.ReadLineAsync() is { } line)
                     {
                         if (string.IsNullOrWhiteSpace(line)) continue;
 
-                        try
+                        var record = TryDeserializeExecutionRecord(line);
+                        if (record != null)
                         {
-                            var record = JsonSerializer.Deserialize<ExecutionRecord>(line);
-                            if (record != null)
-                            {
-                                records.Add(record);
-                            }
+                            records.Add(record);
                         }
-                        catch
+
+                        if (records.Count > validatedMaxRecords * 2)
                         {
-                            // Skip corrupted log line to keep the logs viewer robust
+                            records = records
+                                .OrderByDescending(r => r.StartedAt)
+                                .Take(validatedMaxRecords)
+                                .ToList();
                         }
                     }
                 }
@@ -93,7 +106,10 @@ public sealed class LogService
         }
 
         // Return ordered by started time descending
-        return records.OrderByDescending(r => r.StartedAt).ToList();
+        return records
+            .OrderByDescending(r => r.StartedAt)
+            .Take(validatedMaxRecords)
+            .ToList();
     }
 
     public Task ClearAllLogsAsync()
@@ -217,5 +233,18 @@ public sealed class LogService
                 }
             }
         });
+    }
+
+    private static ExecutionRecord? TryDeserializeExecutionRecord(string line)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<ExecutionRecord>(line);
+        }
+        catch
+        {
+            // Skip corrupted log line to keep the logs viewer robust.
+            return null;
+        }
     }
 }

@@ -531,6 +531,7 @@ public sealed class MainViewModel : ObservableObject
                     _configService.IsAutomationEnabled,
                     _configService.AutomationDisabledReason,
                     _updateStatus,
+                    mainWindowCreated: true,
                     CancellationToken.None);
 
                 OperationMessage = $"诊断包已导出：{Path.GetFileName(zipPath)}";

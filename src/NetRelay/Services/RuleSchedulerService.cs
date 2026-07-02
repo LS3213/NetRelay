@@ -57,6 +57,7 @@ public sealed class RuleSchedulerService : IDisposable
 
     // Maximum tolerance (in minutes) to catch-up run a missed scheduled rule.
     private const int TriggerToleranceMinutes = 2;
+    private const int MaxStartupExecutionHistory = 1000;
 
     // Tracks daily/weekly rule execution dates to prevent multiple fires within the matching minute.
     private readonly Dictionary<Guid, DateTime> _timeTriggerLastRan = new();
@@ -135,8 +136,14 @@ public sealed class RuleSchedulerService : IDisposable
                 var logPath = Path.Combine(logDir, $"execution-{DateTime.Today.AddDays(dayOffset):yyyy-MM-dd}.jsonl");
                 if (!File.Exists(logPath)) continue;
 
-                var lines = File.ReadAllLines(logPath);
-                foreach (var line in lines)
+                using var fileStream = new FileStream(
+                    logPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(fileStream);
+
+                while (reader.ReadLine() is { } line)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -158,6 +165,11 @@ public sealed class RuleSchedulerService : IDisposable
                                 }
                             }
                         }
+
+                        if (_executionHistory.Count > MaxStartupExecutionHistory * 2)
+                        {
+                            TrimExecutionHistory(MaxStartupExecutionHistory);
+                        }
                     }
                     catch
                     {
@@ -165,11 +177,30 @@ public sealed class RuleSchedulerService : IDisposable
                     }
                 }
             }
+
+            TrimExecutionHistory(MaxStartupExecutionHistory);
         }
         catch
         {
             // 忽略读取文件异常
         }
+    }
+
+    private void TrimExecutionHistory(int maxRecords)
+    {
+        if (_executionHistory.Count <= maxRecords)
+        {
+            return;
+        }
+
+        var recentRecords = _executionHistory
+            .OrderByDescending(record => record.StartedAt)
+            .Take(maxRecords)
+            .OrderBy(record => record.StartedAt)
+            .ToList();
+
+        _executionHistory.Clear();
+        _executionHistory.AddRange(recentRecords);
     }
 
     public void Stop()

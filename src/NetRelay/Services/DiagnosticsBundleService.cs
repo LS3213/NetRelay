@@ -26,6 +26,7 @@ public sealed class DiagnosticsBundleService
         bool automationEnabled,
         string? automationDisabledReason,
         UpdateStatusSnapshot updateStatus,
+        bool mainWindowCreated,
         CancellationToken cancellationToken)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"NetRelay-Export-{Guid.NewGuid():N}");
@@ -33,8 +34,8 @@ public sealed class DiagnosticsBundleService
 
         try
         {
-            await WriteRuntimeSummaryAsync(tempDir, config, automationEnabled, automationDisabledReason, updateStatus, cancellationToken);
-            WriteDiagnosticSummary(tempDir, config, automationEnabled, automationDisabledReason, updateStatus);
+            await WriteRuntimeSummaryAsync(tempDir, config, automationEnabled, automationDisabledReason, updateStatus, mainWindowCreated, cancellationToken);
+            WriteDiagnosticSummary(tempDir, config, automationEnabled, automationDisabledReason, updateStatus, mainWindowCreated);
             CopyLogs(tempDir);
             WriteAdapterDiagnostics(tempDir);
 
@@ -122,6 +123,7 @@ public sealed class DiagnosticsBundleService
         bool automationEnabled,
         string? automationDisabledReason,
         UpdateStatusSnapshot updateStatus,
+        bool mainWindowCreated,
         CancellationToken cancellationToken)
     {
         var runtimeSummary = new
@@ -150,6 +152,7 @@ public sealed class DiagnosticsBundleService
                 RuleCount = config.Rules.Count,
                 config.ManualDisableProtection
             },
+            Process = CaptureProcessSnapshot(mainWindowCreated),
             UpdateStatus = updateStatus
         };
 
@@ -196,7 +199,8 @@ public sealed class DiagnosticsBundleService
         AppConfiguration config,
         bool automationEnabled,
         string? automationDisabledReason,
-        UpdateStatusSnapshot updateStatus)
+        UpdateStatusSnapshot updateStatus,
+        bool mainWindowCreated)
     {
         var updateCacheFiles = Directory.Exists(UpdatesDirectory)
             ? Directory.EnumerateFiles(UpdatesDirectory, "*", SearchOption.AllDirectories).Count()
@@ -227,6 +231,7 @@ public sealed class DiagnosticsBundleService
             AutomationEnabled = automationEnabled,
             AutomationDisabledReason = automationDisabledReason,
             RuleCount = config.Rules.Count,
+            Process = CaptureProcessSnapshot(mainWindowCreated),
             LastCheck = new
             {
                 updateStatus.LastCheckedAt,
@@ -252,5 +257,47 @@ public sealed class DiagnosticsBundleService
         File.WriteAllText(
             Path.Combine(tempDir, "diagnostic-summary.json"),
             JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static object CaptureProcessSnapshot(bool mainWindowCreated)
+    {
+        try
+        {
+            using var currentProcess = Process.GetCurrentProcess();
+            var now = DateTimeOffset.Now;
+            DateTimeOffset? startedAt = null;
+            TimeSpan? uptime = null;
+            try
+            {
+                startedAt = currentProcess.StartTime;
+                uptime = now - startedAt.Value;
+            }
+            catch
+            {
+                // Some process properties can be unavailable under restricted permissions.
+            }
+
+            return new
+            {
+                ProcessId = currentProcess.Id,
+                Is64BitProcess = Environment.Is64BitProcess,
+                MainWindowCreated = mainWindowCreated,
+                StartedAt = startedAt,
+                UptimeSeconds = uptime.HasValue ? (long)uptime.Value.TotalSeconds : (long?)null,
+                WorkingSetBytes = currentProcess.WorkingSet64,
+                PrivateMemoryBytes = currentProcess.PrivateMemorySize64,
+                ManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false),
+                ThreadCount = currentProcess.Threads.Count,
+                HandleCount = currentProcess.HandleCount
+            };
+        }
+        catch
+        {
+            return new
+            {
+                MainWindowCreated = mainWindowCreated,
+                SnapshotUnavailable = true
+            };
+        }
     }
 }
