@@ -341,6 +341,7 @@ public partial class MainWindow : Window
     {
         _isForceExiting = true;
         _viewModel.Shutdown();
+        DataContext = null;
         _notifyIcon?.Dispose();
         _notifyIcon = null;
         Close();
@@ -363,6 +364,8 @@ public partial class MainWindow : Window
         if (!_ownsRuntime)
         {
             _isForceExiting = true;
+            _viewModel.Shutdown();
+            DataContext = null;
             System.Windows.Application.Current.Shutdown();
             return;
         }
@@ -622,6 +625,12 @@ public partial class MainWindow : Window
         {
             if (config.CloseAction == "HideToTray")
             {
+                if (!_ownsRuntime)
+                {
+                    CloseHostedWindowToTray(e);
+                    return;
+                }
+
                 e.Cancel = true;
                 _viewModel.PauseUiMonitoring();
                 Hide();
@@ -661,6 +670,12 @@ public partial class MainWindow : Window
 
                 if (dialog.CloseActionResult == "HideToTray")
                 {
+                    if (!_ownsRuntime)
+                    {
+                        CloseHostedWindowToTray(e);
+                        return;
+                    }
+
                     _viewModel.PauseUiMonitoring();
                     Hide();
                 }
@@ -683,6 +698,15 @@ public partial class MainWindow : Window
                 }
             }
         }
+    }
+
+    private void CloseHostedWindowToTray(System.ComponentModel.CancelEventArgs e)
+    {
+        e.Cancel = false;
+        _isForceExiting = true;
+        _viewModel.Shutdown();
+        DataContext = null;
+        ShowInTaskbar = false;
     }
 
     public void HandleCommandLineArgs(string[] args)

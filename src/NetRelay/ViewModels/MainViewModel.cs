@@ -22,6 +22,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly RuleEngine _ruleEngine;
     private readonly UpdateService _updateService;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
+    private readonly EventHandler? _policyBlockStateChangedHandler;
 
     private NetworkAdapterInfo? _selectedAdapter;
     private string? _errorMessage;
@@ -39,6 +40,7 @@ public sealed class MainViewModel : ObservableObject
     private int _probeTickCount = 0;
     private bool _isProbing;
     private bool _logsLoaded;
+    private bool _isShutdown;
 
     // Navigation and Page Tabs
     private int _currentTabIndex = 0;
@@ -154,7 +156,7 @@ public sealed class MainViewModel : ObservableObject
 
         if (App.PolicyService != null)
         {
-            App.PolicyService.BlockStateChanged += (sender, args) =>
+            _policyBlockStateChangedHandler = (sender, args) =>
             {
                 RaisePropertyChanged(nameof(IsBlocked));
                 RaisePropertyChanged(nameof(IsNotBlocked));
@@ -162,6 +164,7 @@ public sealed class MainViewModel : ObservableObject
                 RaisePropertyChanged(nameof(BlockedExpiryText));
                 RaisePropertyChanged(nameof(CanOperateSelectedAdapter));
             };
+            App.PolicyService.BlockStateChanged += _policyBlockStateChangedHandler;
         }
 
         LoadRules();
@@ -1286,8 +1289,29 @@ public sealed class MainViewModel : ObservableObject
 
     public void Shutdown()
     {
+        if (_isShutdown)
+        {
+            return;
+        }
+
+        _isShutdown = true;
         PauseUiMonitoring();
         _countdownTimer.Stop();
+        if (_ruleScheduler != null)
+        {
+            _ruleScheduler.PreNotificationTriggered -= OnSchedulerPreNotificationTriggered;
+            _ruleScheduler.RuleExecuted -= OnSchedulerRuleExecuted;
+        }
+
+        if (_policyBlockStateChangedHandler != null && App.PolicyService != null)
+        {
+            App.PolicyService.BlockStateChanged -= _policyBlockStateChangedHandler;
+        }
+
+        RequestEditRule = null;
+        Adapters.Clear();
+        Rules.Clear();
+        Logs = [];
         try
         {
             _probeCts?.Cancel();

@@ -1,4 +1,6 @@
 using System.IO;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using NetRelay.Contracts;
 using NetRelay.Models;
@@ -118,11 +120,22 @@ public sealed class BackgroundRuntime : IDisposable
                 _ruleScheduler,
                 _logService,
                 ownsRuntime: false);
-            _mainWindow.Closed += (_, _) =>
+            var window = _mainWindow;
+            window.Closed += (_, _) =>
             {
-                _mainWindow = null;
+                if (ReferenceEquals(_mainWindow, window))
+                {
+                    _mainWindow = null;
+                }
+
+                if (ReferenceEquals(WpfApplication.Current.MainWindow, window))
+                {
+                    WpfApplication.Current.MainWindow = null;
+                }
+
+                _ = Task.Run(() => ReleaseUiMemory("main-window-closed"));
             };
-            WpfApplication.Current.MainWindow = _mainWindow;
+            WpfApplication.Current.MainWindow = window;
         }
 
         if (tabIndex.HasValue)
@@ -305,4 +318,30 @@ public sealed class BackgroundRuntime : IDisposable
             _ => System.Windows.Forms.ToolTipIcon.Error
         };
     }
+
+    private static void ReleaseUiMemory(string reason)
+    {
+        try
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+            using var process = Process.GetCurrentProcess();
+            _ = EmptyWorkingSet(process.Handle);
+            _ = new DiagnosticLogService().InfoAsync(
+                "memory",
+                "release-ui",
+                "completed",
+                detail: $"reason={reason}; workingSet={process.WorkingSet64}; privateMemory={process.PrivateMemorySize64}; managedHeap={GC.GetTotalMemory(false)}");
+        }
+        catch (Exception exception)
+        {
+            _ = new DiagnosticLogService().ErrorAsync("memory", "release-ui", exception);
+        }
+    }
+
+    [DllImport("psapi.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EmptyWorkingSet(IntPtr processHandle);
 }
