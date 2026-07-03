@@ -18,7 +18,12 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        _ = new DiagnosticLogService().InfoAsync("startup", "application", "started", detail: $"version={NetRelay.Contracts.Protocol.ProductVersion}; args={e.Args.Length}");
+        var startupArgumentSummary = SummarizeStartupArguments(e.Args);
+        _ = new DiagnosticLogService().InfoAsync(
+            "startup",
+            "application",
+            "started",
+            detail: $"version={NetRelay.Contracts.Protocol.ProductVersion}; args={e.Args.Length}; knownArgs={startupArgumentSummary}");
         SmoothScrollBehavior.Enable();
 
         if (TryConfigureAutoStart(e.Args, out var autoStartExitCode))
@@ -52,6 +57,7 @@ public partial class App : System.Windows.Application
         PolicyService = new PolicyService(configService);
         var config = configService.Current;
         var activationService = new ActivationService(configService);
+        var completedInitialActivation = false;
 
         if (!config.PrivacyConsentAccepted)
         {
@@ -86,6 +92,8 @@ public partial class App : System.Windows.Application
                 Shutdown();
                 return;
             }
+
+            completedInitialActivation = true;
         }
         else if (string.IsNullOrWhiteSpace(config.ActivationReceipt))
         {
@@ -113,6 +121,8 @@ public partial class App : System.Windows.Application
                 Shutdown();
                 return;
             }
+
+            completedInitialActivation = true;
         }
         else
         {
@@ -136,7 +146,11 @@ public partial class App : System.Windows.Application
         {
             _runtime.HandleCommandLineArgs(e.Args);
         }
-        if (startInTray)
+        if (completedInitialActivation)
+        {
+            _runtime.ShowMainWindow();
+        }
+        else if (startInTray)
         {
             _ = _runtime.CheckForUpdatesOnStartupOnceAsync();
         }
@@ -207,6 +221,36 @@ public partial class App : System.Windows.Application
     {
         var userSid = WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName;
         return $"NetRelay-{userSid}";
+    }
+
+    private static string SummarizeStartupArguments(IReadOnlyList<string> args)
+    {
+        if (args.Count == 0)
+        {
+            return "none";
+        }
+
+        var known = new List<string>();
+        foreach (var arg in args)
+        {
+            if (!arg.StartsWith("--", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            known.Add(arg switch
+            {
+                "--startup" => "--startup",
+                "--configure-autostart" => "--configure-autostart",
+                "--verify-update" => "--verify-update",
+                "--diagnose-adapters" => "--diagnose-adapters",
+                "--protocol-launch" => "--protocol-launch",
+                "--quiet" => "--quiet",
+                _ => "--unknown"
+            });
+        }
+
+        return known.Count == 0 ? "none" : string.Join(",", known.Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static bool TryRunAdapterDiagnostic(IReadOnlyList<string> args, out int exitCode)
