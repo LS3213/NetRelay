@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:converters="clr-namespace:NetRelay.Converters"
         xmlns:controls="clr-namespace:NetRelay.Controls"
-        Title="NetRelay" Width="1260" Height="820" MinWidth="1020" MinHeight="700"
+        Title="NetRelay" Width="1260" Height="820" MinWidth="920" MinHeight="620"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
         Background="#E8EEF7" Foreground="{StaticResource TextPrimaryBrush}">
     <Window.Resources>
@@ -250,7 +250,7 @@
             </Ellipse.Fill>
         </Ellipse>
 
-        <Grid Margin="28,18,28,30">
+        <Grid x:Name="WindowContentHost" Margin="28,18,28,30" MaxWidth="1240" HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>
                 <RowDefinition Height="58"/>
                 <RowDefinition Height="*"/>
@@ -762,14 +762,14 @@
 
                 <!-- TAB 4: About -->
                 <TabItem>
-                    <Grid Margin="0,10,0,0">
+                    <Grid x:Name="AboutPageRoot" Margin="0,10,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
                         <!-- Header Area -->
-                        <Grid Grid.Row="0" Margin="25,10,25,20">
+                        <Grid x:Name="AboutHeaderGrid" Grid.Row="0" Margin="25,10,25,20">
                             <StackPanel>
                                 <TextBlock Text="关于应用" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11"/>
                                 <TextBlock Text="关于 NetRelay" FontWeight="Bold" FontSize="40" Margin="0,6,0,0"/>
@@ -777,7 +777,8 @@
                         </Grid>
 
                         <!-- Content Area -->
-                        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="30" Margin="0,0,0,10">
+                        <Border x:Name="AboutContentCard" Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="30" Margin="0,0,0,10">
+                            <ScrollViewer x:Name="AboutContentScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,6,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -785,28 +786,28 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,26">
+                                <StackPanel x:Name="AboutBrandPanel" Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,26">
                                     <!-- Glowing Logo Border -->
-                                    <Border Width="90" Height="90" CornerRadius="32" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1.5" HorizontalAlignment="Center">
+                                    <Border x:Name="AboutLogoBorder" Width="90" Height="90" CornerRadius="32" Background="#1A536EF2" BorderBrush="#30536EF2" BorderThickness="1.5" HorizontalAlignment="Center">
                                         <Border.Effect>
                                             <DropShadowEffect BlurRadius="25" ShadowDepth="0" Opacity="0.15" Color="#536EF2"/>
                                         </Border.Effect>
-                                        <TextBlock Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2"
+                                        <TextBlock x:Name="AboutLogoIcon" Text="&#xE968;" FontFamily="Segoe Fluent Icons" Foreground="#536EF2"
                                                    FontSize="48" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
 
                                     <!-- Application Info -->
-                                    <TextBlock Text="NetRelay" FontWeight="Bold" FontSize="30" Margin="0,20,0,0" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="原生网络自动切换与安全保护助手" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="AboutNameText" Text="NetRelay" FontWeight="Bold" FontSize="30" Margin="0,20,0,0" HorizontalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock x:Name="AboutSubtitleText" Text="原生网络自动切换与安全保护助手" Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,6,0,0" HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding ProductVersionText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,15,0,0" HorizontalAlignment="Center"/>
                                     <TextBlock Text="作者：lansi" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
 
                                 </StackPanel>
 
-                                <Grid Grid.Row="1" Margin="0,0,0,24">
+                                <Grid x:Name="AboutStatusGrid" Grid.Row="1" Margin="0,0,0,24">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition x:Name="AboutStatusSpacerColumn" Width="18"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <Border Grid.Column="0" Background="#68FFFFFF" BorderBrush="#C8FFFFFF" BorderThickness="1" CornerRadius="18" Padding="18">
@@ -828,13 +829,14 @@
                                     </Border>
                                 </Grid>
 
-                                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top">
+                                <StackPanel x:Name="AboutActionsPanel" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top">
                                     <Button Style="{StaticResource PrimaryButtonStyle}" Content="检查更新" Command="{Binding CheckUpdatesCommand}" Margin="0,0,16,0" Padding="24,11"/>
                                     <Button Style="{StaticResource SoftButtonStyle}" Content="更新历史" Command="{Binding UpdateHistoryCommand}" Margin="0,0,16,0" Padding="24,11"/>
                                     <Button Style="{StaticResource SoftButtonStyle}" Content="使用帮助" Command="{Binding HelpCommand}" Margin="0,0,16,0" Padding="24,11"/>
                                     <Button Style="{StaticResource SoftButtonStyle}" Content="建议与反馈" Command="{Binding FeedbackCommand}" Padding="24,11"/>
                                 </StackPanel>
                             </Grid>
+                            </ScrollViewer>
                         </Border>
                     </Grid>
                 </TabItem>

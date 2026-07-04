@@ -48,6 +48,7 @@ public partial class MainWindow : Window
         }
 
         InitializeComponent();
+        SizeChanged += (_, _) => UpdateAdaptiveLayout();
         if (_ownsRuntime)
         {
             RichToastService.Initialize();
@@ -76,6 +77,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         Loaded += async (_, _) =>
         {
+            UpdateAdaptiveLayout();
             _viewModel.ResumeUiMonitoring();
             await CheckForUpdatesOnStartupOnceAsync();
         };
@@ -215,6 +217,56 @@ public partial class MainWindow : Window
             WindowState == WindowState.Maximized
                 ? "M 3,1 L 10,1 L 10,8 M 1,3 L 8,3 L 8,10 L 1,10 Z"
                 : "M 1,1 L 10,1 L 10,10 L 1,10 Z");
+    }
+
+    private void UpdateAdaptiveLayout()
+    {
+        var compactHeight = ActualHeight > 0 && ActualHeight < 760;
+        var tightHeight = ActualHeight > 0 && ActualHeight < 670;
+        var compactWidth = ActualWidth > 0 && ActualWidth < 1080;
+
+        WindowContentHost.Margin = compactHeight
+            ? new Thickness(22, 14, 22, 22)
+            : new Thickness(28, 18, 28, 30);
+
+        AboutPageRoot.Margin = compactHeight
+            ? new Thickness(0, 4, 0, 0)
+            : new Thickness(0, 10, 0, 0);
+        AboutHeaderGrid.Margin = compactHeight
+            ? new Thickness(25, 4, 25, 12)
+            : new Thickness(25, 10, 25, 20);
+        AboutContentCard.Padding = tightHeight
+            ? new Thickness(22, 18, 22, 20)
+            : compactHeight
+                ? new Thickness(24, 22, 24, 22)
+                : new Thickness(30);
+
+        var logoSize = tightHeight ? 58 : compactHeight ? 72 : 90;
+        AboutLogoBorder.Width = logoSize;
+        AboutLogoBorder.Height = logoSize;
+        AboutLogoBorder.CornerRadius = new CornerRadius(tightHeight ? 22 : compactHeight ? 26 : 32);
+        AboutLogoIcon.FontSize = tightHeight ? 30 : compactHeight ? 38 : 48;
+
+        AboutBrandPanel.Margin = tightHeight
+            ? new Thickness(0, 0, 0, 12)
+            : compactHeight
+                ? new Thickness(0, 0, 0, 16)
+                : new Thickness(0, 0, 0, 26);
+        AboutNameText.FontSize = tightHeight ? 24 : compactHeight ? 26 : 30;
+        AboutNameText.Margin = tightHeight
+            ? new Thickness(0, 10, 0, 0)
+            : compactHeight
+                ? new Thickness(0, 14, 0, 0)
+                : new Thickness(0, 20, 0, 0);
+        AboutSubtitleText.FontSize = tightHeight ? 12 : 13;
+
+        AboutStatusGrid.Margin = compactHeight
+            ? new Thickness(0, 0, 0, 16)
+            : new Thickness(0, 0, 0, 24);
+        AboutStatusSpacerColumn.Width = new GridLength(compactWidth ? 12 : 18);
+        AboutActionsPanel.Margin = tightHeight
+            ? new Thickness(0, 0, 0, 6)
+            : new Thickness(0);
     }
 
     private void InitializeNotifyIcon()
