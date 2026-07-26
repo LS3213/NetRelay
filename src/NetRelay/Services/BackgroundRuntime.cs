@@ -118,8 +118,7 @@ public sealed class BackgroundRuntime : IDisposable
                 _connectivityService,
                 _ruleEngine,
                 _ruleScheduler,
-                _logService,
-                ownsRuntime: false);
+                _logService);
             var window = _mainWindow;
             window.Closed += (_, _) =>
             {

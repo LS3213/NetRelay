@@ -93,7 +93,7 @@ MainWindow = mainWindow;
 - `--startup` 启动不再创建 `MainWindow`，只启动配置、规则调度、托盘、Toast 协议注册和静默更新检查。
 - 托盘“打开主窗口”和普通双击启动时才懒加载 `MainWindow`。
 - `MainWindow` 可接收后台运行时中已经创建的 `ConnectivityService`、`NativeNetworkConnectionService`、`RuleEngine`、`RuleSchedulerService` 和 `LogService`，避免打开 UI 后重复启动规则调度。
-- `MainWindow` 在由 `BackgroundRuntime` 托管时不再创建第二个托盘图标，也不再重复订阅规则通知。
+- `MainWindow` 不再支持自管后台运行时路径；它只由 `BackgroundRuntime` 创建并注入共享服务，不再创建第二个托盘图标，也不再重复订阅规则通知。
 - `netrelay://` Toast 回调独立启动时只处理通知动作，不因为不是 `--startup` 就打开主窗口。
 - `MainViewModel` 不再在构造阶段自动加载执行历史日志。
 - 主窗口隐藏时暂停 UI 专用的 1 秒流量采样和全网卡 UI 探测；窗口恢复显示时再刷新网卡并恢复采样。
@@ -144,6 +144,12 @@ MainWindow = mainWindow;
 - 托盘右键菜单保持原来的 WPF 圆角主题，不使用 WinForms 默认右键菜单。
 
 该优化只影响由后台运行时托管的正常路径。程序真正退出、强制更新退出和后台调度服务不受影响。
+
+2026-07-04 已继续清理历史兼容代码：
+
+- 移除 `MainWindow` 的无参构造和旧的 `ownsRuntime` 分支，避免再次出现主窗口自建 `RuleSchedulerService`、`NotifyIcon` 和通知订阅的可能。
+- 移除 `MainWindow.xaml` 中只服务旧托盘右键菜单的 `TrayContextMenu` 资源。
+- 托盘菜单、托盘气泡和退出入口统一保留在 `TrayIconService` 与 `BackgroundRuntime` 中。
 
 ## 6. 后续优化优先级
 

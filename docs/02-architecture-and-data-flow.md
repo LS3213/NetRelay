@@ -16,16 +16,17 @@
 
 ## 2. 进程与模块边界
 
-计划由单一的主可执行程序提供图形界面与内联后台服务：
+当前由单一的主可执行程序提供图形界面与内联后台服务：
 
 ```text
 NetRelay.exe
-└── 默认启动：主窗口 + 托盘 + 内联调度服务 (时间规则、网络变化监听与内存延迟恢复)
+├── BackgroundRuntime：托盘、规则调度、更新检查、Toast 协议回调
+└── MainWindow：按需创建的可见主界面，共用后台运行时服务实例
 ```
 
 程序使用当前用户会话范围内的命名 Mutex 保证单实例运行。第二个实例不会启动新的调度器，而是通知现有实例显示主窗口后退出。
 
-计划模块：
+当前模块：
 
 | 模块 | 主要职责 | 不应承担 |
 | --- | --- | --- |
@@ -34,11 +35,11 @@ NetRelay.exe
 | Connectivity Service | 汇总链路、IP 与绑定源 IP 的 HTTP 探测 | 直接切换网卡 |
 | Rule Engine | 评估触发、条件、保护和冷却策略 | 绕过安全校验 |
 | Scheduler Service | 运行 Timer 扫描时间规则并在网络变化时触发检测 | 执行网络探测 |
-| 托盘通知（当前内联于主窗口） | 发送提前提醒、结果和失败气泡通知 | 在未验证参数时执行高权限操作 |
+| TrayIconService / RichToastService | 发送托盘气泡、交互式 Toast 与托盘菜单请求 | 在未验证参数时执行高权限操作 |
 | Config Repository | 原子读写配置、迁移版本 | 保存密钥或任意命令 |
 | Execution Logger | 记录按日结构化执行结果 | 存储敏感请求内容 |
 
-`MainWindow`、`MainViewModel` 与 `RuleSchedulerService` 共享同一个 `RuleEngine` 实例。规则引擎按规则 ID 和目标网卡 GUID 串行执行，避免手动立即执行、定时触发和网络变化触发并发操作同一网卡。
+`BackgroundRuntime`、`MainWindow`、`MainViewModel` 与 `RuleSchedulerService` 共享同一个 `RuleEngine` 实例。主窗口只按需创建并接收后台运行时服务实例，不再创建第二套托盘、调度器或通知订阅。规则引擎按规则 ID 和目标网卡 GUID 串行执行，避免手动立即执行、定时触发和网络变化触发并发操作同一网卡。
 
 调度器的完整 5 秒扫描周期和异步联网状态评估分别使用防重入门禁。上一轮尚未完成时跳过新一轮，避免普通字典状态竞争、重复通知和重复调度。
 
