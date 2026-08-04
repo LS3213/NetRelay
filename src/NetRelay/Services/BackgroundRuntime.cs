@@ -62,7 +62,8 @@ public sealed class BackgroundRuntime : IDisposable
     public async Task CheckForUpdatesOnStartupOnceAsync()
     {
         if (_startupUpdateCheckStarted
-            || !_configService.Current.AutoCheckUpdatesOnStartup
+            || (!_configService.Current.AutoCheckUpdatesOnStartup &&
+                App.PolicyService?.IsMandatoryUpdateRequired != true)
             || (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false))
         {
             return;
@@ -118,8 +119,7 @@ public sealed class BackgroundRuntime : IDisposable
                 _connectivityService,
                 _ruleEngine,
                 _ruleScheduler,
-                _logService,
-                ownsRuntime: false);
+                _logService);
             var window = _mainWindow;
             window.Closed += (_, _) =>
             {

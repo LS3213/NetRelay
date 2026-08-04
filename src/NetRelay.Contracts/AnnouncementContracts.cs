@@ -25,7 +25,7 @@ public sealed class AnnouncementDto
     public string? TargetVersionMax { get; set; }
 
     [JsonPropertyName("displayTrigger")]
-    public string DisplayTrigger { get; set; } = string.Empty; // "once_per_device" | "every_startup"
+    public string DisplayTrigger { get; set; } = string.Empty; // "once" | "onceperversion" | "everylaunch"
 
     [JsonPropertyName("publishedAt")]
     public DateTimeOffset PublishedAt { get; set; }

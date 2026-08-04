@@ -18,13 +18,25 @@ public partial class BlockWarningDialog : Window
 
     private void ConfigureUI()
     {
+        TitleTextBlock.Text = _policyService.IsMandatoryUpdateRequired
+            ? "必须先更新 NetRelay"
+            : _policyService.IsMaintenance
+            ? "Omnexa 正在维护"
+            : _policyService.Decision == "deny"
+                ? "此安装已被拒绝运行"
+                : "NetRelay 已进入受限模式";
+
         if (_policyService.ExpiresAt.HasValue)
         {
-            ExpiryTextBlock.Text = $"解封时间: {_policyService.ExpiresAt.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
+            ExpiryTextBlock.Text = $"策略到期: {_policyService.ExpiresAt.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
         }
         else
         {
-            ExpiryTextBlock.Text = "解封时间: 永久封锁";
+            ExpiryTextBlock.Text = _policyService.IsMandatoryUpdateRequired
+                ? "更新功能仍可使用"
+                : _policyService.IsMaintenance
+                ? "维护结束后将自动恢复"
+                : "等待下一次 Omnexa 策略同步";
         }
 
         var reasonMarkdown = string.IsNullOrWhiteSpace(_policyService.Reason)

@@ -9,10 +9,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>NetRelay.Updater</AssemblyName>
     <RootNamespace>NetRelay.Updater</RootNamespace>
-    <Version>1.2.7</Version>
-    <AssemblyVersion>1.2.7.0</AssemblyVersion>
-    <FileVersion>1.2.7.0</FileVersion>
-    <InformationalVersion>1.2.7</InformationalVersion>
+    <Version>1.2.14</Version>
+    <AssemblyVersion>1.2.14.0</AssemblyVersion>
+    <FileVersion>1.2.14.0</FileVersion>
+    <InformationalVersion>1.2.14</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Company>lansi</Company>
     <Authors>lansi</Authors>
@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NetRelay.Contracts\NetRelay.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\src\Omnexa.Core\Omnexa.Core.csproj" />
   </ItemGroup>
 
 </Project>

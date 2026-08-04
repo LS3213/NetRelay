@@ -1,5 +1,7 @@
 # 后端平台总体实施规范
 
+> **历史文档提示（2026-07-30）**：本文记录旧 NetRelay Server 的总体方案，不再定义当前 Omnexa 接入语义。当前以 [NetRelay 接入 Omnexa](21-omnexa-client-integration.md) 为准：后台只管理设备；历史协议字段 `installationId` 现在表示按程序目录持久化的内部运行槽位，同目录升级复用、不同目录隔离，槽位不展示也不作为封禁目标。
+
 [上一篇：未来开发阶段与里程碑规划](09-future-stages-and-milestones.md) | [下一篇：后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md) | [返回索引](README.md)
 
 > 本文是 NetRelay 后端、客户端在线能力、更新系统和管理后台的总体开发基线。除标记为“待验证”或“待确认”的内容外，后续实现不得偏离本文已经确定的产品与安全边界。当前仓库尚未实现本文描述的后端功能。

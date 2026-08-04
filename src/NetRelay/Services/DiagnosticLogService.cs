@@ -47,10 +47,10 @@ public sealed partial class DiagnosticLogService
             Directory.CreateDirectory(_logDirectory);
             var path = Path.Combine(_logDirectory, $"diagnostic-{DateTime.Today:yyyy-MM-dd}.jsonl");
             var line = JsonSerializer.Serialize(item) + Environment.NewLine;
-            await WriteLock.WaitAsync();
+            await WriteLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                await File.AppendAllTextAsync(path, line);
+                await File.AppendAllTextAsync(path, line).ConfigureAwait(false);
             }
             finally
             {

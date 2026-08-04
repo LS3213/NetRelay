@@ -1,5 +1,7 @@
 # 后端平台分阶段开发与验收计划
 
+> **历史文档提示（2026-07-30）**：本文记录旧 NetRelay Server 的阶段计划与证据，不再定义当前 Omnexa 接入语义。当前以 [NetRelay 接入 Omnexa](21-omnexa-client-integration.md) 为准：后台只管理设备；历史协议字段 `installationId` 现在表示按程序目录持久化的内部运行槽位，同目录升级复用、不同目录隔离，槽位不展示也不作为封禁目标。
+
 [上一篇：后端平台总体实施规范](10-backend-platform-master-plan.md) | [返回索引](README.md)
 
 > 本文将 [后端平台总体实施规范](10-backend-platform-master-plan.md) 中的 B0-B6 转换为可执行的开发、测试和验收任务，并作为后端平台建设的唯一进度台账。总体产品边界、安全边界和架构决策以总体实施规范为准；阶段状态、实施证据和验收结论以本文为准。

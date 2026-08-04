@@ -1,151 +1,96 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Security.Cryptography;
-using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows;
 using NetRelay.Contracts;
-using NetRelay.Contracts.Security;
 using NetRelay.Dialogs;
+using Omnexa.Core;
 
 namespace NetRelay.Services;
 
 public sealed class AnnouncementService
 {
     private readonly ConfigurationService _configService;
+    private readonly OmnexaIntegrationService _omnexa;
+    private readonly HashSet<string> _displayedThisLaunch =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public AnnouncementService(ConfigurationService configService)
     {
         _configService = configService;
+        _omnexa = new OmnexaIntegrationService(configService);
     }
 
-    public async Task CheckAndDisplayAnnouncementsAsync(CancellationToken cancellationToken = default)
+    public async Task CheckAndDisplayAnnouncementsAsync(
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            // 1. Fetch active announcements
-            using var client = ActivationService.CreateHttpClient();
-            var backendUrl = ActivationService.GetBackendUrl();
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{backendUrl}/api/v1/announcements/active?clientVersion={Protocol.ProductVersion}");
-            request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
-            request.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
-
-            var response = await client.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            var control = App.PolicyService?.CurrentControl ??
+                          await _omnexa.SyncAsync(cancellationToken);
+            foreach (var announcement in control.Announcements
+                         .OrderByDescending(item =>
+                             AnnouncementPresentationPolicy.SeverityRank(item.Severity))
+                         .ThenByDescending(item => item.PublishedAt))
             {
-                return; // Silence backend communication errors during normal startup
-            }
-
-            var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<AnnouncementCheckResponse>>(
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
-                cancellationToken);
-
-            if (apiResponse?.Data == null)
-            {
-                return;
-            }
-
-            var checkRes = apiResponse.Data;
-
-            // 2. Double-verify signatures
-            // First: Verify certificate using Root Public Key
-            using var rootKey = ECDsa.Create();
-            rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
-            if (!checkRes.Certificate.Verify(DateTimeOffset.UtcNow, rootKey, "announcement"))
-            {
-                Logger.Warn("公告签名证书校验未通过，已忽略。");
-                return;
-            }
-
-            // Second: Verify envelope signature using Certificate's Public Key
-            using var opKey = ECDsa.Create();
-            opKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(checkRes.Certificate.PublicKey), out _);
-            if (!checkRes.Envelope.Verify("announcement", checkRes.Envelope.Nonce, DateTimeOffset.UtcNow, opKey))
-            {
-                Logger.Warn("公告数据包数字签名验证失败，已忽略。");
-                return;
-            }
-
-            // 3. Deserialize Payload
-            var payload = JsonSerializer.Deserialize<ActiveAnnouncementsPayload>(
-                checkRes.Envelope.PayloadJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (payload == null || payload.Announcements == null || payload.Announcements.Count == 0)
-            {
-                return;
-            }
-
-            // 4. Process and display active announcements
-            var displayedIds = _configService.Current.DisplayedAnnouncementIds;
-
-            // Sort so critical announcements display first/last or process sequentially
-            foreach (var announcement in payload.Announcements.OrderByDescending(a => a.Severity == "critical" ? 2 : a.Severity == "important" ? 1 : 0))
-            {
-                var idStr = announcement.Id.ToString("D");
-
-                // Filter out once_per_device announcements already displayed
-                if (announcement.DisplayTrigger == "once_per_device" && displayedIds.Contains(idStr))
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!AnnouncementPresentationPolicy.ShouldDisplay(
+                        announcement,
+                        _configService.Current,
+                        Protocol.ProductVersion,
+                        _displayedThisLaunch))
                 {
                     continue;
                 }
 
-                // Show on UI Thread
-                var displayed = await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                var dto = ToLegacyView(announcement);
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    var dialog = new AnnouncementDialog(announcement);
-                    
-                    // Try to attach owner
-                    if (System.Windows.Application.Current.MainWindow != null && System.Windows.Application.Current.MainWindow.IsVisible)
+                    var dialog = new AnnouncementDialog(dto);
+                    if (System.Windows.Application.Current.MainWindow is { IsVisible: true } owner)
                     {
-                        dialog.Owner = System.Windows.Application.Current.MainWindow;
+                        dialog.Owner = owner;
                     }
-                    
+
                     dialog.ShowDialog();
-                    return dialog.DialogResult == true;
                 });
 
-                // Record display
-                if (announcement.DisplayTrigger == "once_per_device")
+                if (AnnouncementPresentationPolicy.MarkDisplayed(
+                        announcement,
+                        _configService.Current,
+                        Protocol.ProductVersion,
+                        _displayedThisLaunch))
                 {
-                    if (!_configService.Current.DisplayedAnnouncementIds.Contains(idStr))
-                    {
-                        _configService.Current.DisplayedAnnouncementIds.Add(idStr);
-                        _configService.Save();
-                    }
+                    _configService.Save();
                 }
 
-                // Critical blocks application execution completely: shutdown immediately upon closing
-                if (announcement.Severity == "critical")
+                if (AnnouncementPresentationPolicy.RequiresShutdown(
+                        announcement.Severity))
                 {
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        System.Windows.Application.Current.Shutdown();
-                    });
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                        () => System.Windows.Application.Current.Shutdown());
                     return;
                 }
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            Logger.Error($"公告服务运行错误: {ex.Message}");
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await new DiagnosticLogService().ErrorAsync(
+                "omnexa",
+                "announcements",
+                exception);
         }
     }
 
-    private sealed class ActiveAnnouncementsPayload
-    {
-        public List<AnnouncementDto> Announcements { get; set; } = [];
-    }
-
-    // Simple fallback logging helpers (NetRelay might have its own logger, but let's make it self-contained)
-    private static class Logger
-    {
-        public static void Warn(string msg) => System.Diagnostics.Debug.WriteLine($"[AnnouncementService] WARN: {msg}");
-        public static void Error(string msg) => System.Diagnostics.Debug.WriteLine($"[AnnouncementService] ERROR: {msg}");
-    }
+    private static AnnouncementDto ToLegacyView(AnnouncementView announcement) =>
+        new()
+        {
+            Id = announcement.Id,
+            Title = announcement.Title,
+            Content = announcement.Content,
+            Severity = announcement.Severity,
+            DisplayTrigger = announcement.Display,
+            PublishedAt = announcement.PublishedAt,
+            ExpiresAt = announcement.ExpiresAt
+        };
 }

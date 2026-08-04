@@ -8,11 +8,15 @@ public enum UpdateSourceKind
 {
     Unknown = 0,
     Primary = 1,
-    GitHubFallback = 2
+    GitHubFallback = 2,
+    CachedOffline = 3
 }
 
 public sealed class UpdateManifest
 {
+    [JsonPropertyName("id")]
+    public Guid Id { get; set; }
+
     [JsonPropertyName("version")]
     public string Version { get; set; } = string.Empty;
 
@@ -21,6 +25,12 @@ public sealed class UpdateManifest
 
     [JsonPropertyName("architecture")]
     public string Architecture { get; set; } = string.Empty;
+
+    [JsonPropertyName("operatingSystem")]
+    public string OperatingSystem { get; set; } = string.Empty;
+
+    [JsonPropertyName("packageFormat")]
+    public string PackageFormat { get; set; } = string.Empty;
 
     [JsonPropertyName("minUpgradableVersion")]
     public string MinUpgradableVersion { get; set; } = string.Empty;
@@ -40,6 +50,12 @@ public sealed class UpdateManifest
     [JsonPropertyName("isMandatory")]
     public bool IsMandatory { get; set; }
 
+    [JsonPropertyName("downloadUrl")]
+    public string DownloadUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("fallbackDownloadUrls")]
+    public IReadOnlyList<string> FallbackDownloadUrls { get; set; } = [];
+
     [JsonIgnore]
     public UpdateCheckResponse? VerifiedResponse { get; set; }
 
@@ -51,6 +67,7 @@ public sealed class UpdateManifest
     {
         UpdateSourceKind.Primary => "主更新源",
         UpdateSourceKind.GitHubFallback => "备用源",
+        UpdateSourceKind.CachedOffline => "本地可信缓存",
         _ => "未知来源"
     };
 }

@@ -1,5 +1,7 @@
 # B0 设备指纹手动测试指南
 
+> **历史文档提示（2026-07-30）**：本文记录旧 B0 原型的手工测试方法，不再定义当前 Omnexa 接入语义。当前以 [NetRelay 接入 Omnexa](21-omnexa-client-integration.md) 为准：后台只管理设备；历史协议字段 `installationId` 现在表示按程序目录持久化的内部运行槽位，同目录升级复用、不同目录隔离，槽位不展示也不作为封禁目标。
+
 [上一篇：B0 设备指纹与安全原型报告](16-b0-device-fingerprint-and-security-prototype-report.md) | [返回索引](README.md)
 
 > 本指南用于 B0 受控手动验收。测试工具是独立 EXE，不会安装 DeviceId 到正式 NetRelay，不会修改正式客户端配置，也不会上传报告。

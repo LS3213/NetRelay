@@ -15,19 +15,23 @@ using System.Text;
 using System.Collections.Generic;
 using NetRelay.Contracts;
 using NetRelay.Services;
+using Omnexa.Core;
 
 namespace NetRelay.Dialogs;
 
 public partial class FeedbackDialog : Window
 {
+    private const long MaximumOmnexaAttachmentBytes = 10L * 1024 * 1024;
     private CancellationTokenSource? _cts;
     private bool _isUploading;
-    private readonly CompositeDeviceFingerprintProvider _fingerprintProvider = new();
+    private readonly OmnexaIntegrationService _omnexa;
     private List<MyFeedbackItem> _historyItems = new();
 
     public FeedbackDialog()
     {
         InitializeComponent();
+        _omnexa = new OmnexaIntegrationService(
+            ConfigurationService.Instance ?? new ConfigurationService());
         Loaded += FeedbackDialog_Loaded;
     }
 
@@ -139,108 +143,50 @@ public partial class FeedbackDialog : Window
                 var logService = new LogService();
                 await logService.CreateDiagnosticZipAsync(tempZipPath);
                 token.ThrowIfCancellationRequested();
-            }
-
-            // 2. Prepare HTTP Multipart Form Content
-            var fingerprintEvidence = await _fingerprintProvider.CollectAsync(token);
-            var combinedString = string.Join("|", fingerprintEvidence.Evidence
-                .OrderBy(p => p.Key, StringComparer.Ordinal)
-                .SelectMany(p => p.Value));
-            var deviceIdHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combinedString)));
-            var installationId = ConfigurationService.Instance?.Current?.InstallationId.ToString() ?? string.Empty;
-
-            var multipartContent = new MultipartFormDataContent();
-            multipartContent.Add(new StringContent(type), "type");
-            multipartContent.Add(new StringContent(title), "title");
-            multipartContent.Add(new StringContent(content), "content");
-            if (!string.IsNullOrWhiteSpace(contact))
-            {
-                multipartContent.Add(new StringContent(contact), "contact");
-            }
-            multipartContent.Add(new StringContent(deviceIdHash), "deviceId");
-            multipartContent.Add(new StringContent(installationId), "installationId");
-            multipartContent.Add(new StringContent(Protocol.ProductVersion), "clientVersion");
-            multipartContent.Add(new StringContent(System.Environment.OSVersion.ToString()), "osVersion");
-
-            FileStream? fileStream = null;
-            if (tempZipPath != null && File.Exists(tempZipPath))
-            {
-                fileStream = File.OpenRead(tempZipPath);
-                var streamContent = new ProgressableStreamContent(fileStream, 8192, (uploaded, total) =>
+                if (File.Exists(tempZipPath) &&
+                    new FileInfo(tempZipPath).Length > MaximumOmnexaAttachmentBytes)
                 {
-                    Dispatcher.Invoke(() =>
-                    {
-                        var percent = (double)uploaded / total * 100;
-                        UploadProgressBar.Value = percent;
-                        ProgressPercentTextBlock.Text = $"{percent:F0}%";
-                        ProgressStatusTextBlock.Text = $"正在上传日志包... ({FormatSize(uploaded)} / {FormatSize(total)})";
-                    });
-                });
-                streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
-                multipartContent.Add(streamContent, "file", "logs.zip");
-            }
-            else
-            {
-                ProgressStatusTextBlock.Text = "正在提交反馈数据...";
-                UploadProgressBar.IsIndeterminate = true;
+                    throw new InvalidOperationException(
+                        "诊断日志超过 Omnexa 单附件 10 MB 限制，请先清理旧日志后重试。");
+                }
             }
 
-            // 3. Send HTTP Request
-            using var client = ActivationService.CreateHttpClient();
-            var backendUrl = ActivationService.GetBackendUrl();
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{backendUrl}/api/v1/feedback")
-            {
-                Content = multipartContent
-            };
-            request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
+            // Omnexa requires JSON thread creation first, followed by an
+            // attachment upload authenticated with the returned one-time token.
+            ProgressStatusTextBlock.Text = "正在通过 Omnexa 提交反馈...";
+            UploadProgressBar.IsIndeterminate = true;
             var requestId = Guid.NewGuid().ToString("N");
-            request.Headers.Add(Protocol.RequestIdHeader, requestId);
+            var created = await _omnexa.SubmitFeedbackAsync(
+                type,
+                title,
+                content,
+                contact,
+                token);
 
-            var response = await client.SendAsync(request, token);
+            if (tempZipPath is not null && File.Exists(tempZipPath))
+            {
+                ProgressStatusTextBlock.Text = "反馈已创建，正在上传诊断日志...";
+                await _omnexa.UploadFeedbackAttachmentAsync(
+                    created.Id,
+                    created.UploadToken,
+                    tempZipPath,
+                    token);
+            }
+
             await new DiagnosticLogService().InfoAsync(
                 "feedback",
                 "submit-response",
-                response.IsSuccessStatusCode ? "success" : "not-success",
+                "success",
                 requestId,
-                (int)response.StatusCode,
+                201,
                 tempZipPath is not null && File.Exists(tempZipPath) ? new FileInfo(tempZipPath).Length : null);
-            if (fileStream != null)
-            {
-                await fileStream.DisposeAsync();
-            }
+            ModernMessageBox.Show(this, "感谢您的反馈，我们已收到并会认真阅读！", "提交成功", MessageBoxButton.OK, MessageBoxImage.Information);
 
-            if (response.IsSuccessStatusCode)
-            {
-                ModernMessageBox.Show(this, "感谢您的反馈，我们已收到并会认真阅读！", "提交成功", MessageBoxButton.OK, MessageBoxImage.Information);
-
-                // Clear fields
-                TitleTextBox.Text = string.Empty;
-                ContentTextBox.Text = string.Empty;
-                ContactTextBox.Text = string.Empty;
-
-                SetUploadingState(false);
-
-                // Automatically switch to history tab to view progress
-                SwitchToHistoryTab();
-            }
-            else
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(token);
-                string errorMsg = "网络请求失败，请稍后重试。";
-                try
-                {
-                    var doc = JsonDocument.Parse(errorBody);
-                    if (doc.RootElement.TryGetProperty("error", out var errorEl) && errorEl.TryGetProperty("message", out var msgEl))
-                    {
-                        errorMsg = msgEl.GetString() ?? errorMsg;
-                    }
-                }
-                catch { }
-
-                ModernMessageBox.Show(this, $"提交失败: {errorMsg}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-                SetUploadingState(false);
-            }
+            TitleTextBox.Text = string.Empty;
+            ContentTextBox.Text = string.Empty;
+            ContactTextBox.Text = string.Empty;
+            SetUploadingState(false);
+            SwitchToHistoryTab();
         }
         catch (OperationCanceledException)
         {
@@ -327,40 +273,45 @@ public partial class FeedbackDialog : Window
     private async Task LoadHistoryAsync()
     {
         HistoryListBox.ItemsSource = null;
+        HistoryLoadingPanel.Visibility = Visibility.Visible;
         NoSelectionTextBlock.Visibility = Visibility.Visible;
+        NoSelectionTextBlock.Text = "正在加载反馈历史...";
         DetailsGrid.Visibility = Visibility.Collapsed;
 
         try
         {
-            // Collect deviceIdHash
-            var fingerprintEvidence = await _fingerprintProvider.CollectAsync(CancellationToken.None);
-            var combinedString = string.Join("|", fingerprintEvidence.Evidence
-                .OrderBy(p => p.Key, StringComparer.Ordinal)
-                .SelectMany(p => p.Value));
-            var deviceIdHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combinedString)));
-
-            using var client = ActivationService.CreateHttpClient();
-            var backendUrl = ActivationService.GetBackendUrl();
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{backendUrl}/api/v1/feedback/my?deviceId={deviceIdHash}");
-            request.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            request.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
-
-            var response = await client.SendAsync(request);
-            if (response.IsSuccessStatusCode)
-            {
-                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<List<MyFeedbackItem>>>();
-                if (apiResponse != null && apiResponse.Data != null)
-                {
-                    _historyItems = apiResponse.Data;
-                    HistoryListBox.ItemsSource = _historyItems;
-                }
-            }
+            var history = await _omnexa.GetFeedbackHistoryAsync(CancellationToken.None);
+            _historyItems = history.Select(ToHistoryItem).ToList();
+            HistoryListBox.ItemsSource = _historyItems;
+            NoSelectionTextBlock.Text = _historyItems.Count == 0 ? "暂无反馈历史" : "选择上方反馈以查看详情";
         }
         catch
         {
-            // Fail silently or bind empty list
+            NoSelectionTextBlock.Text = "反馈历史暂时无法加载，请稍后重试";
+        }
+        finally
+        {
+            HistoryLoadingPanel.Visibility = Visibility.Collapsed;
         }
     }
+
+    private static MyFeedbackItem ToHistoryItem(ClientFeedbackThread thread) =>
+        new()
+        {
+            Id = thread.Id,
+            Type = thread.Type,
+            Title = thread.Title,
+            Content = string.Join(
+                Environment.NewLine + Environment.NewLine,
+                thread.Messages.Select(message =>
+                    $"[{(message.IsOperatorReply ? "管理员回复" : "我的反馈")} · " +
+                    $"{message.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}]" +
+                    Environment.NewLine +
+                    message.Content)),
+            Status = thread.Status,
+            CreatedAt = thread.CreatedAt,
+            StatusUpdatedAt = thread.UpdatedAt
+        };
 
     private void HistoryListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -401,7 +352,10 @@ public partial class FeedbackDialog : Window
 
         public string StatusLabel => Status switch
         {
+            "open" => "待处理",
+            "inprogress" or "in_progress" => "处理中",
             "pending" => "处理中",
+            "closed" => "已关闭",
             "resolved" => "已解决",
             "ignored" => "已忽略",
             _ => "未知"
@@ -409,7 +363,8 @@ public partial class FeedbackDialog : Window
 
         public string StatusBg => Status switch
         {
-            "pending" => "#E0ECFF",
+            "open" or "inprogress" or "in_progress" or "pending" => "#E0ECFF",
+            "closed" => "#F0F0F0",
             "resolved" => "#E2FBE7",
             "ignored" => "#FEECEB",
             _ => "#F0F0F0"
@@ -417,7 +372,8 @@ public partial class FeedbackDialog : Window
 
         public string StatusFg => Status switch
         {
-            "pending" => "#465fdc",
+            "open" or "inprogress" or "in_progress" or "pending" => "#465fdc",
+            "closed" => "#666666",
             "resolved" => "#28a745",
             "ignored" => "#dc3545",
             _ => "#666666"

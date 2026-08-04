@@ -124,6 +124,14 @@
                         </ScrollViewer>
                     </Grid>
                 </Border>
+
+                <Border x:Name="LoadingPanel" Grid.ColumnSpan="3" Background="#EEF5FC" CornerRadius="20">
+                    <StackPanel Width="220" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <ProgressBar Height="6" IsIndeterminate="True" Foreground="#536EF2" Background="#20536EF2"/>
+                        <TextBlock Text="正在加载更新历史..." HorizontalAlignment="Center" Margin="0,12,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                    </StackPanel>
+                </Border>
             </Grid>
 
             <Button Grid.Row="2" HorizontalAlignment="Right" Style="{StaticResource PrimaryButtonStyle}" Content="关闭" Width="104" Height="38" Click="CloseButton_Click"/>

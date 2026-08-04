@@ -10,14 +10,13 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using NetRelay.Contracts;
-using NetRelay.Contracts.Security;
+using Omnexa.Core;
 
 namespace NetRelay.Updater;
 
 public static class Program
 {
     private static string _logFilePath = string.Empty;
-    private static readonly string RootPublicKey = OperationalKeyCertificate.DefaultRootPublicKeyBase64;
     private static UpdaterProgressUi? _progressUi;
 
     [STAThread]
@@ -107,27 +106,59 @@ public static class Program
             }
 
             var manifestJson = File.ReadAllText(manifestPath, Encoding.UTF8);
-            var checkResponse = JsonSerializer.Deserialize<UpdateCheckResponse>(manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            var handoff = JsonSerializer.Deserialize<OmnexaUpdateHandoff>(
+                    manifestJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                 ?? throw new InvalidDataException("无法反序列化更新清单。");
             var now = DateTimeOffset.UtcNow;
             using var rootKey = ECDsa.Create();
-            rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(RootPublicKey), out _);
+            rootKey.ImportSubjectPublicKeyInfo(
+                Base64Url.Decode(OmnexaProduct.RootPublicKey),
+                out _);
 
-            if (!checkResponse.Certificate.Verify(now, rootKey, "update-manifest"))
+            if (!handoff.Certificate.Verify(now, rootKey, "client-sync") ||
+                !string.Equals(
+                    handoff.Certificate.KeyId,
+                    handoff.Snapshot.KeyId,
+                    StringComparison.Ordinal))
             {
                 throw new CryptographicException("更新清单证书链验证失败。");
             }
 
-            using var operationalKey = ECDsa.Create();
-            operationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(checkResponse.Certificate.PublicKey), out _);
-
-            if (!checkResponse.Envelope.Verify("update-manifest", checkResponse.Envelope.Nonce, now, operationalKey))
+            using var operationalKey = handoff.Certificate.CreatePublicKey();
+            if (!handoff.Snapshot.Verify(
+                    "client-sync",
+                    handoff.Snapshot.Nonce,
+                    now,
+                    operationalKey))
             {
                 throw new CryptographicException("更新清单签名校验失败。");
             }
 
-            var manifest = JsonSerializer.Deserialize<UpdateManifest>(checkResponse.Envelope.PayloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? throw new InvalidDataException("更新清单载荷损坏。");
+            var control = handoff.Snapshot.Payload.Deserialize<ControlSnapshot>(
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidDataException("Omnexa 控制快照载荷损坏。");
+            var release = control.Release;
+            if (release is null || release.Id != handoff.ReleaseId)
+            {
+                throw new CryptographicException("Omnexa 控制快照未授权当前更新包。");
+            }
+
+            var manifest = new UpdateManifest
+            {
+                Id = release.Id,
+                Version = release.Version,
+                Channel = release.Channel,
+                OperatingSystem = release.OperatingSystem,
+                Architecture = release.Architecture,
+                PackageFormat = release.PackageFormat,
+                MinUpgradableVersion = release.MinimumUpgradableVersion,
+                PackageSize = release.PackageSize,
+                Sha256 = release.Sha256,
+                ReleaseDate = release.PublishedAt,
+                Changelog = release.ReleaseNotes,
+                IsMandatory = release.IsMandatory
+            };
             var packageInfo = new FileInfo(packagePath);
             if (manifest.PackageSize != packageInfo.Length)
             {
@@ -539,4 +570,9 @@ public static class Program
             // Ignore logging file write errors
         }
     }
+
+    private sealed record OmnexaUpdateHandoff(
+        SignedEnvelope Snapshot,
+        OperationalKeyCertificate Certificate,
+        Guid ReleaseId);
 }

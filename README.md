@@ -13,6 +13,7 @@ NetRelay 是面向 Windows 10/11 x64 的原生桌面网络适配器管理工具�
 - 完整常驻后台运行支持：最小化至托盘无干扰静默运行，并支持气泡预警与顶部中央 Toast 状态提示。
 - 安全拦截与倒计时交互，支持立即执行、延迟或取消单次自动化任务。
 - 7天合并审计执行日志历史，可过滤清除并对异常损坏行做鲁棒性解析。
+- 已接入 Omnexa 正式环境：设备激活、按程序目录持久化的内部运行槽位、签名云控、后台心跳、公告、反馈、更新与 GitHub 备用源容灾统一由官方 SDK 驱动。管理后台只管理设备，不展示或封禁运行槽位。
 
 ## 开发
 
@@ -35,7 +36,8 @@ artifacts/publish/win-x64/NetRelay.exe
 
 完整设计与维护文档见 [docs/README.md](docs/README.md)。
 
-后端基础开发：
+旧 NetRelay 后端维护（仅迁移参考，桌面客户端生产云控已迁移到 Omnexa；正式
+安装器与在线更新包不会包含或连接该后端）：
 
 ```powershell
 dotnet tool restore
@@ -44,6 +46,9 @@ dotnet run --project server/NetRelay.Server
 ```
 
 后端需要通过环境变量提供 MySQL、正式 HTTPS 地址、GitHub 备用仓库和管理员初始化 Secret，详见 [server/NetRelay.Server/README.md](server/NetRelay.Server/README.md)。
+
+Omnexa 产品坐标、缓存、信任链、更新器二次验签和上线检查见
+[NetRelay 接入 Omnexa](docs/21-omnexa-client-integration.md)。
 
 ## 官网
 

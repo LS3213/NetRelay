@@ -28,6 +28,13 @@ var tests = new (string Name, Action Test)[]
     ("Zero probe attempts are rejected", ZeroProbeAttemptsAreRejected),
     ("Required endpoint threshold is validated", RequiredEndpointThresholdIsValidated),
     ("Invalid saved policy pauses automation", InvalidSavedPolicyPausesAutomation),
+    ("Runtime slots are stable per directory and distinct across directories", RuntimeSlotsAreDirectoryScoped),
+    ("Legacy installation identity migrates to the current runtime slot", LegacyInstallationIdentityMigrates),
+    ("Announcement once policy persists across launches and versions", AnnouncementOncePolicyPersists),
+    ("Announcement once-per-version policy tracks each client version", AnnouncementOncePerVersionPolicyTracksVersions),
+    ("Announcement every-launch policy displays once per process launch", AnnouncementEveryLaunchPolicyTracksCurrentLaunch),
+    ("Announcement severity and display combinations are deterministic", AnnouncementSeverityAndDisplayMatrixIsDeterministic),
+    ("Announcement display history persists in configuration", AnnouncementDisplayHistoryPersists),
     ("Settings apply custom log retention immediately", SettingsApplyCustomLogRetentionImmediately),
     ("Invalid log retention falls back safely", InvalidLogRetentionFallsBackSafely),
     ("Rule defaults apply only to new rules", RuleDefaultsApplyOnlyToNewRules),
@@ -62,7 +69,10 @@ var tests = new (string Name, Action Test)[]
     ("ConnectivityService challenge probe fallback behaves gracefully on BACKEND_UNAVAILABLE", ConnectivityServiceGracefulDegradationOnBackendUnavailable),
     ("Log packaging logic zips jsonl files properly", TestLogPackagingLogic),
     ("Diagnostic logs redact sensitive values", TestDiagnosticLogRedaction),
-    ("Update service recognizes UPDATE_NOT_AVAILABLE as up-to-date", TestUpdateNotAvailableClassification),
+    ("Omnexa product coordinates match public guide", TestOmnexaProductCoordinates),
+    ("Omnexa mandatory release restricts normal operation", TestOmnexaMandatoryRelease),
+    ("Current mandatory release does not restrict normal operation", TestCurrentMandatoryReleaseDoesNotRestrict),
+    ("Release version policy requires a strictly newer SemVer", TestReleaseVersionPolicy),
     ("Safe markdown parser parses formatting and filters unsafe protocols", TestSafeMarkdownParser),
     ("Client policy restriction behaves correctly when blocked", TestClientPolicyRestriction),
     ("Policy envelope double-signature verifies correctly", TestPolicyEnvelopeSignature)
@@ -265,6 +275,275 @@ static void InvalidSavedPolicyPausesAutomation()
         }
     }
 }
+
+static void RuntimeSlotsAreDirectoryScoped()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Runtime-Slots-{Guid.NewGuid():N}");
+    try
+    {
+        var service = new ConfigurationService(Path.Combine(directory, "config"));
+        var firstDirectory = Path.Combine(directory, "app-a");
+        var secondDirectory = Path.Combine(directory, "app-b");
+
+        var first = service.GetOrCreateRuntimeSlotId(firstDirectory);
+        var firstAgain = service.GetOrCreateRuntimeSlotId(firstDirectory);
+        var second = service.GetOrCreateRuntimeSlotId(secondDirectory);
+
+        Assert(first == firstAgain);
+        Assert(first != second);
+
+        var reloaded = new ConfigurationService(Path.Combine(directory, "config"));
+        Assert(reloaded.GetOrCreateRuntimeSlotId(firstDirectory) == first);
+        Assert(reloaded.GetOrCreateRuntimeSlotId(secondDirectory) == second);
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void LegacyInstallationIdentityMigrates()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"NetRelay-Runtime-Migration-{Guid.NewGuid():N}");
+    try
+    {
+        Directory.CreateDirectory(directory);
+        var legacyId = Guid.NewGuid();
+        File.WriteAllText(
+            Path.Combine(directory, "config.json"),
+            $$"""{"schemaVersion":5,"installationId":"{{legacyId:D}}"}""");
+
+        var service = new ConfigurationService(directory);
+
+        Assert(service.Current.SchemaVersion == 7);
+        Assert(service.Current.LegacyInstallationId is null);
+        Assert(service.GetOrCreateRuntimeSlotId(AppContext.BaseDirectory) == legacyId);
+        Assert(!File.ReadAllText(Path.Combine(directory, "config.json"))
+            .Contains("\"installationId\"", StringComparison.Ordinal));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void AnnouncementOncePolicyPersists()
+{
+    var announcement = CreateAnnouncement("normal", "once");
+    var configuration = new AppConfiguration();
+    var firstLaunch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        firstLaunch));
+    Assert(AnnouncementPresentationPolicy.MarkDisplayed(
+        announcement,
+        configuration,
+        "1.2.9",
+        firstLaunch));
+    Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+    Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "2.0.0",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+}
+
+static void AnnouncementOncePerVersionPolicyTracksVersions()
+{
+    var announcement = CreateAnnouncement("important", "onceperversion");
+    var configuration = new AppConfiguration();
+    var firstLaunch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        firstLaunch));
+    Assert(AnnouncementPresentationPolicy.MarkDisplayed(
+        announcement,
+        configuration,
+        "1.2.9",
+        firstLaunch));
+    Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+    Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "2.0.0",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+    Assert(AnnouncementPresentationPolicy.MarkDisplayed(
+        announcement,
+        configuration,
+        "2.0.0",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+    Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "2.0.0",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+}
+
+static void AnnouncementEveryLaunchPolicyTracksCurrentLaunch()
+{
+    var announcement = CreateAnnouncement("critical", "everylaunch");
+    var configuration = new AppConfiguration();
+    var currentLaunch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        currentLaunch));
+    Assert(!AnnouncementPresentationPolicy.MarkDisplayed(
+        announcement,
+        configuration,
+        "1.2.9",
+        currentLaunch));
+    Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        currentLaunch));
+    Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+        announcement,
+        configuration,
+        "1.2.9",
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+    Assert(configuration.DisplayedAnnouncementIds.Count == 0);
+    Assert(configuration.DisplayedAnnouncementVersionKeys.Count == 0);
+}
+
+static void AnnouncementSeverityAndDisplayMatrixIsDeterministic()
+{
+    var severities = new[] { "normal", "important", "critical" };
+    var displays = new[] { "once", "onceperversion", "everylaunch" };
+    foreach (var severity in severities)
+    {
+        foreach (var display in displays)
+        {
+            var announcement = CreateAnnouncement(severity, display);
+            var configuration = new AppConfiguration();
+            var launch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+                announcement,
+                configuration,
+                "1.2.9",
+                launch));
+            AnnouncementPresentationPolicy.MarkDisplayed(
+                announcement,
+                configuration,
+                "1.2.9",
+                launch);
+            Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+                announcement,
+                configuration,
+                "1.2.9",
+                launch));
+        }
+    }
+
+    Assert(AnnouncementPresentationPolicy.SeverityRank("normal") == 0);
+    Assert(AnnouncementPresentationPolicy.SeverityRank("IMPORTANT") == 1);
+    Assert(AnnouncementPresentationPolicy.SeverityRank(" Critical ") == 2);
+    Assert(!AnnouncementPresentationPolicy.RequiresShutdown("normal"));
+    Assert(!AnnouncementPresentationPolicy.RequiresShutdown("important"));
+    Assert(AnnouncementPresentationPolicy.RequiresShutdown("CRITICAL"));
+
+    Assert(AnnouncementPresentationPolicy.TryParseDisplayMode(
+        "once_per_device",
+        out var legacyOnce) &&
+        legacyOnce == AnnouncementDisplayMode.Once);
+    Assert(AnnouncementPresentationPolicy.TryParseDisplayMode(
+        "once_per_version",
+        out var legacyPerVersion) &&
+        legacyPerVersion == AnnouncementDisplayMode.OncePerVersion);
+    Assert(AnnouncementPresentationPolicy.TryParseDisplayMode(
+        "every_startup",
+        out var legacyEveryLaunch) &&
+        legacyEveryLaunch == AnnouncementDisplayMode.EveryLaunch);
+    Assert(!AnnouncementPresentationPolicy.TryParseDisplayMode(
+        "future-mode",
+        out _));
+}
+
+static void AnnouncementDisplayHistoryPersists()
+{
+    var directory = Path.Combine(
+        Path.GetTempPath(),
+        $"NetRelay-Announcement-History-{Guid.NewGuid():N}");
+    try
+    {
+        var service = new ConfigurationService(directory);
+        var launch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var once = CreateAnnouncement("normal", "once");
+        var oncePerVersion = CreateAnnouncement("important", "onceperversion");
+
+        Assert(AnnouncementPresentationPolicy.MarkDisplayed(
+            once,
+            service.Current,
+            "1.2.9",
+            launch));
+        Assert(AnnouncementPresentationPolicy.MarkDisplayed(
+            oncePerVersion,
+            service.Current,
+            "1.2.9",
+            launch));
+        service.Save();
+
+        var reloaded = new ConfigurationService(directory);
+        Assert(reloaded.Current.SchemaVersion == 7);
+        Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+            once,
+            reloaded.Current,
+            "2.0.0",
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+        Assert(!AnnouncementPresentationPolicy.ShouldDisplay(
+            oncePerVersion,
+            reloaded.Current,
+            "1.2.9",
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+        Assert(AnnouncementPresentationPolicy.ShouldDisplay(
+            oncePerVersion,
+            reloaded.Current,
+            "2.0.0",
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)));
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static Omnexa.Core.AnnouncementView CreateAnnouncement(
+    string severity,
+    string display) =>
+    new(
+        Guid.NewGuid(),
+        $"{severity}-{display}",
+        "announcement regression test",
+        severity,
+        display,
+        DateTimeOffset.UtcNow,
+        null);
 
 static void SettingsApplyCustomLogRetentionImmediately()
 {
@@ -1622,8 +1901,8 @@ static void TestLogPackagingLogic()
 
 static void TestDiagnosticLogRedaction()
 {
-    var value = DiagnosticLogService.Sanitize("token=abc123 https://example.test/path?secret=hidden 0123456789abcdef0123456789abcdef0123456789abcdef");
-    Assert(value is not null);
+    var value = DiagnosticLogService.Sanitize("token=abc123 https://example.test/path?secret=hidden 0123456789abcdef0123456789abcdef0123456789abcdef")
+        ?? throw new InvalidOperationException("Sanitized diagnostic text must not be null.");
     Assert(!value.Contains("abc123", StringComparison.Ordinal));
     Assert(!value.Contains("secret=hidden", StringComparison.Ordinal));
     Assert(!value.Contains("0123456789abcdef0123456789abcdef0123456789abcdef", StringComparison.Ordinal));
@@ -1869,34 +2148,130 @@ static void TestPolicyEnvelopeSignature()
     }
 }
 
-static void TestUpdateNotAvailableClassification()
+static void TestOmnexaProductCoordinates()
 {
-    var method = typeof(UpdateService).GetMethod("IsUpdateNotAvailableResponse", BindingFlags.Static | BindingFlags.NonPublic);
-    Assert(method is not null);
+    Assert(OmnexaProduct.BaseAddress == "https://omnexa.lansil.cn/");
+    Assert(OmnexaProduct.ApiId == "app_YPDP33LMk4gw_Q3_s1kBqvAR");
+    Assert(OmnexaProduct.ApplicationId == "netrelay");
+    Assert(OmnexaProduct.EnvironmentId == "production");
+    Assert(OmnexaProduct.Channel == "stable");
+    Assert(OmnexaProduct.OperatingSystem == "windows");
+    Assert(OmnexaProduct.Architecture == "x64");
+    Assert(
+        OmnexaProduct.RootPublicKey ==
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEg5CG0HquHLzZP-MVxDxoMnlkV5Ss7FdAxWomvZ9b6IMxsN9iasvX51aDOhN_tMBFcZs4b20Rn_XbAbCL8TLDVA");
+}
 
-    var updateNotAvailable = new ApiErrorResponse(
-        "req-1",
-        new ApiError(ErrorCodes.UpdateNotAvailable, "当前已是最新版本。", false));
-    var resourceNotFound = new ApiErrorResponse(
-        "req-2",
-        new ApiError(ErrorCodes.ResourceNotFound, "不存在。", false));
-
-    var accepted = (bool)method!.Invoke(null, new object?[] { HttpStatusCode.NotFound, updateNotAvailable })!;
-    var rejectedWrongCode = (bool)method.Invoke(null, new object?[] { HttpStatusCode.NotFound, resourceNotFound })!;
-    var rejectedWrongStatus = (bool)method.Invoke(null, new object?[] { HttpStatusCode.BadGateway, updateNotAvailable })!;
-
-    if (!accepted)
+static void TestOmnexaMandatoryRelease()
+{
+    var tempDir = Path.Combine(
+        Path.GetTempPath(),
+        $"netrelay-omnexa-mandatory-{Guid.NewGuid():N}");
+    try
     {
-        throw new InvalidOperationException("UPDATE_NOT_AVAILABLE should be treated as an up-to-date response.");
+        var policyService = new PolicyService(new ConfigurationService(tempDir));
+        var release = new Omnexa.Core.ReleaseManifest(
+            Guid.NewGuid(),
+            "9.9.9",
+            "stable",
+            "windows",
+            "x64",
+            "zip",
+            "0.0.0",
+            1,
+            new string('0', 64),
+            true,
+            "Mandatory regression release",
+            DateTimeOffset.UtcNow,
+            "https://omnexa.lansil.cn/package.zip");
+        var control = new Omnexa.Core.ControlSnapshot(
+            "allow",
+            null,
+            null,
+            false,
+            3600,
+            "restricted",
+            300,
+            release,
+            []);
+        var applyControl = typeof(PolicyService).GetMethod(
+            "ApplyControl",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(applyControl is not null);
+
+        applyControl!.Invoke(policyService, new object[] { control });
+
+        Assert(policyService.Decision == "allow");
+        Assert(policyService.IsMandatoryUpdateRequired);
+        Assert(policyService.IsBlocked);
+        Assert(policyService.AllowUpdate);
+        Assert(policyService.Reason?.Contains("9.9.9", StringComparison.Ordinal) == true);
     }
-
-    if (rejectedWrongCode)
+    finally
     {
-        throw new InvalidOperationException("Only UPDATE_NOT_AVAILABLE should bypass fallback logic.");
+        if (Directory.Exists(tempDir))
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
+}
 
-    if (rejectedWrongStatus)
+static void TestCurrentMandatoryReleaseDoesNotRestrict()
+{
+    var tempDir = Path.Combine(
+        Path.GetTempPath(),
+        $"netrelay-omnexa-current-mandatory-{Guid.NewGuid():N}");
+    try
     {
-        throw new InvalidOperationException("Non-404 responses must not be treated as up-to-date.");
+        var policyService = new PolicyService(new ConfigurationService(tempDir));
+        var release = new Omnexa.Core.ReleaseManifest(
+            Guid.NewGuid(),
+            Protocol.ProductVersion,
+            "stable",
+            "windows",
+            "x64",
+            "zip",
+            "0.0.0",
+            1,
+            new string('0', 64),
+            true,
+            "Current mandatory release",
+            DateTimeOffset.UtcNow,
+            "https://omnexa.lansil.cn/package.zip");
+        var control = new Omnexa.Core.ControlSnapshot(
+            "allow", null, null, false, 3600, "restricted", 300, release, []);
+        var applyControl = typeof(PolicyService).GetMethod(
+            "ApplyControl",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert(applyControl is not null);
+
+        applyControl!.Invoke(policyService, new object[] { control });
+
+        Assert(!policyService.IsMandatoryUpdateRequired);
+        Assert(!policyService.IsBlocked);
+    }
+    finally
+    {
+        if (Directory.Exists(tempDir))
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+}
+
+static void TestReleaseVersionPolicy()
+{
+    Assert(ReleaseVersionPolicy.IsStrictlyNewer("1.2.14", "1.2.13"));
+    Assert(!ReleaseVersionPolicy.IsStrictlyNewer("1.2.13", "1.2.13"));
+    Assert(!ReleaseVersionPolicy.IsStrictlyNewer("1.2.12", "1.2.13"));
+    Assert(ReleaseVersionPolicy.IsStrictlyNewer("1.2.13", "1.2.13-preview.1"));
+    try
+    {
+        _ = ReleaseVersionPolicy.IsStrictlyNewer("not-a-version", "1.2.13");
+        throw new InvalidOperationException("非法 SemVer 应被拒绝。");
+    }
+    catch (InvalidDataException)
+    {
+        // Expected.
     }
 }

@@ -23,7 +23,10 @@ public partial class AnnouncementDialog : Window
         SubTitleTextBlock.Text = $"发布时间: {Announcement.PublishedAt.ToLocalTime():yyyy-MM-dd HH:mm}";
 
         // Configure theme color/icon according to severity
-        if (Announcement.Severity == "critical")
+        if (string.Equals(
+                Announcement.Severity,
+                "critical",
+                StringComparison.OrdinalIgnoreCase))
         {
             IconBorder.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1A, 0xE8, 0x11, 0x23));
             IconBorder.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x30, 0xE8, 0x11, 0x23));
@@ -36,7 +39,10 @@ public partial class AnnouncementDialog : Window
                 ActionButton.Style = dangerStyle;
             }
         }
-        else if (Announcement.Severity == "important")
+        else if (string.Equals(
+                     Announcement.Severity,
+                     "important",
+                     StringComparison.OrdinalIgnoreCase))
         {
             IconBorder.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1A, 0xF7, 0xA0, 0x20));
             IconBorder.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x30, 0xF7, 0xA0, 0x20));

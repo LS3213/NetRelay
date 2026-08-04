@@ -1,5 +1,7 @@
 # 后端 API 与共享契约规范
 
+> **历史文档提示（2026-07-30）**：本文记录旧 NetRelay Server 的 API 契约，不再定义当前 Omnexa 接入语义。当前以 [NetRelay 接入 Omnexa](21-omnexa-client-integration.md) 为准：后台只管理设备；历史协议字段 `installationId` 现在表示按程序目录持久化的内部运行槽位，同目录升级复用、不同目录隔离，槽位不展示也不作为封禁目标。
+
 [上一篇：后端平台分阶段开发与验收计划](11-backend-staged-development-and-acceptance-plan.md) | [返回索引](README.md)
 
 > 状态：B7 已通过。`NetRelay.Contracts` 与后端基础已全部实现；实现变化需同步更新本文和 OpenAPI。

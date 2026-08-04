@@ -33,6 +33,8 @@ public sealed class MainViewModel : ObservableObject
     private UpdateManifest? _pendingUpdateManifest;
     private bool _activeUpdateWasMandatory;
     private string? _operationMessage;
+    private double? _operationProgress;
+    private bool _isOperationProgressIndeterminate;
     private UpdateStatusSnapshot _updateStatus = UpdateStatusSnapshot.Empty;
     private readonly DispatcherTimer _trafficTimer;
     private readonly DispatcherTimer _countdownTimer;
@@ -123,21 +125,12 @@ public sealed class MainViewModel : ObservableObject
             };
             dialog.ShowDialog();
         });
-        UpdateHistoryCommand = new RelayCommand(async () =>
+        UpdateHistoryCommand = new RelayCommand(() =>
         {
-            try
+            new NetRelay.Dialogs.UpdateHistoryDialog(_updateService.GetHistoryAsync)
             {
-                var items = await _updateService.GetHistoryAsync(CancellationToken.None);
-                new NetRelay.Dialogs.UpdateHistoryDialog(items)
-                {
-                    Owner = System.Windows.Application.Current.MainWindow
-                }.ShowDialog();
-            }
-            catch (Exception exception)
-            {
-                await new DiagnosticLogService().ErrorAsync("update", "history-dialog", exception);
-                NetRelay.Dialogs.ModernMessageBox.Show("无法加载更新历史，请稍后重试。", "更新历史", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-            }
+                Owner = System.Windows.Application.Current.MainWindow
+            }.ShowDialog();
         });
         HelpCommand = new RelayCommand(() =>
         {
@@ -201,7 +194,8 @@ public sealed class MainViewModel : ObservableObject
     public async Task CheckForUpdatesOnStartupAsync()
     {
         if (_isUpdating
-            || !_configService.Current.AutoCheckUpdatesOnStartup
+            || (!_configService.Current.AutoCheckUpdatesOnStartup &&
+                App.PolicyService?.IsMandatoryUpdateRequired != true)
             || (App.PolicyService?.IsBlocked == true && App.PolicyService?.AllowUpdate == false))
         {
             return;
@@ -238,6 +232,7 @@ public sealed class MainViewModel : ObservableObject
     {
         UpdateSourceKind.Primary => "最近检查来源：主更新源",
         UpdateSourceKind.GitHubFallback => "最近检查来源：备用源",
+        UpdateSourceKind.CachedOffline => "最近检查来源：本地可信缓存（未联网确认）",
         _ => "最近检查来源：尚未确定"
     };
     public string UpdateLastDownloadText => _updateStatus.LastDownloadAt.HasValue
@@ -297,6 +292,7 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
     public bool HasOperationMessage => !string.IsNullOrWhiteSpace(OperationMessage);
+    public bool HasOperationProgress => OperationProgress.HasValue || IsOperationProgressIndeterminate;
     public bool CanOperateSelectedAdapter => SelectedAdapter?.CanToggle == true && !IsOperating && App.PolicyService?.IsBlocked != true;
 
     public bool IsBlocked => App.PolicyService?.IsBlocked == true;
@@ -314,6 +310,30 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _operationMessage, value))
             {
                 RaisePropertyChanged(nameof(HasOperationMessage));
+            }
+        }
+    }
+
+    public double? OperationProgress
+    {
+        get => _operationProgress;
+        private set
+        {
+            if (SetProperty(ref _operationProgress, value))
+            {
+                RaisePropertyChanged(nameof(HasOperationProgress));
+            }
+        }
+    }
+
+    public bool IsOperationProgressIndeterminate
+    {
+        get => _isOperationProgressIndeterminate;
+        private set
+        {
+            if (SetProperty(ref _isOperationProgressIndeterminate, value))
+            {
+                RaisePropertyChanged(nameof(HasOperationProgress));
             }
         }
     }
@@ -581,7 +601,7 @@ public sealed class MainViewModel : ObservableObject
             _pendingUpdateManifest = null;
             if (manifest == null)
             {
-                OperationMessage = $"当前已是最新版本 (v{Protocol.ProductVersion})";
+                OperationMessage = _updateService.GetStatusSnapshot().LastCheckMessage;
                 await Task.Delay(2000);
                 OperationMessage = null;
                 return;
@@ -613,16 +633,21 @@ public sealed class MainViewModel : ObservableObject
                 throw new InvalidOperationException(preflight.Summary);
             }
 
-            OperationMessage = $"正在从{manifest.SourceLabel}下载更新包...";
+            SetOperationProgress(null, indeterminate: true);
+            OperationMessage = $"正在连接{manifest.SourceLabel}更新源...";
             var downloadedPackage = await _updateService.DownloadPackageAsync(manifest, progress =>
             {
                 var percentText = progress.Percent.HasValue ? $" {progress.Percent:P0}" : string.Empty;
                 var sizeText = progress.TotalBytes.HasValue && progress.TotalBytes.Value > 0
                     ? $" · {FormatBytes(progress.BytesReceived)} / {FormatBytes(progress.TotalBytes.Value)}"
                     : string.Empty;
+                SetOperationProgress(
+                    progress.Percent is { } percent ? percent * 100 : null,
+                    progress.Stage == "connecting");
                 OperationMessage = $"{progress.Message}{percentText}{sizeText}";
             }, CancellationToken.None);
 
+            SetOperationProgress(100, indeterminate: false);
             OperationMessage = preflight.RequiresElevation
                 ? "下载完成，正在请求管理员权限启动更新器..."
                 : "下载完成，正在启动更新器并退出应用...";
@@ -674,6 +699,7 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            ClearOperationProgress();
             await new DiagnosticLogService().ErrorAsync("update", "apply", ex);
             OperationMessage = $"更新失败: {ex.Message}";
             await Task.Delay(3200);
@@ -686,6 +712,7 @@ public sealed class MainViewModel : ObservableObject
         }
         finally
         {
+            ClearOperationProgress();
             _activeUpdateWasMandatory = false;
             _isUpdating = false;
             CheckUpdatesCommand?.RaiseCanExecuteChanged();
@@ -790,6 +817,14 @@ public sealed class MainViewModel : ObservableObject
 
         return $"{size:0.##} {units[unitIndex]}";
     }
+
+    private void SetOperationProgress(double? percent, bool indeterminate)
+    {
+        OperationProgress = percent is null ? null : Math.Clamp(percent.Value, 0, 100);
+        IsOperationProgressIndeterminate = indeterminate;
+    }
+
+    private void ClearOperationProgress() => SetOperationProgress(null, indeterminate: false);
 
     private static string NormalizeAdapterId(string adapterId)
     {

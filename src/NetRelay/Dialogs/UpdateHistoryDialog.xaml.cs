@@ -1,21 +1,59 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using NetRelay.Contracts;
+using NetRelay.Services;
 
 namespace NetRelay.Dialogs;
 
 public partial class UpdateHistoryDialog : Window
 {
-    public UpdateHistoryDialog(IReadOnlyList<UpdateHistoryItem> items)
+    private readonly Func<CancellationToken, Task<IReadOnlyList<UpdateHistoryItem>>> _loadHistory;
+    private readonly CancellationTokenSource _loadCancellation = new();
+
+    public UpdateHistoryDialog(Func<CancellationToken, Task<IReadOnlyList<UpdateHistoryItem>>> loadHistory)
     {
+        _loadHistory = loadHistory;
         InitializeComponent();
-        DataContext = items;
-        if (items.Count > 0) HistoryList.SelectedIndex = 0;
-        else
+        Loaded += UpdateHistoryDialog_Loaded;
+        Closed += (_, _) => _loadCancellation.Cancel();
+    }
+
+    private async void UpdateHistoryDialog_Loaded(object sender, RoutedEventArgs e)
+    {
+        try
         {
+            var items = await _loadHistory(_loadCancellation.Token);
+            if (!IsLoaded) return;
+
+            DataContext = items;
+            LoadingPanel.Visibility = Visibility.Collapsed;
+            if (items.Count > 0)
+            {
+                HistoryList.SelectedIndex = 0;
+                return;
+            }
+
             DetailVersionText.Text = "暂无更新历史";
             DetailDateText.Text = "当前通道暂无已发布的版本";
             DetailsText.Text = "后台没有返回可展示的已发布更新记录。";
+            PolicyBadge.Visibility = Visibility.Collapsed;
+        }
+        catch (OperationCanceledException) when (!IsLoaded)
+        {
+        }
+        catch (Exception exception)
+        {
+            await new DiagnosticLogService().ErrorAsync("update", "history-dialog", exception);
+            if (!IsLoaded) return;
+
+            LoadingPanel.Visibility = Visibility.Collapsed;
+            DetailVersionText.Text = "更新历史暂时无法加载";
+            DetailDateText.Text = "请检查网络后重试";
+            DetailsText.Text = "未取得可信的更新历史数据。";
             PolicyBadge.Visibility = Visibility.Collapsed;
         }
     }

@@ -1,196 +1,155 @@
-using System;
-using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Json;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using NetRelay.Contracts;
-using NetRelay.Contracts.Security;
+using Omnexa.Sdk;
 
 namespace NetRelay.Services;
 
 public sealed class ActivationService
 {
     private readonly ConfigurationService _configService;
-    private readonly CompositeDeviceFingerprintProvider _fingerprintProvider = new();
+    private readonly OmnexaIntegrationService _omnexa;
+
+    public string? LastFailureCode { get; private set; }
+    public string? LastFailureMessage { get; private set; }
 
     public ActivationService(ConfigurationService configService)
     {
         _configService = configService;
+        _omnexa = new OmnexaIntegrationService(configService);
     }
 
-    public static string GetBackendUrl()
-    {
-        var envUrl = Environment.GetEnvironmentVariable("NETRELAY_BACKEND_URL");
-        if (!string.IsNullOrWhiteSpace(envUrl))
-        {
-            return envUrl.TrimEnd('/');
-        }
+    public static string GetBackendUrl() =>
+        OmnexaIntegrationService.GetBaseAddress().TrimEnd('/');
 
-        var configUrl = ConfigurationService.Instance?.Current?.PrimaryApiBaseUrl;
-        if (!string.IsNullOrWhiteSpace(configUrl))
-        {
-            return configUrl.TrimEnd('/');
-        }
+    public static HttpClient CreateHttpClient() =>
+        OmnexaIntegrationService.CreateHttpClient();
 
-        return "https://netrelay.473700.xyz";
-    }
-
-    public static HttpClient CreateHttpClient()
-    {
-        var handler = new HttpClientHandler();
-        var ignoreSsl = ConfigurationService.Instance?.Current?.IgnoreSslErrors == true;
-        if (ignoreSsl)
-        {
-            handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-        }
-        return new HttpClient(handler);
-    }
+    public Task<bool> HasCachedActivationAsync(
+        CancellationToken cancellationToken = default) =>
+        _omnexa.HasCachedActivationAsync(cancellationToken);
 
     public async Task<bool> ActivateAsync(CancellationToken cancellationToken)
     {
-        var config = _configService.Current;
-        var now = DateTimeOffset.Now;
-
-        // 1. 收集指纹证据
-        var fingerprintEvidence = await _fingerprintProvider.CollectAsync(cancellationToken);
-        
-        // 计算聚合 DeviceIdHash
-        var combinedString = string.Join("|", fingerprintEvidence.Evidence
-            .OrderBy(p => p.Key, StringComparer.Ordinal)
-            .SelectMany(p => p.Value));
-        var deviceIdHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combinedString)));
-
-        // 2. 构造请求 DTO
-        var request = new DeviceActivationRequest
+        LastFailureCode = null;
+        LastFailureMessage = null;
+        try
         {
-            InstallationId = Guid.Parse(config.InstallationId),
-            FingerprintVersion = fingerprintEvidence.Version,
-            DeviceId = deviceIdHash,
-            Evidence = fingerprintEvidence.Evidence.ToDictionary(p => p.Key, p => p.Value.ToList()),
-            AcceptedTermsVersion = "1.0",
-            AcceptedPrivacyVersion = "1.0",
-            ClientVersion = Protocol.ProductVersion,
-            OsVersion = Environment.OSVersion.ToString(),
-            ProtocolVersion = Protocol.CurrentVersion
-        };
-
-        // 3. 发送请求
-        using var client = CreateHttpClient();
-        var requestMessage = new HttpRequestMessage(HttpMethod.Post, GetBackendUrl() + "/api/v1/devices/activate")
+            var activation = await _omnexa.ActivateAsync(cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            var config = _configService.Current;
+            config.MachineCode = activation.DeviceCode;
+            config.ActivationReceipt = JsonSerializer.Serialize(activation);
+            config.PrivacyConsentAccepted = true;
+            config.AcceptedTermsVersion = _omnexa.CurrentTermsVersion;
+            config.AcceptedPrivacyVersion = _omnexa.CurrentPrivacyVersion;
+            config.PrivacyConsentTimestamp ??= now;
+            config.NextHeartbeatTimestamp = null;
+            _configService.Save();
+            return true;
+        }
+        catch (OmnexaApiException exception)
         {
-            Content = JsonContent.Create(request)
-        };
-        requestMessage.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-        requestMessage.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
-        requestMessage.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
-
-        var response = await client.SendAsync(requestMessage, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
+            LastFailureCode = exception.Code;
+            LastFailureMessage = exception.Message;
+            await new DiagnosticLogService().ErrorAsync(
+                "omnexa",
+                "activation",
+                exception,
+                requestId: exception.RequestId,
+                httpStatus: exception.StatusCode,
+                detail:
+                    $"code={exception.Code}; retryable={exception.Retryable}; " +
+                    $"retryAfterSeconds={exception.RetryAfterSeconds}; message={exception.Message}");
             return false;
         }
-
-        var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<DeviceActivationResponse>>(
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, 
-            cancellationToken);
-
-        if (apiResponse?.Data == null)
+        catch (Exception exception)
         {
+            LastFailureCode = exception.GetType().Name;
+            LastFailureMessage = exception.Message;
+            await new DiagnosticLogService().ErrorAsync(
+                "omnexa",
+                "activation",
+                exception);
             return false;
         }
-
-        var activationResponse = apiResponse.Data;
-
-        // 4. 验证在线证书
-        using var rootKey = ECDsa.Create();
-        rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
-
-        if (!activationResponse.Certificate.Verify(now, rootKey, "device-activation"))
-        {
-            return false;
-        }
-
-        // 5. 验证激活回执签名
-        using var operationalKey = ECDsa.Create();
-        operationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(activationResponse.Certificate.PublicKey), out _);
-
-        if (!activationResponse.Envelope.Verify("device-activation", activationResponse.Envelope.Nonce, now, operationalKey))
-        {
-            return false;
-        }
-
-        // 6. 保存至本地配置
-        config.MachineCode = activationResponse.MachineCode;
-        config.ActivationReceipt = JsonSerializer.Serialize(activationResponse.Envelope);
-        config.PrivacyConsentAccepted = true;
-        config.AcceptedTermsVersion = "1.0";
-        config.AcceptedPrivacyVersion = "1.0";
-        config.PrivacyConsentTimestamp = now;
-
-        _configService.Save();
-        return true;
     }
 
     public async Task<bool> SendHeartbeatAsync(CancellationToken cancellationToken)
     {
         var config = _configService.Current;
-        if (string.IsNullOrWhiteSpace(config.ActivationReceipt) || string.IsNullOrWhiteSpace(config.MachineCode))
-        {
-            return false;
-        }
-
-        var now = DateTimeOffset.Now;
-
-        // Regular heartbeats are limited to once per day, but a client upgrade
-        // must be reported immediately so the admin device registry is current.
-        if (config.LastHeartbeatTimestamp.HasValue &&
-            config.LastHeartbeatTimestamp.Value.AddHours(24) > now &&
-            string.Equals(config.LastHeartbeatClientVersion, Protocol.ProductVersion, StringComparison.Ordinal))
+        var now = DateTimeOffset.UtcNow;
+        if (config.NextHeartbeatTimestamp is { } nextHeartbeat &&
+            nextHeartbeat > now &&
+            string.Equals(
+                config.LastHeartbeatClientVersion,
+                Protocol.ProductVersion,
+                StringComparison.Ordinal))
         {
             return true;
         }
 
-        SignedEnvelope receiptEnvelope;
+        if (!await HasCachedActivationAsync(cancellationToken) &&
+            !await ActivateAsync(cancellationToken))
+        {
+            return false;
+        }
+
         try
         {
-            receiptEnvelope = JsonSerializer.Deserialize<SignedEnvelope>(config.ActivationReceipt)!;
+            return await SendHeartbeatCoreAsync(cancellationToken);
         }
-        catch
+        catch (OmnexaApiException exception) when (
+            exception.Code is "INSTALLATION_REQUIRED" or "ACTIVATION_RECEIPT_INVALID")
         {
+            if (!await ActivateAsync(cancellationToken))
+            {
+                return false;
+            }
+
+            return await SendHeartbeatCoreAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            await new DiagnosticLogService().ErrorAsync(
+                "omnexa",
+                "heartbeat",
+                exception);
             return false;
         }
+    }
 
-        var request = new DeviceHeartbeatRequest
-        {
-            InstallationId = Guid.Parse(config.InstallationId),
-            MachineCode = config.MachineCode,
-            ClientVersion = Protocol.ProductVersion,
-            OsVersion = Environment.OSVersion.ToString(),
-            ReceiptEnvelope = receiptEnvelope
-        };
+    private async Task<bool> SendHeartbeatCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _omnexa.HeartbeatAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var interval = TimeSpan.FromSeconds(Math.Clamp(
+            response.NextHeartbeatSeconds,
+            60,
+            7 * 24 * 60 * 60));
+        var jitter = 0.9 + Random.Shared.NextDouble() * 0.2;
 
-        using var client = CreateHttpClient();
-        var requestMessage = new HttpRequestMessage(HttpMethod.Post, GetBackendUrl() + "/api/v1/devices/heartbeat")
-        {
-            Content = JsonContent.Create(request)
-        };
-        requestMessage.Headers.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-        requestMessage.Headers.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
-        requestMessage.Headers.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
-
-        var response = await client.SendAsync(requestMessage, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return false;
-        }
-
+        var config = _configService.Current;
         config.LastHeartbeatTimestamp = now;
         config.LastHeartbeatClientVersion = Protocol.ProductVersion;
+        config.NextHeartbeatTimestamp = now.AddSeconds(interval.TotalSeconds * jitter);
         _configService.Save();
+
+        // 激活与心跳均应静默维护离线基线。同步失败不否定已经
+        // 成功的心跳；Omnexa.Sdk 会优先尝试备用源和本地签名快照。
+        try
+        {
+            await _omnexa.SyncAsync(cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            await new DiagnosticLogService().ErrorAsync(
+                "omnexa",
+                "heartbeat-control-sync",
+                exception);
+        }
+
         return true;
     }
 }

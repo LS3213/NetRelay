@@ -18,53 +18,28 @@ public partial class MainWindow : Window
     private readonly RuleEngine _ruleEngine;
     private readonly RuleSchedulerService _ruleScheduler;
     private readonly SettingsRuntimeService _settingsRuntimeService;
-    private readonly bool _ownsRuntime;
-    private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private bool _isForceExiting;
-    private readonly bool _startMinimized;
     private bool _startupUpdateCheckStarted;
     private bool _tabSelectionIndicatorInitialized;
 
-    public MainWindow() : this(new ConfigurationService())
-    {
-    }
-
     public MainWindow(
         ConfigurationService configService,
-        NativeNetworkConnectionService? connectionService = null,
-        ConnectivityService? connectivityService = null,
-        RuleEngine? ruleEngine = null,
-        RuleSchedulerService? ruleScheduler = null,
-        LogService? logService = null,
-        bool ownsRuntime = true)
+        NativeNetworkConnectionService connectionService,
+        ConnectivityService connectivityService,
+        RuleEngine ruleEngine,
+        RuleSchedulerService ruleScheduler,
+        LogService logService)
     {
-        _ownsRuntime = ownsRuntime;
-        var commandLineArgs = Environment.GetCommandLineArgs();
-        _startMinimized = commandLineArgs.Contains("--protocol-launch", StringComparer.OrdinalIgnoreCase);
-        if (_startMinimized)
-        {
-            Opacity = 0;
-            ShowInTaskbar = false;
-        }
-
         InitializeComponent();
         SizeChanged += (_, _) => UpdateAdaptiveLayout();
-        if (_ownsRuntime)
-        {
-            RichToastService.Initialize();
-        }
 
-        var connectivity = connectivityService ?? new ConnectivityService();
-        _connectionService = connectionService ?? new NativeNetworkConnectionService();
+        var connectivity = connectivityService;
+        _connectionService = connectionService;
 
-        _ruleEngine = ruleEngine ?? new RuleEngine(_connectionService, connectivity, configService);
-        _ruleScheduler = ruleScheduler ?? new RuleSchedulerService(_ruleEngine, configService, connectivity);
-        if (ruleScheduler is null)
-        {
-            _ruleScheduler.Start();
-        }
+        _ruleEngine = ruleEngine;
+        _ruleScheduler = ruleScheduler;
 
-        var logs = logService ?? new LogService();
+        var logs = logService;
         _settingsRuntimeService = new SettingsRuntimeService(configService, logs, () => _ruleScheduler.Reload());
 
         _viewModel = new MainViewModel(
@@ -93,38 +68,15 @@ public partial class MainWindow : Window
             }
         };
 
-        // Listen to events
-        if (_ownsRuntime)
-        {
-            _ruleScheduler.PreNotificationTriggered += OnSchedulerPreNotificationTriggered;
-            _ruleEngine.ExecutionRecorded += OnRuleExecutionRecorded;
-        }
         _viewModel.RequestEditRule += OnRequestEditRule;
 
         SourceInitialized += (_, _) =>
         {
             WindowBackdrop.Apply(this);
-            if (_startMinimized)
-            {
-                Hide();
-                Opacity = 1;
-            }
         };
         StateChanged += (_, _) => UpdateMaximizeIcon();
         UpdateMaximizeIcon();
 
-        if (_ownsRuntime)
-        {
-            InitializeNotifyIcon();
-            if (!_viewModel.ConfigService.IsAutomationEnabled)
-            {
-                _notifyIcon?.ShowBalloonTip(
-                    8000,
-                    "NetRelay 自动化已暂停",
-                    _viewModel.ConfigService.AutomationDisabledReason ?? "探测配置无效，请检查配置文件。",
-                    System.Windows.Forms.ToolTipIcon.Warning);
-            }
-        }
         UpdateTabSelection(0);
     }
 
@@ -269,106 +221,6 @@ public partial class MainWindow : Window
             : new Thickness(0);
     }
 
-    private void InitializeNotifyIcon()
-    {
-        _notifyIcon = new System.Windows.Forms.NotifyIcon();
-
-        try
-        {
-            var resourceUri = new Uri("pack://application:,,,/Assets/NetRelay.ico");
-            var streamInfo = System.Windows.Application.GetResourceStream(resourceUri);
-            if (streamInfo != null)
-            {
-                using (var stream = streamInfo.Stream)
-                {
-                    _notifyIcon.Icon = new System.Drawing.Icon(stream);
-                }
-            }
-        }
-        catch
-        {
-            try
-            {
-                var mainModuleFile = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-                if (!string.IsNullOrEmpty(mainModuleFile))
-                {
-                    _notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(mainModuleFile);
-                }
-                else
-                {
-                    var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                    _notifyIcon.Icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
-                }
-            }
-            catch
-            {
-                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
-            }
-        }
-
-        _notifyIcon.Text = "NetRelay 原生网络切换助手";
-        _notifyIcon.Visible = true;
-
-        _notifyIcon.DoubleClick += (s, e) => RestoreWindow();
-        _notifyIcon.MouseClick += NotifyIcon_MouseClick;
-        _notifyIcon.BalloonTipClicked += (s, e) => RestoreWindow();
-    }
-
-    private void NotifyIcon_MouseClick(object? sender, System.Windows.Forms.MouseEventArgs e)
-    {
-        if (e.Button == System.Windows.Forms.MouseButtons.Right)
-        {
-            var menu = (System.Windows.Controls.ContextMenu)FindResource("TrayContextMenu");
-            if (menu != null)
-            {
-                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                if (hwnd != IntPtr.Zero)
-                {
-                    SetForegroundWindow(hwnd);
-                }
-
-                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
-                menu.IsOpen = true;
-            }
-        }
-    }
-
-    private void TrayOpen_Click(object sender, RoutedEventArgs e)
-    {
-        RestoreWindow();
-    }
-
-    private void TrayCheckUpdates_Click(object sender, RoutedEventArgs e)
-    {
-        RestoreWindow();
-        _viewModel.CurrentTabIndex = 3;
-        UpdateTabSelection(3);
-        _viewModel.CheckUpdatesCommand.Execute(null);
-    }
-
-    private async void TrayExportDiagnostics_Click(object sender, RoutedEventArgs e)
-    {
-        RestoreWindow();
-        _viewModel.CurrentTabIndex = 2;
-        UpdateTabSelection(2);
-        await _viewModel.ExportDiagnosticsAsync();
-    }
-
-    private void TrayOpenLogs_Click(object sender, RoutedEventArgs e)
-    {
-        _viewModel.OpenLogsDirectory();
-    }
-
-    private void TrayOpenUpdateCache_Click(object sender, RoutedEventArgs e)
-    {
-        _viewModel.OpenUpdateCacheDirectory();
-    }
-
-    private void TrayExit_Click(object sender, RoutedEventArgs e)
-    {
-        ExitApplication();
-    }
-
     public void SelectTab(int tabIndex)
     {
         _viewModel.CurrentTabIndex = tabIndex;
@@ -394,8 +246,6 @@ public partial class MainWindow : Window
         _isForceExiting = true;
         _viewModel.Shutdown();
         DataContext = null;
-        _notifyIcon?.Dispose();
-        _notifyIcon = null;
         Close();
     }
 
@@ -409,81 +259,6 @@ public partial class MainWindow : Window
             WindowState = WindowState.Normal;
         }
         Activate();
-    }
-
-    private void ExitApplication()
-    {
-        if (!_ownsRuntime)
-        {
-            _isForceExiting = true;
-            _viewModel.Shutdown();
-            DataContext = null;
-            System.Windows.Application.Current.Shutdown();
-            return;
-        }
-
-        Hide();
-        _viewModel.Shutdown();
-        _ruleScheduler?.Stop();
-        _ruleScheduler?.Dispose();
-        _notifyIcon?.Dispose();
-        _notifyIcon = null;
-        _isForceExiting = true;
-        Close();
-    }
-
-    private void OnSchedulerPreNotificationTriggered(object? sender, PreNotificationEventArgs e)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            // Use one native interactive toast. Sending a legacy tray balloon as
-            // well would produce duplicate notifications for the same event.
-            var actionName = e.Rule.Action == RuleAction.Enable ? "启用" : "禁用";
-            RichToastService.ShowPreNotification(e, actionName);
-        });
-    }
-
-    private void OnRuleExecutionRecorded(object? sender, ExecutionRecord record)
-    {
-        if (record.Source == RuleSource.Manual)
-        {
-            return;
-        }
-
-        Dispatcher.Invoke(() =>
-        {
-            var title = record.Outcome switch
-            {
-                "SUCCESS" when record.Source == RuleSource.Recovery => "NetRelay 自动恢复完成",
-                "SUCCESS" => "NetRelay 自动操作完成",
-                "SKIPPED" => "NetRelay 自动操作已跳过",
-                _ => "NetRelay 自动操作失败"
-            };
-            var message = record.ReasonCode switch
-            {
-                "OK" => "网卡操作已成功完成。",
-                "BACKUP_NETWORK_UNAVAILABLE" => "未找到可联网的备用网卡，已取消禁用操作。",
-                "POST_SWITCH_VALIDATION_FAILED" => "切换后备用网络失效，已执行安全回滚。",
-                "ROLLBACK_SUCCEEDED" => "目标网卡已重新启用。",
-                "ROLLBACK_FAILED" => "安全回滚失败，请手动重新启用目标网卡。",
-                "RECOVERY_ALREADY_ENABLED" => "目标网卡已经启用，无需重复恢复。",
-                "CONFIG_INVALID" => "探测配置无效，自动化规则已暂停。",
-                "CONDITION_NOT_MET" => "规则附加条件不满足，本次操作已跳过。",
-                _ => $"执行结果：{record.ReasonCode}"
-            };
-
-            _notifyIcon?.ShowBalloonTip(6000, title, message, GetNotificationIcon(record.Outcome));
-        });
-    }
-
-    private static System.Windows.Forms.ToolTipIcon GetNotificationIcon(string outcome)
-    {
-        return outcome switch
-        {
-            "SUCCESS" => System.Windows.Forms.ToolTipIcon.Info,
-            "SKIPPED" => System.Windows.Forms.ToolTipIcon.Warning,
-            _ => System.Windows.Forms.ToolTipIcon.Error
-        };
     }
 
     private void OnRequestEditRule(AutomationRule? rule)
@@ -677,31 +452,14 @@ public partial class MainWindow : Window
         {
             if (config.CloseAction == "HideToTray")
             {
-                if (!_ownsRuntime)
-                {
-                    CloseHostedWindowToTray(e);
-                    return;
-                }
-
-                e.Cancel = true;
-                _viewModel.PauseUiMonitoring();
-                Hide();
+                CloseHostedWindowToTray(e);
+                return;
             }
             else // Exit
             {
-                if (!_ownsRuntime)
-                {
-                    _isForceExiting = true;
-                    System.Windows.Application.Current.Shutdown();
-                    return;
-                }
-
-                Hide();
-                _viewModel.Shutdown();
-                _ruleScheduler?.Stop();
-                _ruleScheduler?.Dispose();
-                _notifyIcon?.Dispose();
-                base.OnClosing(e);
+                _isForceExiting = true;
+                System.Windows.Application.Current.Shutdown();
+                return;
             }
         }
         else
@@ -722,31 +480,14 @@ public partial class MainWindow : Window
 
                 if (dialog.CloseActionResult == "HideToTray")
                 {
-                    if (!_ownsRuntime)
-                    {
-                        CloseHostedWindowToTray(e);
-                        return;
-                    }
-
-                    _viewModel.PauseUiMonitoring();
-                    Hide();
+                    CloseHostedWindowToTray(e);
+                    return;
                 }
                 else
                 {
-                    if (!_ownsRuntime)
-                    {
-                        _isForceExiting = true;
-                        System.Windows.Application.Current.Shutdown();
-                        return;
-                    }
-
-                    Hide();
-                    _viewModel.Shutdown();
-                    _ruleScheduler?.Stop();
-                    _ruleScheduler?.Dispose();
-                    _notifyIcon?.Dispose();
                     _isForceExiting = true;
-                    Close();
+                    System.Windows.Application.Current.Shutdown();
+                    return;
                 }
             }
         }
@@ -805,8 +546,4 @@ public partial class MainWindow : Window
             // Fail gracefully
         }
     }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
 }

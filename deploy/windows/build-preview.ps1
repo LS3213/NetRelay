@@ -39,7 +39,7 @@ if (Test-Path -LiteralPath $updaterPublishRoot) {
 New-Item -ItemType Directory -Path $publishRoot, $updaterPublishRoot -Force | Out-Null
 
 & $DotNetPath publish (Join-Path $root "src\NetRelay\NetRelay.csproj") `
-    -c $Configuration -r $Runtime --self-contained true --no-restore `
+    -c $Configuration -r $Runtime --self-contained true --no-restore -m:1 `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:EnableCompressionInSingleFile=true `
@@ -51,7 +51,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & $DotNetPath publish (Join-Path $root "src\NetRelay.Updater\NetRelay.Updater.csproj") `
-    -c $Configuration -r $Runtime --self-contained true --no-restore `
+    -c $Configuration -r $Runtime --self-contained true --no-restore -m:1 `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:EnableCompressionInSingleFile=true `

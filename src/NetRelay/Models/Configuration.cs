@@ -6,7 +6,7 @@ namespace NetRelay.Models;
 public sealed class AppConfiguration
 {
     [JsonPropertyName("schemaVersion")]
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; } = 7;
 
     [JsonPropertyName("probePolicy")]
     public ConnectivityProbePolicy ProbePolicy { get; set; } = new();
@@ -51,7 +51,11 @@ public sealed class AppConfiguration
     public DateTimeOffset? PrivacyConsentTimestamp { get; set; }
 
     [JsonPropertyName("installationId")]
-    public string InstallationId { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyInstallationId { get; set; }
+
+    [JsonPropertyName("runtimeSlotIds")]
+    public Dictionary<string, string> RuntimeSlotIds { get; set; } = new(StringComparer.Ordinal);
 
     [JsonPropertyName("machineCode")]
     public string MachineCode { get; set; } = string.Empty;
@@ -65,11 +69,14 @@ public sealed class AppConfiguration
     [JsonPropertyName("lastHeartbeatClientVersion")]
     public string LastHeartbeatClientVersion { get; set; } = string.Empty;
 
+    [JsonPropertyName("nextHeartbeatTimestamp")]
+    public DateTimeOffset? NextHeartbeatTimestamp { get; set; }
+
     [JsonPropertyName("clientConfigurationVersion")]
     public int ClientConfigurationVersion { get; set; } = 0;
 
     [JsonPropertyName("primaryApiBaseUrl")]
-    public string PrimaryApiBaseUrl { get; set; } = "https://netrelay.473700.xyz";
+    public string PrimaryApiBaseUrl { get; set; } = "https://omnexa.lansil.cn";
 
     [JsonPropertyName("ignoreSslErrors")]
     public bool IgnoreSslErrors { get; set; } = false;
@@ -79,6 +86,9 @@ public sealed class AppConfiguration
 
     [JsonPropertyName("displayedAnnouncementIds")]
     public List<string> DisplayedAnnouncementIds { get; set; } = [];
+
+    [JsonPropertyName("displayedAnnouncementVersionKeys")]
+    public List<string> DisplayedAnnouncementVersionKeys { get; set; } = [];
 
     [JsonPropertyName("persistedBlockState")]
     public PolicyEvaluateResponse? PersistedBlockState { get; set; }

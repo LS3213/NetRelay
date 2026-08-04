@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using NetRelay.Models;
@@ -110,9 +111,37 @@ public sealed class ConfigurationService
                 configUpdated = true;
             }
 
-            if (string.IsNullOrWhiteSpace(config.InstallationId))
+            if (config.SchemaVersion < 5)
             {
-                config.InstallationId = Guid.NewGuid().ToString();
+                config.PrimaryApiBaseUrl = "https://omnexa.lansil.cn";
+                config.IgnoreSslErrors = false;
+                config.ClientConfigurationVersion = 3;
+                config.SchemaVersion = 5;
+                configUpdated = true;
+            }
+
+            config.RuntimeSlotIds ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            if (config.SchemaVersion < 6)
+            {
+                var currentSlotKey = CreateRuntimeSlotKey(AppContext.BaseDirectory);
+                config.RuntimeSlotIds[currentSlotKey] =
+                    Guid.TryParse(config.LegacyInstallationId, out var legacyInstallationId)
+                        ? legacyInstallationId.ToString("D")
+                        : Guid.NewGuid().ToString("D");
+                config.SchemaVersion = 6;
+                configUpdated = true;
+            }
+            if (config.LegacyInstallationId is not null)
+            {
+                config.LegacyInstallationId = null;
+                configUpdated = true;
+            }
+
+            config.DisplayedAnnouncementIds ??= [];
+            config.DisplayedAnnouncementVersionKeys ??= [];
+            if (config.SchemaVersion < 7)
+            {
+                config.SchemaVersion = 7;
                 configUpdated = true;
             }
 
@@ -155,6 +184,21 @@ public sealed class ConfigurationService
     {
         ValidateCurrent();
         SaveInternal(Current);
+    }
+
+    public Guid GetOrCreateRuntimeSlotId(string? runtimeDirectory = null)
+    {
+        var slotKey = CreateRuntimeSlotKey(runtimeDirectory ?? AppContext.BaseDirectory);
+        if (Current.RuntimeSlotIds.TryGetValue(slotKey, out var value) &&
+            Guid.TryParse(value, out var existing))
+        {
+            return existing;
+        }
+
+        var created = Guid.NewGuid();
+        Current.RuntimeSlotIds[slotKey] = created.ToString("D");
+        SaveInternal(Current);
+        return created;
     }
 
     public string? ValidateCurrent()
@@ -203,13 +247,25 @@ public sealed class ConfigurationService
     {
         return new AppConfiguration
         {
-            SchemaVersion = 4,
+            SchemaVersion = 7,
             ProbePolicy = new ConnectivityProbePolicy(),
             Rules = [],
             AutoStart = false,
             AutoCheckUpdatesOnStartup = true,
-            InstallationId = Guid.NewGuid().ToString()
+            RuntimeSlotIds = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [CreateRuntimeSlotKey(AppContext.BaseDirectory)] = Guid.NewGuid().ToString("D")
+            }
         };
+    }
+
+    private static string CreateRuntimeSlotKey(string runtimeDirectory)
+    {
+        var normalized = Path.GetFullPath(runtimeDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .ToUpperInvariant();
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))
+            .ToLowerInvariant();
     }
 
     private void UpdateValidationState(AppConfiguration config)

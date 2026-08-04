@@ -759,7 +759,8 @@ public sealed class ConnectivityService
     {
         var stopwatch = Stopwatch.StartNew();
         var backendUrl = ActivationService.GetBackendUrl();
-        var url = backendUrl + "/api/v1/connectivity/challenge";
+        var url =
+            $"{backendUrl}/api/v1/client/{OmnexaProduct.ApiId}/{OmnexaProduct.EnvironmentId}/connectivity/challenge";
         var nonce = Guid.NewGuid().ToString("N");
 
         try
@@ -792,26 +793,19 @@ public sealed class ConnectivityService
                 }
             };
 
-            var ignoreSsl = ConfigurationService.Instance?.Current?.IgnoreSslErrors == true;
-            if (ignoreSsl)
-            {
-                handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-                {
-                    RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => true
-                };
-            }
-
             using var client = new HttpClient(handler)
             {
                 Timeout = timeout
             };
 
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) NetRelay/1.0");
-            client.DefaultRequestHeaders.Add(Protocol.VersionHeader, Protocol.CurrentVersion.ToString());
-            client.DefaultRequestHeaders.Add(Protocol.ClientVersionHeader, Protocol.ProductVersion);
-            client.DefaultRequestHeaders.Add(Protocol.RequestIdHeader, Guid.NewGuid().ToString("N"));
+            client.DefaultRequestHeaders.Add("X-Omnexa-Protocol", "1");
+            client.DefaultRequestHeaders.Add("X-Request-Id", Guid.NewGuid().ToString("D"));
 
-            var response = await client.PostAsJsonAsync(url, new ConnectivityChallengeRequest { Nonce = nonce }, cancellationToken);
+            var response = await client.PostAsJsonAsync(
+                url,
+                new Omnexa.Core.ConnectivityChallengeRequest { Nonce = nonce },
+                cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 return new ProbeAttempt(
@@ -822,7 +816,8 @@ public sealed class ConnectivityService
                 );
             }
 
-            var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<ConnectivityChallengeResponse>>(
+            var apiResponse = await response.Content.ReadFromJsonAsync<
+                Omnexa.Core.ApiResponse<Omnexa.Core.ConnectivityChallengeResponse>>(
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true },
                 cancellationToken);
 
@@ -836,25 +831,40 @@ public sealed class ConnectivityService
 
             // 验证在线证书
             using var rootKey = ECDsa.Create();
-            rootKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(OperationalKeyCertificate.DefaultRootPublicKeyBase64), out _);
+            rootKey.ImportSubjectPublicKeyInfo(
+                Omnexa.Core.Base64Url.Decode(OmnexaProduct.RootPublicKey),
+                out _);
 
-            if (!challengeResponse.Certificate.Verify(now, rootKey, "connectivity-challenge"))
+            if (!challengeResponse.Certificate.Verify(
+                    now,
+                    rootKey,
+                    "connectivity-challenge") ||
+                !string.Equals(
+                    challengeResponse.Certificate.KeyId,
+                    challengeResponse.Challenge.KeyId,
+                    StringComparison.Ordinal))
             {
                 return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: 证书校验失败。");
             }
 
             // 验证挑战签名
-            using var operationalKey = ECDsa.Create();
-            operationalKey.ImportSubjectPublicKeyInfo(Convert.FromBase64String(challengeResponse.Certificate.PublicKey), out _);
+            using var operationalKey = challengeResponse.Certificate.CreatePublicKey();
 
-            if (!challengeResponse.Envelope.Verify("connectivity-challenge", challengeResponse.Envelope.Nonce, now, operationalKey))
+            if (!challengeResponse.Challenge.Verify(
+                    "connectivity-challenge",
+                    nonce,
+                    now,
+                    operationalKey))
             {
                 return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: 挑战签名校验失败。");
             }
 
             // 校验 nonce 匹配
-            var payload = JsonSerializer.Deserialize<Dictionary<string, string>>(challengeResponse.Envelope.PayloadJson);
-            if (payload == null || !payload.TryGetValue("nonce", out var returnedNonce) || !string.Equals(returnedNonce, nonce, StringComparison.Ordinal))
+            var payload = challengeResponse.Challenge.Payload.Deserialize<
+                Omnexa.Core.ConnectivityChallengePayload>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (payload is null ||
+                !string.Equals(payload.RequestNonce, nonce, StringComparison.Ordinal))
             {
                 return new ProbeAttempt(url, Success: false, stopwatch.ElapsedMilliseconds, "BACKEND_ERROR: Nonce 不匹配。");
             }
