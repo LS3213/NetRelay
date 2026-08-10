@@ -2,15 +2,15 @@
   "envelope": {
     "protocolVersion": 1,
     "purpose": "update-manifest",
-    "nonce": "c276e9b0eccf4452976a24d6f56a7bc4",
-    "issuedAt": "2026-08-09T12:20:33.0260701+00:00",
-    "expiresAt": "2026-08-11T14:04:49.6311592+00:00",
+    "nonce": "76a01d5856bc41e2b539c257372fd9d5",
+    "issuedAt": "2026-08-10T00:20:35.6204128+00:00",
+    "expiresAt": "2026-09-09T00:20:35.5310876+00:00",
     "payloadJson": "{\u0022architecture\u0022:\u0022win-x64\u0022,\u0022changelog\u0022:\u0022\\u5907\\u7528\\u6E90\\u66F4\\u65B0\\u6062\\u590D\u0022,\u0022channel\u0022:\u0022stable\u0022,\u0022isMandatory\u0022:true,\u0022minUpgradableVersion\u0022:\u00220.1.0\u0022,\u0022packageSize\u0022:144648215,\u0022releaseDate\u0022:\u00222026-06-17T18:11:31.777Z\u0022,\u0022sha256\u0022:\u0022865737fc91898d70703470f46eb84444648a0ab51cadfb3f2ccb332af5777e1b\u0022,\u0022version\u0022:\u00221.2.7\u0022}",
-    "signature": "yuOdwipKMXRoXXROuFeFjhTtUiXSNEirBwasHcs4JMexgVuIjYWsc4QwjeE6E9Rv47G/zi35I6YHvFXQhOq54Q=="
+    "signature": "bPK8OxUj5kWZABgORMCDnK2Ih8hwT6K/dSQ3IgBKP\u002BEr0vGhUQ6/3EvL2/wp4U3pIHPoEYrA1gZlXkKbc5EaMA=="
   },
   "certificate": {
-    "keyId": "operations-20260712-140449",
-    "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEk\u002BuWo79g8PCVhupclmGH8tMdJe2RJs7hTnrEs1pxwSCIMcGHj73INt4ei83gKTrMzorr94JlZH/B3DyRMbZ8xg==",
+    "keyId": "operations-20260810-002035",
+    "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE65q3Fn8WJfhU88TGafnvnaEkb6fcSb5Q09cv/lNGCwlwbu41mZ4osSNOtvM2lSfh\u002B1Y3aoZv65hW3RdFoDw1Yg==",
     "allowedPurposes": [
       "announcement",
       "client-configuration",
@@ -20,8 +20,8 @@
       "policy",
       "update-manifest"
     ],
-    "notBefore": "2026-07-11T14:04:49.6311592+00:00",
-    "notAfter": "2026-08-11T14:04:49.6311592+00:00",
-    "rootSignature": "UL3wGZozy1W\u002BIFYM072NPX\u002BxEVcmxnpnsqRL2T6PcLkC8iG/zXSs09PktOaB5cIJEKxRPUR7E\u002B3vHIs01mtZMw=="
+    "notBefore": "2026-08-09T00:20:35.5310876+00:00",
+    "notAfter": "2026-09-09T00:20:35.5310876+00:00",
+    "rootSignature": "d5E2PBBQXrsVOGuxubOB6lyypB0pTl6wXXeTRCju/ddiaORW89Yv4ci1yiTihBYnfMsbuqtwvoVCnzyJpRZdUg=="
   }
 }
